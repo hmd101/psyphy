@@ -5,45 +5,39 @@ posterior.py
 Posterior representation for WPPM.
 
 MVP implementation:
-- Stores only a single parameter set (MAP estimate).
-- Provides a consistent interface (MAP_params, sample, predict_prob,
-  predict_thresholds).
-- Delegates probability calculations back to WPPM.
+- Posterior = MAPPosterior (point estimate only).
+- Stores one parameter set and delegates predictions to WPPM.
 
 Design note
 -----------
-This class is currently a *stub*. In the future it should evolve into
-a BasePosterior abstract base class, with concrete subclasses for:
-
-- MAPPosterior      : point estimate only
-- LaplacePosterior  : Gaussian approx around MAP (mean + covariance)
-- MCMCPosterior     : posterior samples from Langevin/HMC
-
-Keeping the interface stable now ensures downstream code (Session,
-TrialPlacement, Viz) can use the same methods regardless of inference method.
+- This class inherits from BasePosterior.
+- In the future, other subclasses (LaplacePosterior, MCMCPosterior) will
+  also inherit from BasePosterior, each implementing the same interface.
 """
 
 from __future__ import annotations
 
 import jax.numpy as jnp
 
+from psyphy.posterior.base_posterior import BasePosterior
 
-class Posterior:
+
+class Posterior(BasePosterior):
     """
-    Posterior wrapper for WPPM (MVP version).
+    MVP Posterior (MAP only).
 
     Parameters
     ----------
     params : dict
-        Parameter dictionary (MAP estimate in MVP).
+        MAP parameter dictionary.
     model : WPPM
-        Model instance for predictions.
+        Model instance used for predictions.
 
     Notes
     -----
-    - MVP: only supports MAP estimates.
-    - Full mode: this will become an abstract base class (BasePosterior),
-      and real subclasses will implement sampling behavior.
+    - This is effectively a MAPPosterior.
+    - Future subclasses (LaplacePosterior, MCMCPosterior) will extend
+      BasePosterior with real sampling logic.
     """
 
     def __init__(self, params, model):
@@ -51,31 +45,26 @@ class Posterior:
         self.model = model
 
     # ------------------------------------------------------------------
-    # ACCESSORS (expose internal information)
+    # ACCESSORS
     # ------------------------------------------------------------------
     def MAP_params(self):
         """
-        Return the MAP parameter set.
+        Return the MAP parameters.
 
         Returns
         -------
         dict
-            Model parameters.
-
-        Future hook
-        -----------
-        - In MCMCPosterior: could return posterior mean instead.
-        - In LaplacePosterior: could return Gaussian mean (MAP).
+            Parameter dictionary.
         """
         return self.params
 
-    def sample(self, n: int = 1):
+    def sample(self, num_samples: int = 1):
         """
         Draw parameter samples from the posterior.
 
         Parameters
         ----------
-        n : int, default=1
+        num_samples : int, default=1
             Number of samples.
 
         Returns
@@ -87,15 +76,15 @@ class Posterior:
         ---
         Returns MAP params repeated n times.
 
-        Future hook
-        -----------
+        Future
+        ------
         - LaplacePosterior: draw from N(mean, cov).
-        - MCMCPosterior: return stored MCMC samples.
+        - MCMCPosterior: return stored samples.
         """
-        return [self.params] * n
+        return [self.params] * num_samples
 
     # ------------------------------------------------------------------
-    # PREDICTION INTERFACE (delegates to model)
+    # PREDICTIONS
     # ------------------------------------------------------------------
     def predict_prob(self, stimulus):
         """
@@ -113,8 +102,8 @@ class Posterior:
 
         Notes
         -----
-        This is not recursion: Posterior delegates to WPPM's predict_prob,
-        automatically supplying self.params.
+        Delegates to WPPM.predict_prob().
+        This is not recursion: Posterior calls WPPM’s method with stored params.
         """
         return self.model.predict_prob(self.params, stimulus)
 
@@ -134,16 +123,16 @@ class Posterior:
         Returns
         -------
         jnp.ndarray
-            Threshold contour points (MVP: unit circle).
+            Contour points (MVP: unit circle).
 
         MVP
         ---
-        Returns a simple unit circle, ignoring criterion.
+        Returns a placeholder unit circle.
 
-        Future hook
-        -----------
-        - Use model + posterior samples to estimate where performance
-          crosses criterion along each direction.
+        Future
+        ------
+        - Search outward in each direction until performance crosses criterion.
+        - Average over posterior samples (Laplace, MCMC) to get credible intervals.
         """
         angles = jnp.linspace(0, 2 * jnp.pi, directions, endpoint=False)
         contour = jnp.stack([reference + jnp.array([jnp.cos(a), jnp.sin(a)]) for a in angles])
