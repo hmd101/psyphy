@@ -1,0 +1,26 @@
+[build-system]
+requires = ["hatchling>=1.18.0"]
+build-backend = "hatchling.build"
+
+[project]
+name = "psyphy"
+version = "0.1.0"
+description = "Psychophysical modeling and adaptive trial placement"
+readme = "README.md"
+requires-python = ">=3.9"
+classifiers = [
+  "Programming Language :: Python :: 3",
+  "License :: OSI Approved :: MIT License",
+  "Operating System :: OS Independent",
+]
+dependencies = [
+  "jax==0.4.28",
+  "optax==0.2.5",
+  "numpy>=1.22",
+]
+
+[project.urls]
+Homepage = "https://github.com/hmd101/psyphy"
+Repository = "https://github.com/hmd101/psyphy"
+Issues = "https://github.com/hmd101/psyphy/issues"
+
