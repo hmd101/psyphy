@@ -45,7 +45,7 @@ class Posterior(BasePosterior):
         self.model = model
 
     # ------------------------------------------------------------------
-    # ACCESSORS
+    # ACCESSORS (expose internal information)
     # ------------------------------------------------------------------
     def MAP_params(self):
         """
@@ -84,7 +84,7 @@ class Posterior(BasePosterior):
         return [self.params] * num_samples
 
     # ------------------------------------------------------------------
-    # PREDICTIONS
+    # PREDICTIONS: delegates to model
     # ------------------------------------------------------------------
     def predict_prob(self, stimulus):
         """

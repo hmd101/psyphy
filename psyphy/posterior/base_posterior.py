@@ -37,7 +37,7 @@ class BasePosterior(ABC):
     """
 
     # ------------------------------------------------------------------
-    # ACCESSORS
+    # ACCESSORS: expose internal information
     # ------------------------------------------------------------------
     @abstractmethod
     def MAP_params(self):
@@ -76,7 +76,7 @@ class BasePosterior(ABC):
         ...
 
     # ------------------------------------------------------------------
-    # PREDICTIONS
+    # PREDICTIONS (delegates to model)
     # ------------------------------------------------------------------
     @abstractmethod
     def predict_prob(self, stimulus) -> jnp.ndarray:
