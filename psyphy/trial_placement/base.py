@@ -41,4 +41,4 @@ class TrialPlacement(ABC):
         TrialBatch
             Proposed batch of (reference, probe) stimuli.
         """
-        ...
+        return NotImplementedError()

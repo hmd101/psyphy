@@ -4,21 +4,22 @@ sobol.py
 
 Sobol quasi-random placement.
 
-MVP implementation:
+MVP:
 - Uses a Sobol engine to generate low-discrepancy points.
-- Independent of posterior.
+- Ignores the posterior (pure exploration).
 
 Full WPPM mode:
-- Could combine Sobol exploration with InfoGain exploitation.
+- Could combine Sobol exploration (early) with posterior-aware exploitation (later).
 """
 
 import numpy as np
 from scipy.stats.qmc import Sobol
 
 from psyphy.data.dataset import TrialBatch
+from psyphy.trial_placement.base import TrialPlacement
 
 
-class SobolPlacement:
+class SobolPlacement(TrialPlacement):
     """
     Sobol quasi-random placement.
 
@@ -36,18 +37,31 @@ class SobolPlacement:
         self.engine = Sobol(d=dim, scramble=True, seed=seed)
         self.bounds = bounds
 
-    def propose(self, posterior, batch_size: int):
+    def propose(self, posterior, batch_size: int) -> TrialBatch:
         """
         Propose Sobol points (ignores posterior).
+
+        Parameters
+        ----------
+        posterior : Posterior
+            Ignored in MVP.
+        batch_size : int
+            Number of trials to return.
+
+        Returns
+        -------
+        TrialBatch
+            Candidate trials from Sobol sequence.
 
         Notes
         -----
         MVP:
-            Pure exploration.
-        Future:
-            Switch after burn-in to InfoGainPlacement for exploitation.
+            Pure exploration of space.
+        Full WPPM mode:
+            Use Sobol as initialization, then switch to InfoGain.
         """
         raw = self.engine.random(batch_size)
         scaled = [low + (high - low) * raw[:, i] for i, (low, high) in enumerate(self.bounds)]
         stimuli = list(zip(*scaled))
         return TrialBatch.from_stimuli(stimuli)
+        

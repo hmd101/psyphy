@@ -4,17 +4,19 @@ staircase.py
 
 Classical staircase placement (1-up, 2-down).
 
-MVP implementation:
-- Adjusts step size up/down based on previous response.
+MVP:
+- Purely response-driven, 1D only.
+- Ignores posterior.
 
 Full WPPM mode:
-- Could generalize to multi-dimensional tasks.
+- Extend to multi-D tasks, integrate  with WPPM-based discriminability thresholds.
 """
 
 from psyphy.data.dataset import TrialBatch
+from psyphy.trial_placement.base import TrialPlacement
 
 
-class StaircasePlacement:
+class StaircasePlacement(TrialPlacement):
     """
     Staircase procedure.
 
@@ -26,13 +28,6 @@ class StaircasePlacement:
         Step increment.
     rule : str, default="1up-2down"
         Adaptive rule.
-
-    Notes
-    -----
-    MVP:
-        Only supports 1D tasks.
-    Future:
-        Extend to 2D/3D with WPPM-based discriminability thresholds.
     """
 
     def __init__(self, start_level: float, step_size: float, rule: str = "1up-2down"):
@@ -41,21 +36,23 @@ class StaircasePlacement:
         self.rule = rule
         self.correct_counter = 0
 
-    def propose(self, posterior, batch_size: int):
+    def propose(self, posterior, batch_size: int) -> TrialBatch:
         """
         Return next trial(s) based on staircase rule.
 
-        Notes
-        -----
-        MVP:
-            Ignores posterior; purely response-driven.
-        Future:
-            Integrate with Posterior predictions for adaptive step sizes.
-        """
-        trials = []
-        for _ in range(batch_size):
-            trials.append((0.0, self.current_level))  # stub: (reference, probe)
+        Parameters
+        ----------
+        posterior : Posterior
+            Ignored in MVP (not posterior-aware).
+        batch_size : int
+            Number of trials to propose.
 
+        Returns
+        -------
+        TrialBatch
+            Batch of trials with current staircase level.
+        """
+        trials = [(0.0, self.current_level)] * batch_size  # Stub: (ref=0, probe=level)
         return TrialBatch.from_stimuli(trials)
 
     def update(self, response: int):

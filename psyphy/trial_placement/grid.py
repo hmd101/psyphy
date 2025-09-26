@@ -4,17 +4,19 @@ grid.py
 
 Grid-based placement strategy.
 
-MVP implementation:
-- Returns a fixed list of grid points, sliced into batches.
+MVP:
+- Iterates through a fixed list of grid points.
+- Ignores the posterior (non-adaptive).
 
 Full WPPM mode:
-- Could adaptively refine grid around posterior uncertainty.
+- Could refine the grid adaptively around regions of high posterior uncertainty.
 """
 
 from psyphy.data.dataset import TrialBatch
+from psyphy.trial_placement.base import TrialPlacement
 
 
-class GridPlacement:
+class GridPlacement(TrialPlacement):
     """
     Fixed grid placement.
 
@@ -25,17 +27,15 @@ class GridPlacement:
 
     Notes
     -----
-    MVP:
-        Just iterates through the provided grid points.
-    Future:
-        Implement adaptive grid refinement.
+    - grid = your set of allowable trials.
+    - this class simply walks through that set.
     """
 
     def __init__(self, grid_points):
         self.grid_points = list(grid_points)
         self._index = 0
 
-    def propose(self, posterior, batch_size: int):
+    def propose(self, posterior, batch_size: int) -> TrialBatch:
         """
         Return the next batch of trials from the grid.
 
