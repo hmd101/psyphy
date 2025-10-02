@@ -14,6 +14,7 @@ This example demonstrates how to use the minimal viable product (MVP) version of
 3. Visualize *isoperformance contours* (threshold ellipses) implied by the fitted covariance.
 
 The MVP WPPM makes strong simplifying assumptions:
+
 - The local covariance structure of perceptual encoding is constant across space,
 - The covariance is diagonal (no correlations -> axis-aligned ellipses),
 - Task likelihoods (e.g., Oddity 3AFC) are closed-form mappings from discriminability to response probability.
