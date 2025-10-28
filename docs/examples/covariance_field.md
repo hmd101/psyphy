@@ -106,9 +106,8 @@ eigenvalues = jax.vmap(jax.vmap(jnp.linalg.eigvalsh))(Sigmas)
 ```
 
 
-## Technical Notes
+##  Notes
 
 - Works with JAX vmap for efficient batch operations
-- Handles both MVP (diagonal) and Wishart (spatially-varying) modes
-- Positive definiteness guaranteed by construction (Σ = U @ U^T + λI)
-- Tolerant of numerical issues in optimization (test handles NaN gracefully)
+- positive definiteness guaranteed by construction (Σ = U @ U^T + λI)
+- Todo: hide `cov_batch` under the hood of `cov` and let dimension of `X` decide which `cov` method is called
