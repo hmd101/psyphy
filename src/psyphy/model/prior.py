@@ -90,8 +90,8 @@ class Prior:
         """
         Compute total degree for each basis function coefficient.
 
-        For 2D: basis functions are products φᵢ(x₁) * φⱼ(x₂)
-        Total degree of φᵢⱼ is i + j.
+        For 2D: basis functions are products φ_ij(x₁) * φ_kl(x₂)
+        Total degree of φ_ij is i + j.
 
         Note: For basis_degree=d, we have (d+1) basis functions [T_0, ..., T_d] per dimension,
         so the grid has shape (d+1, d+1) for 2D.
@@ -209,7 +209,7 @@ class Prior:
 
         Wishart mode:
             Gaussian prior on W with smoothness via decay_rate
-            log p(W) = Σᵢⱼ log N(Wᵢⱼ | 0, σᵢⱼ²) where σᵢⱼ² = prior variance
+            log p(W) = Σ_ij log N(W_ij | 0, σ_ij²) where σ_ij² = prior variance
 
         Parameters
         ----------

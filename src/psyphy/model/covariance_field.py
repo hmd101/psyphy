@@ -64,6 +64,8 @@ class CovarianceField(Protocol):
 
     Methods
     -------
+    __call__(x)
+        Make field callable: Σ(x). Alias for cov(x).
     cov(x)
         Evaluate Σ(x) at stimulus location x.
     sqrt_cov(x)
@@ -75,7 +77,32 @@ class CovarianceField(Protocol):
     -----
     This protocol enables polymorphic use of covariance fields from different
     sources (prior samples, fitted posteriors, custom parameterizations).
+
+    The field is callable for mathematical elegance and JAX compatibility:
+        Sigma = field(x)  # Equivalent to field.cov(x)
     """
+
+    def __call__(self, x: jnp.ndarray) -> jnp.ndarray:
+        """
+        Evaluate Σ(x) at stimulus location x. Makes field callable.
+
+        Parameters
+        ----------
+        x : jnp.ndarray, shape (input_dim,)
+            Stimulus location in [0, 1]^d
+
+        Returns
+        -------
+        jnp.ndarray, shape (dim, dim)
+            Covariance matrix Σ(x)
+
+        Notes
+        -----
+        Alias for cov(x). Enables functional usage:
+            - Mathematical elegance: field(x) for Σ(x)
+            - JAX vmap: jax.vmap(field)(X)
+        """
+        ...
 
     def cov(self, x: jnp.ndarray) -> jnp.ndarray:
         """
@@ -278,9 +305,41 @@ class WPPMCovarianceField:
         """
         return cls(model, params)
 
+    def __call__(self, x: jnp.ndarray) -> jnp.ndarray:
+        """
+        Evaluate Σ(x) at stimulus location x. Makes field callable.
+
+        Alias for cov(x). Enables mathematical elegance and JAX compatibility.
+
+        Parameters
+        ----------
+        x : jnp.ndarray, shape (input_dim,)
+            Stimulus location
+
+        Returns
+        -------
+        jnp.ndarray, shape (dim, dim)
+            Covariance matrix Σ(x)
+
+        Examples
+        --------
+        >>> field = WPPMCovarianceField.from_prior(model, key)
+        >>> x = jnp.array([0.5, 0.3])
+        >>>
+        >>> # Callable interface (mathematical elegance)
+        >>> Sigma = field(x)
+        >>>
+        >>> # Equivalent explicit call
+        >>> Sigma = field.cov(x)
+        >>>
+        >>> # JAX vmap works naturally
+        >>> Sigmas = jax.vmap(field)(X_grid)
+        """
+        return self.cov(x)
+
     def cov(self, x: jnp.ndarray) -> jnp.ndarray:
         """
-        Evaluate Σ(x) at stimulus location x.
+        Evaluate Σ(x) at single stimulus location.
 
         Parameters
         ----------
@@ -294,13 +353,27 @@ class WPPMCovarianceField:
             - MVP: shape (input_dim, input_dim)
             - Wishart: shape (embedding_dim, embedding_dim)
 
+        Raises
+        ------
+        ValueError
+            If x.ndim != 1 (use cov_batch for multiple points)
+
         Examples
         --------
         >>> field = WPPMCovarianceField.from_prior(model, key)
         >>> x = jnp.array([0.5, 0.3])
         >>> Sigma = field.cov(x)
         >>> print(Sigma.shape)  # (2, 2) for input_dim=2
+
+        Notes
+        -----
+        For multiple points, use cov_batch(X) or jax.vmap(field)(X).
         """
+        if x.ndim != 1:
+            raise ValueError(
+                f"cov() expects single point with shape (input_dim,), got {x.shape}. "
+                f"For multiple points, use cov_batch(X) or jax.vmap(field)(X)."
+            )
         return self.model.local_covariance(self.params, x)
 
     def sqrt_cov(self, x: jnp.ndarray) -> jnp.ndarray:
@@ -363,6 +436,11 @@ class WPPMCovarianceField:
         jnp.ndarray, shape (n_points, dim, dim)
             Covariance matrices at each location
 
+        Raises
+        ------
+        ValueError
+            If X.ndim != 2 (use cov for single point)
+
         Examples
         --------
         >>> X_grid = jnp.array([[0.1, 0.2], [0.5, 0.5], [0.9, 0.8]])
@@ -374,7 +452,16 @@ class WPPMCovarianceField:
         ...     jnp.meshgrid(jnp.linspace(0, 1, 50), jnp.linspace(0, 1, 50)), axis=-1
         ... )  # (50, 50, 2)
         >>> Sigmas = field.cov_batch(X_grid.reshape(-1, 2))  # (2500, 2, 2)
+
+        Notes
+        -----
+        Equivalent to jax.vmap(field.cov)(X) or jax.vmap(field)(X).
         """
+        if X.ndim != 2:
+            raise ValueError(
+                f"cov_batch() expects shape (n_points, input_dim), got {X.shape}. "
+                f"For single point, use cov(x) or field(x)."
+            )
         return jax.vmap(self.cov)(X)
 
     def sqrt_cov_batch(self, X: jnp.ndarray) -> jnp.ndarray:
