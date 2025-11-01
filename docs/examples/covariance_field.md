@@ -103,7 +103,7 @@ To see how thresholds vary across space, we evaluate the covariance field at mul
     <picture>
     <img align="center" src="plots/ellipse_grid.png" width="700"/>
     </picture>
-    <p><em>5×5 grid of uncertainty ellipses showing spatial variation. Notice how ellipse size, shape, and orientation vary smoothly across the stimulus space.</em></p>
+    <p><em>5×5 grid of uncertainty ellipses showing spatial variation. note how ellipse size, shape, and orientation vary smoothly across the stimulus space.</em></p>
 </div>
 
 
