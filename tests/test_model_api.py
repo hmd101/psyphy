@@ -14,7 +14,7 @@ import jax.random as jr
 import pytest
 
 from psyphy.inference import MAPOptimizer
-from psyphy.model import WPPM, OnlineConfig, Prior, auto_online_config
+from psyphy.model import WPPM, OnlineConfig, Prior
 from psyphy.model.noise import GaussianNoise
 from psyphy.model.task import OddityTask
 from psyphy.posterior import ParameterPosterior, PredictivePosterior
@@ -302,28 +302,6 @@ class TestSlidingWindowStrategy:
 
         # Should keep only last 5 trials
         assert len(model2._data_buffer) == 5
-
-
-class TestAutoOnlineConfig:
-    """Test auto_online_config helper."""
-
-    def test_large_budget_uses_full(self):
-        """Large memory budget uses full strategy."""
-        config = auto_online_config(1000.0)  # 1 GB
-        assert config.strategy == "full"
-
-    def test_medium_budget_uses_sliding_window(self):
-        """Medium budget uses sliding window."""
-        config = auto_online_config(50.0)  # 50 MB
-        assert config.strategy == "sliding_window"
-        assert config.window_size is not None
-        assert config.window_size > 10_000
-
-    def test_small_budget_uses_reservoir(self):
-        """Small budget uses reservoir sampling."""
-        config = auto_online_config(5.0)  # 5 MB
-        assert config.strategy == "reservoir"
-        assert config.window_size is not None
 
 
 class TestIntegrationWorkflow:

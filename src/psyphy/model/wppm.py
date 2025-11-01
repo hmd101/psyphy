@@ -210,14 +210,14 @@ class WPPM(Model):
         return self.prior.sample_params(key)
 
     # ----------------------------------------------------------------------
-    # WISHART PROCESS COVARIANCE (Issue #3, Task 2)
+    # WISHART PROCESS COVARIANCE
     # ----------------------------------------------------------------------
     def _evaluate_basis_at_point(self, x: jnp.ndarray) -> jnp.ndarray:
         """
         Evaluate all Chebyshev basis functions at point x, keeping structure for einsum.
 
-        For 2D: returns φ_ij(x) = T_i(x₁) * T_j(x₂) with shape (degree+1, degree+1)
-        For 3D: returns φ_ijk(x) = T_i(x₁) * T_j(x₂) * Tk(x₃) with shape (degree+1, degree+1, degree+1)
+        For 2D: returns φ_ij(x) = T_i(x_1) * T_j(x_2) with shape (degree+1, degree+1)
+        For 3D: returns φ_ijk(x) = T_i(x_1) * T_j(x_2) * T_k(x_3) with shape (degree+1, degree+1, degree+1)
 
         Note: chebyshev_basis(x, degree=d) returns (degree+1) basis functions [T_0, ..., T_d].
 
@@ -244,7 +244,7 @@ class WPPM(Model):
         x_norm = self._normalize_stimulus(x)
 
         if self.input_dim == 2:
-            # Evaluate basis functions: φ_ij(x) = T_i(x₁) * T_j(x₂)
+            # Evaluate basis functions: φ_ij(x) = T_i(x_1) * T_j(x_2)
             # chebyshev_basis returns (1, degree+1) for each dimension
             cheb_0 = chebyshev_basis(x_norm[0:1], degree=self.basis_degree)[
                 0, :
@@ -264,7 +264,7 @@ class WPPM(Model):
 
         else:
             raise NotImplementedError(
-                f"Wishart process only supports 2D and 3D. Got input_dim={self.input_dim}"
+                f"Wishart process currently only supports 2D and 3D. Got input_dim={self.input_dim}"
             )
 
         return phi
