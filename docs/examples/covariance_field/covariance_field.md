@@ -25,7 +25,7 @@ where:
 # From prior
 field = WPPMCovarianceField.from_prior(model, key)
 
-# From fitted posterior
+# from fitted posterior
 posterior = model.posterior(kind="parameter")
 field = posterior.get_covariance_field()
 # OR

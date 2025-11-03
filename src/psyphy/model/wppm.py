@@ -255,7 +255,7 @@ class WPPM(Model):
             phi = cheb_0[:, None] * cheb_1[None, :]  # (degree+1, degree+1)
 
         elif self.input_dim == 3:
-            # 3D case: φ_ijk(x) = T_i(x₁) * T_j(x₂) * T_k(x₃)
+            # 3D case: φ_ijk(x) = T_i(x_1) * T_j(x_2) * T_k(x_3)
             # phi.shape = (degree+1, degree+1, degree+1)
             cheb_0 = chebyshev_basis(x_norm[0:1], degree=self.basis_degree)[0, :]
             cheb_1 = chebyshev_basis(x_norm[1:2], degree=self.basis_degree)[0, :]
