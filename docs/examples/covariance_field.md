@@ -103,7 +103,7 @@ To see how thresholds vary across space, we evaluate the covariance field at mul
     <picture>
     <img align="center" src="plots/ellipse_grid.png" width="700"/>
     </picture>
-    <p><em>5×5 grid of uncertainty ellipses showing spatial variation. Notice how ellipse size, shape, and orientation vary smoothly across the stimulus space.</em></p>
+    <p><em>5×5 grid of uncertainty ellipses showing spatial variation. note how ellipse size, shape, and orientation vary smoothly across the stimulus space.</em></p>
 </div>
 
 
@@ -141,7 +141,7 @@ You can sample multiple fields from the prior or create fields from custom param
 |--------|-------------|----------|
 | `from_prior(model, key)` | Sample from prior | Initialization, visualization |
 | `from_posterior(posterior)` | Extract fitted field | Analysis after fitting |
-| `from_params(model, params)` | Custom parameters | Testing |
+| `from_params(model, params)` | Custom parameters | testing / load fitted params from e.g. different subject |
 
 ### Evaluation Methods
 
@@ -168,7 +168,7 @@ where:
 
 ## Integration with WPPM Workflow
 
-The covariance field naturally integrates into the full WPPM workflow:
+Here's how the covariance field would integrate into the full WPPM workflow:
 
 ```python
 # 1. Create model
@@ -179,11 +179,11 @@ model = WPPM(
     basis_degree=5,
 )
 
-# 2. Visualize prior uncertainty (optional)
+# 2. visualize prior uncertainty (optional)
 field_prior = WPPMCovarianceField.from_prior(model, key)
 plot_ellipse_field(field_prior, grid_points)
 
-# 3. Fit model to data
+# 3. fit model to data
 model.fit(data, inference=MAPOptimizer(steps=500))
 
 # 4. Extract learned covariance field
@@ -198,32 +198,29 @@ plot_ellipse_field(field_fitted, grid_points)
 
 ## Best Practices
 
-### Recommended
+### Recommended:
 
 ```python
-# Use callable interface for single points
+# use callable interface for single points
 Sigma = field(x)
 
 # Use batch methods for multiple points
 Sigmas = field.cov_batch(X_grid)
 
-# Use vmap for functional composition
+# alternatively, use vmap for functional composition
 Sigmas = jax.vmap(field)(X_grid)
 
-# Choose appropriate scale for visualization
-plot_ellipse_at_point(ax, center, Sigma, scale=0.4)  # for dense grids
-plot_ellipse_at_point(ax, center, Sigma, scale=2.0)  # For confidence ellipses
 ```
 
 ###  Avoid
 
 ```python
-# Don't loop over individual points (inefficient)
+# don't loop over individual points (inefficient)
 for x in X_grid:
-    Sigma = field(x)  # Bad! Use field.cov_batch(X_grid)
+    Sigma = field(x)  # bad! Use field.cov_batch(X_grid)
 
 # Don't use wrong shapes
-field.cov(X_batch)  # Error! Use cov_batch()
+field.cov(X_batch)  # error! Use cov_batch()
 ```
 
 ---
