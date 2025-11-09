@@ -115,10 +115,13 @@ class CovarianceField(Protocol):
 
         Returns
         -------
-        jnp.ndarray, shape (dim, dim)
-            Covariance matrix Σ(x)
-            - MVP mode: dim = input_dim
-            - Wishart mode: dim = embedding_dim
+        jnp.ndarray, shape (input_dim, input_dim)
+            Covariance matrix Σ(x) in stimulus space
+
+        Notes
+        -----
+        With the rectangular U design, this always returns stimulus-space
+        covariance (input_dim, input_dim), regardless of extra_dims.
         """
         ...
 
@@ -133,8 +136,9 @@ class CovarianceField(Protocol):
 
         Returns
         -------
-        jnp.ndarray, shape (embedding_dim, embedding_dim + extra_dims)
-            Square root matrix U(x)
+        jnp.ndarray, shape (input_dim, embedding_dim)
+            Rectangular square root matrix U(x).
+            embedding_dim = input_dim + extra_dims
 
         Raises
         ------
@@ -145,6 +149,9 @@ class CovarianceField(Protocol):
         -----
         Only available in Wishart mode (basis_degree set).
         MVP mode uses direct diagonal parameterization without U matrices.
+
+        In the rectangular design (Hong et al.), U is (input_dim, embedding_dim).
+        This produces stimulus covariance via Σ(x) = U @ U^T.
         """
         ...
 
@@ -161,6 +168,30 @@ class CovarianceField(Protocol):
         -------
         jnp.ndarray, shape (n_points, dim, dim)
             Covariance matrices at each location
+        """
+        ...
+
+    def cov_stimulus(self, x: jnp.ndarray) -> jnp.ndarray:
+        """
+        Extract stimulus-relevant covariance block from full perceptual covariance.
+
+        NOTE: In the rectangular U design (Hong et al.), cov() already returns
+        stimulus-space covariance, so this method is now just an alias for cov().
+
+        Parameters
+        ----------
+        x : jnp.ndarray, shape (input_dim,)
+            Stimulus location
+
+        Returns
+        -------
+        jnp.ndarray, shape (input_dim, input_dim)
+            Covariance in observable stimulus subspace
+
+        Notes
+        -----
+        This method is kept for backward compatibility. With rectangular U,
+        cov(x) already returns (input_dim, input_dim), so no extraction is needed.
         """
         ...
 
@@ -348,10 +379,8 @@ class WPPMCovarianceField:
 
         Returns
         -------
-        jnp.ndarray, shape (dim, dim)
-            Covariance matrix Σ(x)
-            - MVP: shape (input_dim, input_dim)
-            - Wishart: shape (embedding_dim, embedding_dim)
+        jnp.ndarray, shape (input_dim, input_dim)
+            Covariance matrix Σ(x) in stimulus space
 
         Raises
         ------
@@ -367,6 +396,7 @@ class WPPMCovarianceField:
 
         Notes
         -----
+        With rectangular U design, this always returns stimulus covariance.
         For multiple points, use cov_batch(X) or jax.vmap(field)(X).
         """
         if x.ndim != 1:
@@ -387,8 +417,9 @@ class WPPMCovarianceField:
 
         Returns
         -------
-        jnp.ndarray, shape (embedding_dim, embedding_dim + extra_dims)
-            Square root matrix U(x)
+        jnp.ndarray, shape (input_dim, embedding_dim)
+            Rectangular square root matrix U(x).
+            embedding_dim = input_dim + extra_dims
 
         Raises
         ------
@@ -400,13 +431,15 @@ class WPPMCovarianceField:
         Only available in Wishart mode. MVP mode uses diagonal parameterization
         without explicit U matrices.
 
+        In the rectangular design (Hong et al.), U is (input_dim, embedding_dim).
+
         Examples
         --------
         >>> # Wishart mode
         >>> model = WPPM(input_dim=2, basis_degree=5, extra_dims=1, ...)
         >>> field = WPPMCovarianceField.from_prior(model, key)
         >>> U = field.sqrt_cov(jnp.array([0.5, 0.3]))
-        >>> print(U.shape)  # (2, 3) for embedding_dim=2, extra_dims=1
+        >>> print(U.shape)  # (2, 3) for input_dim=2, extra_dims=1
         >>>
         >>> # Verify: Σ = U @ U^T + λI
         >>> Sigma_from_U = U @ U.T + model.diag_term * jnp.eye(2)
@@ -419,6 +452,42 @@ class WPPMCovarianceField:
                 "Set basis_degree when creating WPPM to use Wishart process."
             )
         return self.model._compute_U(self.params, x)
+
+    def cov_stimulus(self, x: jnp.ndarray) -> jnp.ndarray:
+        """
+        Extract stimulus-relevant covariance block.
+
+        With rectangular U design, this is just an alias for cov(x).
+
+        Parameters
+        ----------
+        x : jnp.ndarray, shape (input_dim,)
+            Stimulus location
+
+        Returns
+        -------
+        jnp.ndarray, shape (input_dim, input_dim)
+            Covariance in observable stimulus subspace
+
+        Examples
+        --------
+        >>> model = WPPM(input_dim=2, basis_degree=3, extra_dims=1, ...)
+        >>> field = WPPMCovarianceField.from_prior(model, key)
+        >>> x = jnp.array([0.5, 0.5])
+        >>>
+        >>> # Both return the same thing now
+        >>> Sigma = field.cov(x)  # (2, 2)
+        >>> Sigma_stim = field.cov_stimulus(x)  # (2, 2)
+        >>>
+        >>> assert jnp.allclose(Sigma, Sigma_stim)
+
+        Notes
+        -----
+        Kept for backward compatibility. With rectangular U design,
+        cov(x) already returns stimulus covariance, so no extraction needed.
+        """
+        # With rectangular U, cov already returns (input_dim, input_dim)
+        return self.cov(x)
 
     def cov_batch(self, X: jnp.ndarray) -> jnp.ndarray:
         """
@@ -475,19 +544,24 @@ class WPPMCovarianceField:
 
         Returns
         -------
-        jnp.ndarray, shape (n_points, embedding_dim, embedding_dim + extra_dims)
-            Square root matrices at each location
+        jnp.ndarray, shape (n_points, input_dim, embedding_dim)
+            Rectangular square root matrices at each location.
+            embedding_dim = input_dim + extra_dims
 
         Raises
         ------
         ValueError
             If in MVP mode.
 
+        Notes
+        -----
+        In the rectangular design (Hong et al.), U is (input_dim, embedding_dim).
+
         Examples
         --------
         >>> X_grid = jnp.array([[0.1, 0.2], [0.5, 0.5], [0.9, 0.8]])
         >>> U_batch = field.sqrt_cov_batch(X_grid)
-        >>> print(U_batch.shape)  # (3, 2, 3) for embedding_dim=2, extra_dims=1
+        >>> print(U_batch.shape)  # (3, 2, 3) for input_dim=2, extra_dims=1
         """
         if "W" not in self.params:
             raise ValueError("sqrt_cov_batch only available in Wishart mode")

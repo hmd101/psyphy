@@ -53,6 +53,7 @@ def wishart_model():
             basis_degree=3,
             variance_scale=4e-3,
             decay_rate=0.3,
+            extra_embedding_dims=1,  # should match model's extra_dims
         ),
         task=OddityTask(),
         noise=GaussianNoise(),
@@ -121,12 +122,11 @@ def test_from_prior_wishart(wishart_model):
     # Should have W parameters
     assert field.model is wishart_model
     assert "W" in field.params
-    # W shape should match (degree+1)^input_dim x embedding_dim x (embedding_dim + extra_dims)
-    # For input_dim=2, basis_degree=3: embedding_dim = 2 * (3+1) = 8
-    # Shape: (4, 4, 8, 8+1) = (4, 4, 8, 9) but extra_dims=1 gives (4, 4, 8, 8)
-    # Actually just check it has W with correct first dimensions
-    assert field.params["W"].shape[:2] == (4, 4)  # basis dimensions
-    assert len(field.params["W"].shape) == 4  # 4D tensor
+    # W shape (rectangular design): (degree+1, degree+1, input_dim, embedding_dim)
+    # For input_dim=2, basis_degree=3, extra_dims=1:
+    #   degree+1 = 4, input_dim = 2, embedding_dim = 3
+    # Shape: (4, 4, 2, 3)
+    assert field.params["W"].shape == (4, 4, 2, 3)
 
 
 def test_from_params(mvp_model):
@@ -153,7 +153,7 @@ def test_from_posterior_mvp(mvp_model, sample_data):
         model.fit(X, y, inference=...)  # Returns self
         posterior = model.posterior(kind="parameter")  # Separate call
 
-    Alternative design (statsmodels-style):
+    alternative design (statsmodels-style):
         posterior = model.fit(X, y, inference=...)  # Not implemented
 
 
@@ -289,7 +289,7 @@ def test_cov_wishart_varies(wishart_model):
 
 
 def test_sqrt_cov_wishart(wishart_model):
-    """Test sqrt_cov in Wishart mode."""
+    """Test sqrt_cov in Wishart mode (rectangular U)."""
     from psyphy.model.covariance_field import WPPMCovarianceField
 
     key = jr.PRNGKey(555)
@@ -298,22 +298,19 @@ def test_sqrt_cov_wishart(wishart_model):
     x = jnp.array([0.5, 0.5])
     U = field.sqrt_cov(x)
 
-    # Check shape: (embedding_dim, embedding_dim + extra_dims)
-    # embedding_dim = input_dim * (basis_degree + 1) = 2 * 4 = 8
-    # extra_dims = 1, so U.shape = (8, 8) (since W doesn't have extra_dims)
-    embedding_dim = wishart_model.embedding_dim
-    assert U.shape[0] == embedding_dim
-    assert len(U.shape) == 2
+    # Check shape: (input_dim, embedding_dim) with rectangular design
+    # input_dim = 2, embedding_dim = input_dim + extra_dims = 3
+    assert U.shape == (2, 3)
 
     # Verify that Σ = U @ U^T + diag_term * I
-    Sigma_from_U = U @ U.T + wishart_model.diag_term * jnp.eye(embedding_dim)
+    Sigma_from_U = U @ U.T + wishart_model.diag_term * jnp.eye(2)
     Sigma_direct = field.cov(x)
 
     assert jnp.allclose(Sigma_from_U, Sigma_direct, rtol=1e-5)
 
 
 def test_cov_batch_wishart(wishart_model):
-    """Test vectorized evaluation in Wishart mode."""
+    """Test vectorized evaluation in Wishart mode (rectangular U)."""
     from psyphy.model.covariance_field import WPPMCovarianceField
 
     key = jr.PRNGKey(666)
@@ -330,9 +327,8 @@ def test_cov_batch_wishart(wishart_model):
 
     Sigmas = field.cov_batch(X_grid)
 
-    # Check shape - should be (n_points, embedding_dim, embedding_dim)
-    embedding_dim = wishart_model.embedding_dim
-    assert Sigmas.shape == (3, embedding_dim, embedding_dim)
+    # Check shape - should be (n_points, input_dim, input_dim) with rectangular U
+    assert Sigmas.shape == (3, 2, 2)
 
     # Should NOT all be identical (Wishart varies)
     assert not jnp.allclose(Sigmas[0], Sigmas[1], atol=1e-6)
@@ -345,7 +341,7 @@ def test_cov_batch_wishart(wishart_model):
 
 
 def test_sqrt_cov_batch_wishart(wishart_model):
-    """Test vectorized sqrt_cov in Wishart mode."""
+    """Test vectorized sqrt_cov in Wishart mode (rectangular U)."""
     from psyphy.model.covariance_field import WPPMCovarianceField
 
     key = jr.PRNGKey(777)
@@ -361,17 +357,13 @@ def test_sqrt_cov_batch_wishart(wishart_model):
 
     U_batch = field.sqrt_cov_batch(X_grid)
 
-    # Check shape - (n_points, embedding_dim, ...)
-    embedding_dim = wishart_model.embedding_dim
-    assert U_batch.shape[0] == 3
-    assert U_batch.shape[1] == embedding_dim
-    assert len(U_batch.shape) == 3
+    # Check shape - (n_points, input_dim, embedding_dim) with rectangular U
+    # input_dim = 2, embedding_dim = 3
+    assert U_batch.shape == (3, 2, 3)
 
     # Verify consistency with cov
     for i in range(3):
-        Sigma_from_U = U_batch[i] @ U_batch[i].T + wishart_model.diag_term * jnp.eye(
-            embedding_dim
-        )
+        Sigma_from_U = U_batch[i] @ U_batch[i].T + wishart_model.diag_term * jnp.eye(2)
         Sigma_direct = field.cov(X_grid[i])
         assert jnp.allclose(Sigma_from_U, Sigma_direct, rtol=1e-5)
 
@@ -414,7 +406,7 @@ def test_posterior_get_covariance_field_mvp(mvp_model, sample_data):
 
 
 def test_posterior_get_covariance_field_wishart(wishart_model, sample_data):
-    """Test posterior.get_covariance_field() in Wishart mode.
+    """Test posterior.get_covariance_field() in Wishart mode (rectangular U).
 
     API Design Note
     ---------------
@@ -439,9 +431,9 @@ def test_posterior_get_covariance_field_wishart(wishart_model, sample_data):
     Sigma = field.cov(x)
     U = field.sqrt_cov(x)
 
-    embedding_dim = wishart_model.embedding_dim
-    assert Sigma.shape == (embedding_dim, embedding_dim)
-    assert U.shape[0] == embedding_dim
+    # Rectangular U design: Σ is stimulus size, U is rectangular
+    assert Sigma.shape == (2, 2)  # input_dim = 2
+    assert U.shape == (2, 3)  # input_dim × embedding_dim = 2×3
 
     # Check positive definiteness if not NaN (optimization might fail with minimal data)
     # This tests the API works, not the optimization quality

@@ -128,33 +128,53 @@ class TestBasisExpansion:
         assert jnp.allclose(x_embed, x_embed_2, atol=1e-10)
 
     def test_embedding_dim_property(self):
-        """Model should expose embedding_dim property."""
+        """
+        Model should expose embedding_dim property.
+
+        In the new design: embedding_dim = input_dim + extra_dims
+        (not input_dim * (basis_degree + 1) anymore)
+        """
         input_dim = 3
         basis_degree = 5
+        extra_dims = 2
         model = WPPM(
             input_dim=input_dim,
-            prior=Prior(input_dim=input_dim),
+            prior=Prior(
+                input_dim=input_dim,
+                basis_degree=basis_degree,
+                extra_embedding_dims=extra_dims,
+            ),
             task=OddityTask(),
             noise=GaussianNoise(),
             basis_degree=basis_degree,
+            extra_dims=extra_dims,
         )
 
-        expected_embedding_dim = input_dim * (basis_degree + 1)
+        # New design: embedding_dim = input_dim + extra_dims
+        expected_embedding_dim = input_dim + extra_dims
         assert model.embedding_dim == expected_embedding_dim
+        assert model.embedding_dim == 5  # 3 + 2
 
     def test_default_basis_degree(self):
-        """Default basis degree should be 5 (Hong et al.)."""
+        """
+        Default basis degree should be 5 (Hong et al.).
+
+        In new design, embedding_dim = input_dim + extra_dims,
+        independent of basis_degree.
+        """
         model = WPPM(
             input_dim=2,
-            prior=Prior(input_dim=2),
+            prior=Prior(input_dim=2, basis_degree=5),
             task=OddityTask(),
             noise=GaussianNoise(),
-            # No basis_degree specified
+            basis_degree=5,  # Hong et al. uses degree 5
+            extra_dims=0,  # No extra dimensions by default
         )
 
         # Hong et al. uses degree 5
         assert model.basis_degree == 5
-        assert model.embedding_dim == 2 * 6  # 2 dims × 6 basis functions
+        # New design: embedding_dim = input_dim + extra_dims = 2 + 0 = 2
+        assert model.embedding_dim == 2
 
     def test_mvp_mode_no_embedding(self):
         """MVP mode (basis_degree=None) should skip embedding."""

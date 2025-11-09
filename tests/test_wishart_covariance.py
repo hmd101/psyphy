@@ -43,25 +43,34 @@ class TestWishartParameters:
         assert params["W"].shape == expected_shape
 
     def test_wishart_params_with_extra_dims(self):
-        """Test W shape with extra_embedding_dims."""
+        """W parameters should be rectangular with extra_dims (Hong et al. design).
+
+        Rectangular design: W shape is (degree+1, degree+1, input_dim, embedding_dim)
+        where embedding_dim = input_dim + extra_dims
+        """
+        extra_dims = 2
         model = WPPM(
             input_dim=2,
-            prior=Prior(input_dim=2, basis_degree=3, extra_embedding_dims=2),
+            prior=Prior(input_dim=2, basis_degree=3, extra_embedding_dims=extra_dims),
             task=OddityTask(),
             noise=GaussianNoise(),
             basis_degree=3,
+            extra_dims=extra_dims,
         )
 
         params = model.init_params(jr.PRNGKey(0))
 
         degree = 3
-        embedding_dim = model.embedding_dim  # 8
-        extra_dims = 2
+        # Rectangular design: embedding_dim = input_dim + extra_dims = 2 + 2 = 4
+        embedding_dim = model.embedding_dim
+        assert embedding_dim == 4  # Verify new convention
+
+        # W is rectangular: (input_dim, embedding_dim)
         expected_shape = (
             degree + 1,
             degree + 1,
-            embedding_dim,
-            embedding_dim + extra_dims,
+            model.input_dim,  # 2
+            embedding_dim,  # 4 (rectangular!)
         )
         assert params["W"].shape == expected_shape
 
@@ -362,7 +371,12 @@ class TestComputeU:
     """Tests for internal _compute_U method."""
 
     def test_compute_U_shape(self):
-        """U(x) should have shape (embedding_dim, embedding_dim + extra_dims)."""
+        """
+        U(x) should have correct shape (rectangular).
+
+        Rectangular design: U is (input_dim, embedding_dim)
+        where embedding_dim = input_dim + extra_dims
+        """
         extra_dims = 2
         model = WPPM(
             input_dim=2,
@@ -378,8 +392,9 @@ class TestComputeU:
 
         U = model._compute_U(params, x)
 
-        embedding_dim = model.embedding_dim
-        expected_shape = (embedding_dim, embedding_dim + extra_dims)
+        # Rectangular design: U is (input_dim, embedding_dim)
+        embedding_dim = model.embedding_dim  # input_dim + extra_dims = 4
+        expected_shape = (model.input_dim, embedding_dim)  # (2, 4)
         assert U.shape == expected_shape
 
     def test_compute_U_varies_with_location(self):
