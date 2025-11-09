@@ -90,7 +90,7 @@ class Prior:
         """
         Compute total degree for each basis function coefficient.
 
-        For 2D: basis functions are products φ_ij(x₁) * φ_kl(x₂)
+        For 2D: basis functions are products φ_ij(x_1) * φ_kl(x_2)
         Total degree of φ_ij is i + j.
 
         Note: For basis_degree=d, we have (d+1) basis functions [T_0, ..., T_d] per dimension,
@@ -147,8 +147,16 @@ class Prior:
             Returns {"log_diag": shape (input_dim,)}
 
         Wishart mode (basis_degree set):
-            Returns {"W": shape (degree, degree, embedding_dim, embedding_dim + extra_dims)}
-            for 2D, where embedding_dim = input_dim * (basis_degree + 1)
+            Returns {"W": Rectangular coefficient matrices (Hong et al. design)
+            For 2D: (degree+1, degree+1, input_dim, embedding_dim)
+            For 3D: (degree+1, degree+1, degree+1, input_dim, embedding_dim)
+
+            where embedding_dim = input_dim + extra_embedding_dims
+
+            This produces U(x) ∈ ℝ^(input_dim × embedding_dim) via:
+                U(x) = Σ_ij W_ij * φ_ij(x)
+
+            And covariance Σ(x) = U(x) @ U(x)^T ∈ ℝ^(input_dim × input_dim)
 
         Parameters
         ----------
@@ -164,33 +172,34 @@ class Prior:
             log_diag = jr.normal(key, shape=(self.input_dim,)) * self.scale
             return {"log_diag": log_diag}
 
-        # Wishart mode: basis function coefficients W
+        # Wishart mode: basis function coefficients W (rectangular design)
         variances = self._compute_W_prior_variances()
-        embedding_dim = self.input_dim * (self.basis_degree + 1)
+        embedding_dim = self.input_dim + self.extra_embedding_dims
 
         if self.input_dim == 2:
-            # Sample W ~ Normal(0, variances) for each matrix entry
-            # Shape: (degree+1, degree+1, embedding_dim, embedding_dim + extra_dims)
+            # Rectangular U(x): (input_dim, embedding_dim) = (2, 2+extra_dims)
+            # W shape: (degree+1, degree+1, input_dim, embedding_dim)
             # Note: degree+1 to match number of basis functions [T_0, ..., T_degree]
             W = jnp.sqrt(variances)[:, :, None, None] * jr.normal(
                 key,
                 shape=(
                     self.basis_degree + 1,
                     self.basis_degree + 1,
-                    embedding_dim,
-                    embedding_dim + self.extra_embedding_dims,
+                    self.input_dim,  # rows: stimulus space
+                    embedding_dim,  # cols: embedding space
                 ),
             )
         elif self.input_dim == 3:
-            # Shape: (degree+1, degree+1, degree+1, embedding_dim, embedding_dim + extra_dims)
+            # Rectangular U(x): (input_dim, embedding_dim) = (3, 3+extra_dims)
+            # W shape: (degree+1, degree+1, degree+1, input_dim, embedding_dim)
             W = jnp.sqrt(variances)[:, :, :, None, None] * jr.normal(
                 key,
                 shape=(
                     self.basis_degree + 1,
                     self.basis_degree + 1,
                     self.basis_degree + 1,
-                    embedding_dim,
-                    embedding_dim + self.extra_embedding_dims,
+                    self.input_dim,  # rows: stimulus space
+                    embedding_dim,  # cols: embedding space
                 ),
             )
         else:
