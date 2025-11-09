@@ -45,6 +45,7 @@ Usage Examples
 
 from __future__ import annotations
 
+import warnings
 from typing import TYPE_CHECKING, Protocol, runtime_checkable
 
 import jax
@@ -65,13 +66,14 @@ class CovarianceField(Protocol):
     Methods
     -------
     __call__(x)
-        Make field callable: Σ(x). Alias for cov(x).
+        Evaluate field at one or more locations. Supports both single points
+        and arbitrary batch dimensions.
     cov(x)
-        Evaluate Σ(x) at stimulus location x.
+        Evaluate Σ(x) at stimulus location x (deprecated, use __call__).
     sqrt_cov(x)
         Evaluate U(x) such that Σ(x) = U(x) @ U(x)^T + λI.
     cov_batch(X)
-        Vectorized evaluation at multiple locations.
+        Vectorized evaluation at multiple locations (deprecated, use __call__).
 
     Notes
     -----
@@ -79,120 +81,27 @@ class CovarianceField(Protocol):
     sources (prior samples, fitted posteriors, custom parameterizations).
 
     The field is callable for mathematical elegance and JAX compatibility:
-        Sigma = field(x)  # Equivalent to field.cov(x)
+        Sigma = field(x)  # Single point or batch
     """
 
     def __call__(self, x: jnp.ndarray) -> jnp.ndarray:
-        """
-        Evaluate Σ(x) at stimulus location x. Makes field callable.
-
-        Parameters
-        ----------
-        x : jnp.ndarray, shape (input_dim,)
-            Stimulus location in [0, 1]^d
-
-        Returns
-        -------
-        jnp.ndarray, shape (dim, dim)
-            Covariance matrix Σ(x)
-
-        Notes
-        -----
-        Alias for cov(x). Enables functional usage:
-            - Mathematical elegance: field(x) for Σ(x)
-            - JAX vmap: jax.vmap(field)(X)
-        """
+        """Evaluate covariance field at one or more stimulus locations."""
         ...
 
     def cov(self, x: jnp.ndarray) -> jnp.ndarray:
-        """
-        Evaluate covariance matrix Σ(x) at stimulus location x.
-
-        Parameters
-        ----------
-        x : jnp.ndarray, shape (input_dim,)
-            Stimulus location in [0, 1]^d
-
-        Returns
-        -------
-        jnp.ndarray, shape (input_dim, input_dim)
-            Covariance matrix Σ(x) in stimulus space
-
-        Notes
-        -----
-        With the rectangular U design, this always returns stimulus-space
-        covariance (input_dim, input_dim), regardless of extra_dims.
-        """
+        """Evaluate covariance matrix Σ(x) at stimulus location x (deprecated)."""
         ...
 
     def sqrt_cov(self, x: jnp.ndarray) -> jnp.ndarray:
-        """
-        Evaluate "square root" matrix U(x) such that Σ(x) = U(x) @ U(x)^T + λI.
-
-        Parameters
-        ----------
-        x : jnp.ndarray, shape (input_dim,)
-            Stimulus location
-
-        Returns
-        -------
-        jnp.ndarray, shape (input_dim, embedding_dim)
-            Rectangular square root matrix U(x).
-            embedding_dim = input_dim + extra_dims
-
-        Raises
-        ------
-        ValueError
-            If called in MVP mode (no U representation available).
-
-        Notes
-        -----
-        Only available in Wishart mode (basis_degree set).
-        MVP mode uses direct diagonal parameterization without U matrices.
-
-        In the rectangular design (Hong et al.), U is (input_dim, embedding_dim).
-        This produces stimulus covariance via Σ(x) = U @ U^T.
-        """
+        """Evaluate "square root" matrix U(x) such that Σ(x) = U(x) @ U(x)^T + λI."""
         ...
 
     def cov_batch(self, X: jnp.ndarray) -> jnp.ndarray:
-        """
-        Evaluate covariance at multiple locations (vectorized).
-
-        Parameters
-        ----------
-        X : jnp.ndarray, shape (n_points, input_dim)
-            Multiple stimulus locations
-
-        Returns
-        -------
-        jnp.ndarray, shape (n_points, dim, dim)
-            Covariance matrices at each location
-        """
+        """Evaluate covariance at multiple locations (deprecated)."""
         ...
 
     def cov_stimulus(self, x: jnp.ndarray) -> jnp.ndarray:
-        """
-        Extract stimulus-relevant covariance block from full perceptual covariance.
-
-        NOTE: In the rectangular U design (Hong et al.), cov() already returns
-        stimulus-space covariance, so this method is now just an alias for cov().
-
-        Parameters
-        ----------
-        x : jnp.ndarray, shape (input_dim,)
-            Stimulus location
-
-        Returns
-        -------
-        jnp.ndarray, shape (input_dim, input_dim)
-            Covariance in observable stimulus subspace
-
-        Notes
-        -----
-        This method is kept for backward compatibility. With rectangular U,
-        cov(x) already returns (input_dim, input_dim), so no extraction is needed.
-        """
+        """Extract stimulus-relevant covariance block."""
         ...
 
 
@@ -252,6 +161,186 @@ class WPPMCovarianceField:
         """
         self.model = model
         self.params = params
+        # Pre-compile JIT batch evaluation path for performance
+        self._eval_batch_jitted = jax.jit(self._eval_batch_impl)
+
+    def __call__(self, x: jnp.ndarray) -> jnp.ndarray:
+        """
+        Evaluate covariance field at one or more stimulus locations.
+
+        Automatically dispatches to single-point or batch evaluation based on input shape.
+        Last axis must have size input_dim. Any number of batch dimensions supported.
+
+        Parameters
+        ----------
+        x : jnp.ndarray
+            - Single point: shape (input_dim,)
+            - Batch: shape (..., input_dim) where ... are arbitrary batch dimensions
+
+        Returns
+        -------
+        jnp.ndarray
+            - Single point: shape (input_dim, input_dim)
+            - Batch: shape (..., input_dim, input_dim)
+
+        Raises
+        ------
+        ValueError
+            If last axis size != input_dim
+
+        Examples
+        --------
+        >>> field = WPPMCovarianceField.from_prior(model, key)
+        >>>
+        >>> # Single point
+        >>> x = jnp.array([0.5, 0.3])  # Shape (2,) for input_dim=2
+        >>> Sigma = field(x)  # Shape (2, 2)
+        >>>
+        >>> # 1D batch
+        >>> X = jnp.array([[0.1, 0.2], [0.5, 0.5]])  # Shape (2, 2)
+        >>> Sigmas = field(X)  # Shape (2, 2, 2)
+        >>>
+        >>> # 2D grid
+        >>> X_grid = jnp.ones((10, 10, 2))  # Shape (10, 10, 2)
+        >>> Sigmas_grid = field(X_grid)  # Shape (10, 10, 2, 2)
+        >>>
+        >>> # 3D+ batches work automatically
+        >>> X_3d = jnp.ones((5, 10, 10, 2))
+        >>> Sigmas_3d = field(X_3d)  # Shape (5, 10, 10, 2, 2)
+
+        Notes
+        -----
+        Dispatch logic:
+        - x.ndim == 1: Single point -> call _eval_single()
+        - x.ndim >= 2: Batch -> flatten, vmap, reshape
+
+        For input_dim=1, single points must have shape (1,) not (). Use x[None]
+        if needed to convert scalar to shape (1,).
+        """
+        # Validate input dimension
+        if x.shape[-1] != self.model.input_dim:
+            raise ValueError(
+                f"Last axis must be input_dim={self.model.input_dim}, got {x.shape[-1]}"
+            )
+
+        # Dispatch based on shape
+        if x.ndim == 1:
+            # Single point: shape (input_dim,) -> (input_dim, input_dim)
+            return self._eval_single(x)
+        else:
+            # Batch: shape (..., input_dim) -> (..., input_dim, input_dim)
+            return self._eval_batch_jitted(x)
+
+    def _eval_single(self, x: jnp.ndarray) -> jnp.ndarray:
+        """
+        Evaluate covariance at a single stimulus location.
+
+        This is the base evaluation method that all other methods build upon.
+        Called directly for single points, vmapped for batches.
+
+        Parameters
+        ----------
+        x : jnp.ndarray, shape (input_dim,)
+            Single stimulus location
+
+        Returns
+        -------
+        jnp.ndarray, shape (input_dim, input_dim)
+            Covariance matrix Σ(x)
+        """
+        return self.model.local_covariance(self.params, x)
+
+    def _eval_batch_impl(self, X: jnp.ndarray) -> jnp.ndarray:
+        """
+        Batch evaluation implementation (vmapped single evaluation).
+
+        Strategy: Flatten -> vmap -> reshape
+        This handles arbitrary batch dimensions with a single vmap.
+
+        Parameters
+        ----------
+        X : jnp.ndarray, shape (..., input_dim)
+            Batch of stimulus locations with arbitrary batch dimensions
+
+        Returns
+        -------
+        jnp.ndarray, shape (..., input_dim, input_dim)
+            Batch of covariance matrices
+        """
+        input_dim = self.model.input_dim
+        batch_shape = X.shape[:-1]  # Store original batch structure
+
+        # Flatten all batch dimensions: (..., input_dim) -> (n_total, input_dim)
+        X_flat = X.reshape(-1, input_dim)
+
+        # Vectorized evaluation: (n_total, input_dim) -> (n_total, input_dim, input_dim)
+        Sigmas_flat = jax.vmap(self._eval_single)(X_flat)
+
+        # Restore batch structure: (n_total, input_dim, input_dim) -> (..., input_dim, input_dim)
+        return Sigmas_flat.reshape(batch_shape + (input_dim, input_dim))
+
+    def cov(self, x: jnp.ndarray) -> jnp.ndarray:
+        """
+        Evaluate covariance matrix Σ(x) at stimulus location x.
+
+        .. deprecated::
+            Use `field(x)` instead for unified single/batch API.
+
+        Parameters
+        ----------
+        x : jnp.ndarray, shape (input_dim,)
+            Stimulus location in [0, 1]^d
+
+        Returns
+        -------
+        jnp.ndarray, shape (input_dim, input_dim)
+            Covariance matrix Σ(x) in stimulus space
+
+        Notes
+        -----
+        With the rectangular U design, this always returns stimulus-space
+        covariance (input_dim, input_dim), regardless of extra_dims.
+        """
+        warnings.warn(
+            "cov() is deprecated. Use field(x) instead for unified single/batch API.",
+            DeprecationWarning,
+            stacklevel=2,
+        )
+        if x.ndim != 1:
+            raise ValueError(
+                f"cov() only accepts single points with shape (input_dim,), got {x.shape}. "
+                f"Use field(X) for batches."
+            )
+        return self._eval_single(x)
+
+    def cov_batch(self, X: jnp.ndarray) -> jnp.ndarray:
+        """
+        Evaluate covariance at multiple locations (vectorized).
+
+        .. deprecated::
+            Use `field(X)` instead for unified single/batch API.
+
+        Parameters
+        ----------
+        X : jnp.ndarray, shape (n_points, input_dim)
+            Multiple stimulus locations
+
+        Returns
+        -------
+        jnp.ndarray, shape (n_points, dim, dim)
+            Covariance matrices at each location
+        """
+        warnings.warn(
+            "cov_batch() is deprecated. Use field(X) instead for unified single/batch API.",
+            DeprecationWarning,
+            stacklevel=2,
+        )
+        if X.ndim < 2:
+            raise ValueError(
+                f"cov_batch() expects batch with shape (n_points, input_dim), got {X.shape}. "
+                f"Use field(x) for single points."
+            )
+        return self._eval_batch_jitted(X)
 
     @classmethod
     def from_prior(cls, model, key: jr.KeyArray) -> WPPMCovarianceField:
@@ -336,76 +425,6 @@ class WPPMCovarianceField:
         """
         return cls(model, params)
 
-    def __call__(self, x: jnp.ndarray) -> jnp.ndarray:
-        """
-        Evaluate Σ(x) at stimulus location x. Makes field callable.
-
-        Alias for cov(x). Enables mathematical elegance and JAX compatibility.
-
-        Parameters
-        ----------
-        x : jnp.ndarray, shape (input_dim,)
-            Stimulus location
-
-        Returns
-        -------
-        jnp.ndarray, shape (dim, dim)
-            Covariance matrix Σ(x)
-
-        Examples
-        --------
-        >>> field = WPPMCovarianceField.from_prior(model, key)
-        >>> x = jnp.array([0.5, 0.3])
-        >>>
-        >>> # Callable interface (mathematical elegance)
-        >>> Sigma = field(x)
-        >>>
-        >>> # Equivalent explicit call
-        >>> Sigma = field.cov(x)
-        >>>
-        >>> # JAX vmap works naturally
-        >>> Sigmas = jax.vmap(field)(X_grid)
-        """
-        return self.cov(x)
-
-    def cov(self, x: jnp.ndarray) -> jnp.ndarray:
-        """
-        Evaluate Σ(x) at single stimulus location.
-
-        Parameters
-        ----------
-        x : jnp.ndarray, shape (input_dim,)
-            Stimulus location
-
-        Returns
-        -------
-        jnp.ndarray, shape (input_dim, input_dim)
-            Covariance matrix Σ(x) in stimulus space
-
-        Raises
-        ------
-        ValueError
-            If x.ndim != 1 (use cov_batch for multiple points)
-
-        Examples
-        --------
-        >>> field = WPPMCovarianceField.from_prior(model, key)
-        >>> x = jnp.array([0.5, 0.3])
-        >>> Sigma = field.cov(x)
-        >>> print(Sigma.shape)  # (2, 2) for input_dim=2
-
-        Notes
-        -----
-        With rectangular U design, this always returns stimulus covariance.
-        For multiple points, use cov_batch(X) or jax.vmap(field)(X).
-        """
-        if x.ndim != 1:
-            raise ValueError(
-                f"cov() expects single point with shape (input_dim,), got {x.shape}. "
-                f"For multiple points, use cov_batch(X) or jax.vmap(field)(X)."
-            )
-        return self.model.local_covariance(self.params, x)
-
     def sqrt_cov(self, x: jnp.ndarray) -> jnp.ndarray:
         """
         Evaluate U(x) such that Σ(x) = U(x) @ U(x)^T + diag_term*I.
@@ -487,51 +506,12 @@ class WPPMCovarianceField:
         cov(x) already returns stimulus covariance, so no extraction needed.
         """
         # With rectangular U, cov already returns (input_dim, input_dim)
-        return self.cov(x)
-
-    def cov_batch(self, X: jnp.ndarray) -> jnp.ndarray:
-        """
-        Vectorized evaluation of Σ(x) at multiple locations.
-
-        Uses JAX vmap for efficient batched computation.
-
-        Parameters
-        ----------
-        X : jnp.ndarray, shape (n_points, input_dim)
-            Multiple stimulus locations
-
-        Returns
-        -------
-        jnp.ndarray, shape (n_points, dim, dim)
-            Covariance matrices at each location
-
-        Raises
-        ------
-        ValueError
-            If X.ndim != 2 (use cov for single point)
-
-        Examples
-        --------
-        >>> X_grid = jnp.array([[0.1, 0.2], [0.5, 0.5], [0.9, 0.8]])
-        >>> Sigmas = field.cov_batch(X_grid)
-        >>> print(Sigmas.shape)  # (3, 2, 2)
-        >>>
-        >>> # Can also use with meshgrid
-        >>> X_grid = jnp.stack(
-        ...     jnp.meshgrid(jnp.linspace(0, 1, 50), jnp.linspace(0, 1, 50)), axis=-1
-        ... )  # (50, 50, 2)
-        >>> Sigmas = field.cov_batch(X_grid.reshape(-1, 2))  # (2500, 2, 2)
-
-        Notes
-        -----
-        Equivalent to jax.vmap(field.cov)(X) or jax.vmap(field)(X).
-        """
-        if X.ndim != 2:
-            raise ValueError(
-                f"cov_batch() expects shape (n_points, input_dim), got {X.shape}. "
-                f"For single point, use cov(x) or field(x)."
-            )
-        return jax.vmap(self.cov)(X)
+        warnings.warn(
+            "cov_stimulus() is deprecated. Use field(x) or field.cov(x) instead.",
+            DeprecationWarning,
+            stacklevel=2,
+        )
+        return self._eval_single(x)
 
     def sqrt_cov_batch(self, X: jnp.ndarray) -> jnp.ndarray:
         """
