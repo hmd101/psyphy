@@ -22,7 +22,7 @@ Goals
    - Later, replace `local_covariance` with a basis-expansion Wishart process
      and swap discriminability/likelihood with MC observer simulation.
 
-All numerics use JAX (jax.numpy as jnp) to support autodiff and Optax optimizers
+All numerics use JAX (jax.numpy as jnp) to support autodiff and optax optimizers
 """
 
 from __future__ import annotations
@@ -83,13 +83,13 @@ class WPPM(Model):
         prior: Prior,
         task: TaskLikelihood,
         noise: Any | None = None,
-        *,
-        basis_degree: int | None = 5,  # NEW: Chebyshev degree (None = MVP mode)
+        *,  # everything after here is keyword-only
+        basis_degree: int | None = 5,  # Chebyshev degree (None = MVP mode)
         extra_dims: int = 0,
         variance_scale: float = 1.0,
         lengthscale: float = 1.0,
         diag_term: float = 1e-6,
-        **kwargs,  # Accept online_config from Model base
+        **kwargs,  # Accept online_config from model base
     ) -> None:
         # Initialize Model base class
         super().__init__(**kwargs)
@@ -114,24 +114,35 @@ class WPPM(Model):
     @property
     def embedding_dim(self) -> int:
         """
-        Dimension of the embedding space.
+        Dimension of the embedding space (perceptual space).
+
+        embedding_dim = input_dim + extra_dims.
+        this represents the full perceptual space where:
+        - First input_dim dimensions correspond to observable stimulus features
+        - Remaining extra_dims are latent  dimensions
 
         Returns
         -------
         int
-            If basis_degree is None (MVP mode): returns input_dim
-            If basis_degree is set: returns input_dim * (basis_degree + 1)
+            input_dim + extra_dims (in Wishart mode)
+            input_dim (in MVP mode, extra_dims ignored)
+
+        Notes
+        -----
+        This is a computed property, not a constructor parameter.
         """
         if self.basis_degree is None:
+            # MVP mode: no extra dimensions make sense
             return self.input_dim
-        return self.input_dim * (self.basis_degree + 1)
+        # Wishart mode: full perceptual space
+        return self.input_dim + self.extra_dims
 
     def _normalize_stimulus(self, x: jnp.ndarray) -> jnp.ndarray:
         """
         Normalize stimulus coordinates to [-1, 1] for Chebyshev basis.
 
         Assumes input stimuli are in [0, 1] range (standard for psychophysics).
-        Maps [0, 1] → [-1, 1] via x_norm = 2*x - 1.
+        Maps [0, 1] -> [-1, 1] via x_norm = 2*x - 1.
 
         Parameters
         ----------
@@ -288,13 +299,20 @@ class WPPM(Model):
 
         Returns
         -------
-        U : jnp.ndarray, shape (embedding_dim, embedding_dim + extra_dims)
-            "Square root" matrix
+        U : jnp.ndarray, shape (input_dim, embedding_dim)
+            Rectangular square root matrix (Hong et al. design).
+            embedding_dim = input_dim + extra_dims
 
         Raises
         ------
         ValueError
             If params doesn't contain "W" (not in Wishart mode)
+
+        Notes
+        -----
+        U is rectangular: (input_dim, embedding_dim).
+        When multiplied U @ U^T, this produces covariance in stimulus space:
+        Σ(x) ∈ R^(input_dim x input_dim)
         """
         if "W" not in params:
             raise ValueError(
@@ -305,14 +323,18 @@ class WPPM(Model):
         W = params["W"]
         phi = self._evaluate_basis_at_point(x)
 
-        # Linear combination: U(x) = Σ_ij W_ij * φ_ij(x)
+        # Linear combination: U(x) = Σ_ij W_ij * phi_ij(x)
         # Einstein summation over basis function indices
         if self.input_dim == 2:
-            # W[i,j,d,v] * phi[i,j] -> U[d,v]
-            U = jnp.einsum("ijdv,ij->dv", W, phi)
+            # W[i,j,d,e] * phi[i,j] -> U[d,e]
+            # W is (degree+1, degree+1, input_dim, embedding_dim)
+            # U is rectangular if embedding_dim > input_dim: (input_dim, embedding_dim)
+            U = jnp.einsum("ijde,ij->de", W, phi)
         elif self.input_dim == 3:
-            # W[i,j,k,d,v] * phi[i,j,k] -> U[d,v]
-            U = jnp.einsum("ijkdv,ijk->dv", W, phi)
+            # W[i,j,k,d,e] * phi[i,j,k] -> U[d,e]
+            # W is (degree+1, degree+1, degree+1, input_dim, embedding_dim)
+            # U is rectangular if embedding_dim > input_dim: (input_dim, embedding_dim)
+            U = jnp.einsum("ijkde,ijk->de", W, phi)
         else:
             raise NotImplementedError(
                 f"Wishart process only supports 2D and 3D. Got input_dim={self.input_dim}"
@@ -333,25 +355,24 @@ class WPPM(Model):
 
         Wishart mode (basis_degree set):
             Σ(x) = U(x) @ U(x)^T + diag_term * I
-            where U(x) is computed from Chebyshev basis expansion.
+            where U(x) is rectangular (input_dim, embedding_dim) if embedding_dim > input_dim.
             - Varies smoothly with x
             - Guaranteed positive-definite
+            - Returns stimulus covariance directly (input_dim, input_dim)
 
         Parameters
         ----------
         params : dict
             Model parameters:
             - MVP: {"log_diag": (input_dim,)}
-            - Wishart: {"W": (degree, degree, embedding_dim, embedding_dim + extra_dims)}
+            - Wishart: {"W": (degree+1, ..., input_dim, embedding_dim)}
         x : jnp.ndarray, shape (input_dim,)
             Stimulus location
 
         Returns
         -------
-        Σ : jnp.ndarray
-            Covariance matrix:
-            - MVP: shape (input_dim, input_dim)
-            - Wishart: shape (embedding_dim, embedding_dim)
+        Σ : jnp.ndarray, shape (input_dim, input_dim)
+            Covariance matrix in stimulus space.
         """
         # MVP mode: constant diagonal covariance
         if "log_diag" in params:
@@ -361,9 +382,10 @@ class WPPM(Model):
 
         # Wishart mode: spatially-varying covariance
         if "W" in params:
-            U = self._compute_U(params, x)
+            U = self._compute_U(params, x)  # (input_dim, embedding_dim)
             # Σ(x) = U(x) @ U(x)^T + diag_term * I
-            Sigma = U @ U.T + self.diag_term * jnp.eye(self.embedding_dim)
+            # Result is (input_dim, input_dim)
+            Sigma = U @ U.T + self.diag_term * jnp.eye(self.input_dim)
             return Sigma
 
         raise ValueError("params must contain either 'log_diag' (MVP) or 'W' (Wishart)")
@@ -377,12 +399,16 @@ class WPPM(Model):
 
         MVP mode:
             d = sqrt( (probe - ref)^T Σ(ref)^{-1} (probe - ref) )
-            with Σ(ref) the local covariance at the reference in input space.
+            with Σ(ref) the local covariance at the reference in stimulus space.
 
-        Wishart mode:
-            First embeds ref and probe into embedding space, then computes:
-            d = sqrt( (φ(probe) - φ(ref))^T Σ(ref)^{-1} (φ(probe) - φ(ref)) )
-            with Σ(ref) the local covariance in embedding space.
+        Wishart mode (rectangular U design) if input_dim < embedding_dim:
+            d = sqrt( (probe - ref)^T Σ(ref)^{-1} (probe - ref) )
+            where Σ(ref) is directly computed in stimulus space (input_dim, input_dim)
+            via U(x) @ U(x)^T with U rectangular.
+
+        The discrimination task only depends on observable stimulus dimensions.
+        The rectangular U design means local_covariance() already returns
+        the stimulus covariance - no block extraction needed.
 
         Future (full WPPM mode):
             d is implicit via Monte Carlo simulation of internal noisy responses
@@ -404,24 +430,20 @@ class WPPM(Model):
         """
         ref, probe = stimulus
 
-        # Determine if we're in Wishart or MVP mode
-        if "W" in params:
-            # Wishart mode: work in embedding space
-            ref_embedded = self._embed_stimulus(ref)
-            probe_embedded = self._embed_stimulus(probe)
-            delta = probe_embedded - ref_embedded
-            dim = self.embedding_dim
-        else:
-            # MVP mode: work in input space
-            delta = probe - ref
-            dim = self.input_dim
+        # Delta is in stimulus space (input_dim)
+        delta = probe - ref
 
-        Sigma = self.local_covariance(params, ref)  # local covariance at reference
+        # Get stimulus covariance at reference
+        # (rectangular U design: already returns (input_dim, input_dim))
+        Sigma = self.local_covariance(params, ref)
+
         # Add jitter for stable solve; diag_term is configurable
-        jitter = self.diag_term * jnp.eye(dim)
+        jitter = self.diag_term * jnp.eye(self.input_dim)
+
         # Solve (Σ + jitter)^{-1} delta using a PD-aware solver
         x = jax.scipy.linalg.solve(Sigma + jitter, delta, assume_a="pos")
         d2 = jnp.dot(delta, x)  # quadratic form
+
         # Guard against tiny negative values from numerical error
         return jnp.sqrt(jnp.maximum(d2, 0.0))
 
