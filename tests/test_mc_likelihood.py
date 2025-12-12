@@ -903,16 +903,6 @@ class TestConvergenceRate:
             f"Variance didn't decrease enough: {var_100:.6f} -> {var_1600:.6f} (expected >2x reduction)"
         )
 
-    # NOTE: test_convergence_to_analytical_likelihood was removed
-    # Reason: Analytical and MC implement DIFFERENT tasks:
-    #   - Analytical: 2-stimulus direct comparison (simplified)
-    #   - MC: Full 3-stimulus oddity task (realistic)
-    # The 3-stimulus oddity task is inherently harder because the observer
-    # must determine that the comparison is far from BOTH reference samples,
-    # while the reference samples themselves can vary. Therefore, MC and
-    # analytical should NOT converge to the same value.
-    # See CRITICAL_FAILURE_EXPLANATION.md for details.
-
 
 if __name__ == "__main__":
     # Can run this file directly for quick testing
