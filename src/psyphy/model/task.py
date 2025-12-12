@@ -598,14 +598,16 @@ class OddityTask(TaskLikelihood):
             embed_dim = U_ref.shape[1]  # type: ignore
 
             # Samples from standard normal  (will be transformed to our target distributions 1 and 2)
-            n_ref_embed = jr.normal(keys[0], (num_samples, embed_dim))
-            n_refprime_embed = jr.normal(keys[1], (num_samples, embed_dim))
-            n_comparison_embed = jr.normal(keys[2], (num_samples, embed_dim))
+            n_ref_embed = noise.sample_standard(keys[0], (num_samples, embed_dim))
+            n_refprime_embed = noise.sample_standard(keys[1], (num_samples, embed_dim))
+            n_comparison_embed = noise.sample_standard(
+                keys[2], (num_samples, embed_dim)
+            )
 
             # Sample diagonal noise (independent across dimensions)
-            n_ref_diag = jr.normal(keys[3], (num_samples, input_dim))
-            n_refprime_diag = jr.normal(keys[4], (num_samples, input_dim))
-            n_comparison_diag = jr.normal(keys[5], (num_samples, input_dim))
+            n_ref_diag = noise.sample_standard(keys[3], (num_samples, input_dim))
+            n_refprime_diag = noise.sample_standard(keys[4], (num_samples, input_dim))
+            n_comparison_diag = noise.sample_standard(keys[5], (num_samples, input_dim))
 
             # =================================================================
             # SAMPLING: Transform standard normals to samples from our 2 distributions
@@ -653,36 +655,26 @@ class OddityTask(TaskLikelihood):
             # SAMPLING: Draw from our 2 distributions using JAX's built-in sampler
             # =================================================================
 
-            # SAMPLE 1 & 2: From DISTRIBUTION 1 (Reference)
-            # Both sampled from N(ref, Σ_ref) where Σ_ref is diagonal
-            # z_ref ~ N(ref, Σ_ref)
-            z_ref = jr.multivariate_normal(
-                keys[0], ref, Sigma_ref, shape=(num_samples,)
-            )  # type: ignore
-            #                                          ^^^  ^^^^^^^^^
-            #                                          |    |
-            #                                          |    +--- COVARIANCE: Σ_ref (diagonal)
-            #                                          +--- MEAN: ref (same for z_ref and z_refprime)
+            # Note: For MVP mode with non-Gaussian noise, we can't use jr.multivariate_normal directly
+            # because it assumes Gaussianity. Instead, we use the reparameterization trick manually:
+            # z = mean + L @ n_standard
+            # Since Sigma is diagonal in MVP, L = sqrt(Sigma) = diag(sqrt(diag_sigma))
 
-            # z_refprime ~ N(ref, Σ_ref)
-            z_refprime = jr.multivariate_normal(
-                keys[1], ref, Sigma_ref, shape=(num_samples,)
-            )  # type: ignore
-            #                                                ^^^  ^^^^^^^^^
-            #                                                |    |
-            #                                                |    +--- COVARIANCE: Σ_ref (SAME as z_ref!)
-            #                                                +--- MEAN: ref (SAME as z_ref!)
+            # Compute sqrt of diagonal covariance (standard deviation per dimension)
+            # Sigma_ref is diagonal, so we can just take sqrt of diagonal elements
+            std_ref = jnp.sqrt(jnp.diag(Sigma_ref))  # (input_dim,)
+            std_comparison = jnp.sqrt(jnp.diag(Sigma_comparison))  # (input_dim,)
 
-            # SAMPLE 3: From DISTRIBUTION 2 (Probe), z_comparison ~ N(comparison, Σ_comparison)
-            # Sampled from N(comparison, Σ_comparison)
-            # Note: In MVP mode, Σ_comparison = Σ_ref (constant covariance), but mean differs!
-            z_comparison = jr.multivariate_normal(
-                keys[2], comparison, Sigma_comparison, shape=(num_samples,)
-            )  # type: ignore
-            #                                           ^^^^^  ^^^^^^^^^^^
-            #                                           |      |
-            #                                           |      +--- COVARIANCE: Σ_comparison (in MVP, same as Σ_ref)
-            #                                           +--- MEAN: comparison (DIFFERENT from ref!)
+            # Sample standard noise from the specified noise model
+            n_ref = noise.sample_standard(keys[0], (num_samples, input_dim))
+            n_refprime = noise.sample_standard(keys[1], (num_samples, input_dim))
+            n_comparison = noise.sample_standard(keys[2], (num_samples, input_dim))
+
+            # Transform to target distributions
+            # z = mean + std * noise
+            z_ref = ref[None, :] + n_ref * std_ref[None, :]
+            z_refprime = ref[None, :] + n_refprime * std_ref[None, :]
+            z_comparison = comparison[None, :] + n_comparison * std_comparison[None, :]
 
         # ========================================================================
         # STEP 3: Compute average covariance for Mahalanobis distance
