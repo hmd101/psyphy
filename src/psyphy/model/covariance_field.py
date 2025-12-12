@@ -119,7 +119,12 @@ class WPPMCovarianceField:
     params : dict
         Model parameters:
         - MVP: {"log_diag": (input_dim,)}
-        - Wishart: {"W": (degree+1, degree+1, embedding_dim, embedding_dim+extra_dims)}
+        - Wishart: {"W": (degree+1, degree+1, input_dim, embedding_dim)}
+          where embedding_dim = input_dim + extra_embedding_dims
+
+          Note: The 3rd dimension is input_dim (output/stimulus space), not
+          embedding_dim. This matches the einsum in _compute_U where U(x) has
+          shape (input_dim, embedding_dim).
 
     Attributes
     ----------
@@ -180,8 +185,12 @@ class WPPMCovarianceField:
         Returns
         -------
         jnp.ndarray
-            - Single point: shape (input_dim, input_dim)
-            - Batch: shape (..., input_dim, input_dim)
+            Square covariance matrix/matrices. Shape adapts to stimulus dimensionality:
+            - Single point: shape (d, d) where d = model.input_dim
+            - Batch: shape (..., d, d) where d = model.input_dim
+
+            For input_dim=2: returns (2, 2) or (..., 2, 2)
+            For input_dim=3: returns (3, 3) or (..., 3, 3)
 
         Raises
         ------
@@ -190,30 +199,36 @@ class WPPMCovarianceField:
 
         Examples
         --------
-        >>> field = WPPMCovarianceField.from_prior(model, key)
+        >>> # 2D stimulus space (e.g., isoluminant plane)
+        >>> model_2d = WPPM(input_dim=2, ...)
+        >>> field_2d = WPPMCovarianceField.from_prior(model_2d, key)
         >>>
-        >>> # Single point
-        >>> x = jnp.array([0.5, 0.3])  # Shape (2,) for input_dim=2
-        >>> Sigma = field(x)  # Shape (2, 2)
+        >>> # Single 2D point
+        >>> x = jnp.array([0.5, 0.3])  # Shape (2,)
+        >>> Sigma = field_2d(x)  # Shape (2, 2)
         >>>
-        >>> # 1D batch
+        >>> # Batch of 2D points
         >>> X = jnp.array([[0.1, 0.2], [0.5, 0.5]])  # Shape (2, 2)
-        >>> Sigmas = field(X)  # Shape (2, 2, 2)
+        >>> Sigmas = field_2d(X)  # Shape (2, 2, 2)
         >>>
-        >>> # 2D grid
+        >>> # 2D spatial grid in 2D stimulus space
         >>> X_grid = jnp.ones((10, 10, 2))  # Shape (10, 10, 2)
-        >>> Sigmas_grid = field(X_grid)  # Shape (10, 10, 2, 2)
+        >>> Sigmas_grid = field_2d(X_grid)  # Shape (10, 10, 2, 2)
         >>>
-        >>> # 3D+ batches work automatically
-        >>> X_3d = jnp.ones((5, 10, 10, 2))
-        >>> Sigmas_3d = field(X_3d)  # Shape (5, 10, 10, 2, 2)
+        >>> # 3D stimulus space (e.g., RGB)
+        >>> model_3d = WPPM(input_dim=3, ...)
+        >>> field_3d = WPPMCovarianceField.from_prior(model_3d, key)
+        >>>
+        >>> # Single 3D point
+        >>> x_3d = jnp.array([0.5, 0.3, 0.2])  # Shape (3,)
+        >>> Sigma_3d = field_3d(x_3d)  # Shape (3, 3)
+        >>>
+        >>> # Batch of 3D points
+        >>> X_3d = jnp.ones((5, 10, 3))  # Shape (5, 10, 3)
+        >>> Sigmas_3d = field_3d(X_3d)  # Shape (5, 10, 3, 3)
 
         Notes
         -----
-        Dispatch logic:
-        - x.ndim == 1: Single point -> call _eval_single()
-        - x.ndim >= 2: Batch -> flatten, vmap, reshape
-
         For input_dim=1, single points must have shape (1,) not (). Use x[None]
         if needed to convert scalar to shape (1,).
         """
@@ -223,12 +238,18 @@ class WPPMCovarianceField:
                 f"Last axis must be input_dim={self.model.input_dim}, got {x.shape[-1]}"
             )
 
+        # Dispatch logic:
+        #   - x.ndim == 1: Single point -> call _eval_single()
+        #   - x.ndim >= 2: Batch -> flatten, vmap, reshape
+
         # Dispatch based on shape
         if x.ndim == 1:
-            # Single point: shape (input_dim,) -> (input_dim, input_dim)
+            # Single point: shape (d,) -> (d, d) where d = model.input_dim
+            # E.g., input_dim=2: (2,) -> (2,2), input_dim=3: (3,) -> (3,3)
             return self._eval_single(x)
         else:
-            # Batch: shape (..., input_dim) -> (..., input_dim, input_dim)
+            # Batch: shape (..., d) -> (..., d, d) where d = model.input_dim
+            # Returns square covariance matrices for each point in the batch
             return self._eval_batch_jitted(x)
 
     def _eval_single(self, x: jnp.ndarray) -> jnp.ndarray:

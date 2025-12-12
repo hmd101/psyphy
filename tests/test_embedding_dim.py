@@ -24,10 +24,9 @@ def test_wppm_no_embedding_dim_parameter():
     # This should work WITHOUT embedding_dim
     model = WPPM(
         input_dim=2,
-        prior=Prior(input_dim=2, basis_degree=3),
+        prior=Prior(input_dim=2, basis_degree=3),  # Need Wishart mode for extra_dims
         task=OddityTask(),
         noise=GaussianNoise(),
-        basis_degree=3,
         extra_dims=1,
     )
 
@@ -67,10 +66,11 @@ def test_embedding_dim_computed_correctly(
     """Test that embedding_dim = input_dim + extra_dims."""
     model = WPPM(
         input_dim=input_dim,
-        prior=Prior(input_dim=input_dim, basis_degree=3),
+        prior=Prior(
+            input_dim=input_dim, basis_degree=3
+        ),  # Need Wishart mode for extra_dims
         task=OddityTask(),
         noise=GaussianNoise(),
-        basis_degree=3,
         extra_dims=extra_dims,
     )
 
@@ -89,7 +89,6 @@ def test_mvp_mode_embedding_dim():
         prior=Prior(input_dim=2),
         task=OddityTask(),
         noise=GaussianNoise(),
-        basis_degree=None,  # MVP mode
         extra_dims=1,  # Should be ignored in MVP
     )
 
@@ -109,7 +108,6 @@ def test_wishart_W_shape_uses_full_embedding_dim():
         prior=Prior(input_dim=2, basis_degree=3, extra_embedding_dims=1),
         task=OddityTask(),
         noise=GaussianNoise(),
-        basis_degree=3,
         extra_dims=1,
     )
 
@@ -126,7 +124,7 @@ def test_wishart_W_shape_uses_full_embedding_dim():
 
 
 # ==============================================================================
-# Test 5: local_covariance should return (embedding_dim, embedding_dim)
+# Test 5: local_covariance should return (input_dim, input_dim)
 # ==============================================================================
 
 
@@ -137,7 +135,6 @@ def test_local_covariance_shape_wishart():
         prior=Prior(input_dim=2, basis_degree=3, extra_embedding_dims=1),
         task=OddityTask(),
         noise=GaussianNoise(),
-        basis_degree=3,
         extra_dims=1,
     )
 
@@ -158,7 +155,6 @@ def test_local_covariance_shape_mvp():
         prior=Prior(input_dim=2),
         task=OddityTask(),
         noise=GaussianNoise(),
-        basis_degree=None,
     )
 
     key = jr.PRNGKey(42)
@@ -183,7 +179,6 @@ def test_compute_U_shape():
         prior=Prior(input_dim=2, basis_degree=3, extra_embedding_dims=1),
         task=OddityTask(),
         noise=GaussianNoise(),
-        basis_degree=3,
         extra_dims=1,
     )
 
@@ -198,38 +193,7 @@ def test_compute_U_shape():
 
 
 # ==============================================================================
-# Test 7: CovarianceField should expose stimulus-subspace extraction
-# ==============================================================================
-
-
-def test_covariance_field_stimulus_subspace():
-    """CovarianceField.cov_stimulus() should be alias for cov() with rectangular U."""
-    model = WPPM(
-        input_dim=2,
-        prior=Prior(input_dim=2, basis_degree=3, extra_embedding_dims=1),
-        task=OddityTask(),
-        noise=GaussianNoise(),
-        basis_degree=3,
-        extra_dims=1,
-    )
-
-    key = jr.PRNGKey(42)
-    field = WPPMCovarianceField.from_prior(model, key)
-
-    x = jnp.array([0.5, 0.5])
-
-    # With rectangular U, cov() already returns stimulus covariance
-    Sigma = field.cov(x)
-    assert Sigma.shape == (2, 2)  # input_dim = 2
-
-    # cov_stimulus should be an alias (same result)
-    Sigma_stim = field.cov_stimulus(x)
-    assert Sigma_stim.shape == (2, 2)
-    assert jnp.allclose(Sigma, Sigma_stim)
-
-
-# ==============================================================================
-# Test 8: Verify positive definiteness in stimulus space
+# Test  Verify positive definiteness in stimulus space
 # ==============================================================================
 
 
@@ -240,7 +204,6 @@ def test_full_embedding_covariance_positive_definite():
         prior=Prior(input_dim=2, basis_degree=3, extra_embedding_dims=2),
         task=OddityTask(),
         noise=GaussianNoise(),
-        basis_degree=3,
         extra_dims=2,
     )
 
@@ -270,7 +233,6 @@ def test_stimulus_subspace_positive_definite():
         prior=Prior(input_dim=2, basis_degree=3, extra_embedding_dims=1),
         task=OddityTask(),
         noise=GaussianNoise(),
-        basis_degree=3,
         extra_dims=1,
     )
 
@@ -286,7 +248,7 @@ def test_stimulus_subspace_positive_definite():
 
 
 # ==============================================================================
-# Test 10: Backward compatibility - old tests should still pass
+# Test  Backward compatibility - old tests should still pass
 # ==============================================================================
 
 
@@ -297,7 +259,6 @@ def test_backward_compat_mvp_field():
         prior=Prior(input_dim=2),
         task=OddityTask(),
         noise=GaussianNoise(),
-        basis_degree=None,
     )
 
     key = jr.PRNGKey(42)
@@ -318,7 +279,6 @@ def test_backward_compat_wishart_field():
         prior=Prior(input_dim=2, basis_degree=3, extra_embedding_dims=1),
         task=OddityTask(),
         noise=GaussianNoise(),
-        basis_degree=3,
         extra_dims=1,
     )
 

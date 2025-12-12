@@ -26,7 +26,6 @@ class TestWishartParameters:
             prior=Prior(input_dim=2, basis_degree=3),
             task=OddityTask(),
             noise=GaussianNoise(),
-            basis_degree=3,
         )
 
         params = model.init_params(jr.PRNGKey(0))
@@ -54,7 +53,6 @@ class TestWishartParameters:
             prior=Prior(input_dim=2, basis_degree=3, extra_embedding_dims=extra_dims),
             task=OddityTask(),
             noise=GaussianNoise(),
-            basis_degree=3,
             extra_dims=extra_dims,
         )
 
@@ -104,7 +102,6 @@ class TestWishartParameters:
             prior=Prior(input_dim=2),  # No basis_degree
             task=OddityTask(),
             noise=GaussianNoise(),
-            basis_degree=None,  # MVP mode
         )
 
         params = model.init_params(jr.PRNGKey(0))
@@ -125,7 +122,6 @@ class TestSpatiallyVaryingCovariance:
             prior=Prior(input_dim=2, basis_degree=3),
             task=OddityTask(),
             noise=GaussianNoise(),
-            basis_degree=3,
         )
 
         params = model.init_params(jr.PRNGKey(42))
@@ -146,7 +142,6 @@ class TestSpatiallyVaryingCovariance:
             prior=Prior(input_dim=2, basis_degree=3, decay_rate=0.8),
             task=OddityTask(),
             noise=GaussianNoise(),
-            basis_degree=3,
         )
 
         params = model.init_params(jr.PRNGKey(42))
@@ -172,7 +167,6 @@ class TestSpatiallyVaryingCovariance:
             prior=Prior(input_dim=2, basis_degree=3),
             task=OddityTask(),
             noise=GaussianNoise(),
-            basis_degree=3,
         )
 
         params = model.init_params(jr.PRNGKey(42))
@@ -195,7 +189,6 @@ class TestSpatiallyVaryingCovariance:
             prior=Prior(input_dim=2, basis_degree=3),
             task=OddityTask(),
             noise=GaussianNoise(),
-            basis_degree=3,
         )
 
         params = model.init_params(jr.PRNGKey(0))
@@ -214,7 +207,6 @@ class TestSpatiallyVaryingCovariance:
             prior=Prior(input_dim=2, basis_degree=3),
             task=OddityTask(),
             noise=GaussianNoise(),
-            basis_degree=3,
             diag_term=diag_term,
         )
 
@@ -233,7 +225,6 @@ class TestSpatiallyVaryingCovariance:
             prior=Prior(input_dim=2),
             task=OddityTask(),
             noise=GaussianNoise(),
-            basis_degree=None,  # MVP mode
         )
 
         params = model.init_params(jr.PRNGKey(0))
@@ -258,7 +249,6 @@ class TestWishartIntegration:
             prior=Prior(input_dim=2, basis_degree=3),
             task=OddityTask(),
             noise=GaussianNoise(),
-            basis_degree=3,
         )
 
         params = model.init_params(jr.PRNGKey(0))
@@ -280,7 +270,6 @@ class TestWishartIntegration:
             prior=Prior(input_dim=2, basis_degree=3),
             task=OddityTask(),
             noise=GaussianNoise(),
-            basis_degree=3,
         )
 
         params = model.init_params(jr.PRNGKey(0))
@@ -298,10 +287,9 @@ class TestWishartIntegration:
         """Full fitting pipeline should work with Wishart process."""
         model = WPPM(
             input_dim=2,
-            prior=Prior(input_dim=2, basis_degree=2),  # Lower degree for speed
+            prior=Prior(input_dim=2, basis_degree=3),  # Lower degree for speed
             task=OddityTask(),
             noise=GaussianNoise(),
-            basis_degree=2,
         )
 
         # Generate simple training data
@@ -327,7 +315,6 @@ class TestWishartIntegration:
             prior=Prior(input_dim=2),
             task=OddityTask(),
             noise=GaussianNoise(),
-            basis_degree=None,
         )
 
         # Wishart model
@@ -336,7 +323,6 @@ class TestWishartIntegration:
             prior=Prior(input_dim=2, basis_degree=3),
             task=OddityTask(),
             noise=GaussianNoise(),
-            basis_degree=3,
         )
 
         # Use same random seed for W initialization
@@ -383,7 +369,6 @@ class TestComputeU:
             prior=Prior(input_dim=2, basis_degree=3, extra_embedding_dims=extra_dims),
             task=OddityTask(),
             noise=GaussianNoise(),
-            basis_degree=3,
             extra_dims=extra_dims,
         )
 
@@ -404,7 +389,6 @@ class TestComputeU:
             prior=Prior(input_dim=2, basis_degree=3),
             task=OddityTask(),
             noise=GaussianNoise(),
-            basis_degree=3,
         )
 
         params = model.init_params(jr.PRNGKey(42))
@@ -426,7 +410,6 @@ class TestComputeU:
             prior=Prior(input_dim=2, basis_degree=3),
             task=OddityTask(),
             noise=GaussianNoise(),
-            basis_degree=3,
             diag_term=diag_term,
         )
 

@@ -38,7 +38,6 @@ def mvp_model():
         prior=Prior(input_dim=2),
         task=OddityTask(),
         noise=GaussianNoise(),
-        basis_degree=None,  # MVP mode
         diag_term=1e-6,
     )
 
@@ -57,7 +56,6 @@ def wishart_model():
         ),
         task=OddityTask(),
         noise=GaussianNoise(),
-        basis_degree=3,
         extra_dims=1,
         diag_term=1e-3,
     )

@@ -90,7 +90,7 @@ class Prior:
         """
         Compute total degree for each basis function coefficient.
 
-        For 2D: basis functions are products φ_ij(x_1) * φ_kl(x_2)
+        For 2D: basis functions are products φᵢ(x₁) * φⱼ(x₂)
         Total degree of φ_ij is i + j.
 
         Note: For basis_degree=d, we have (d+1) basis functions [T_0, ..., T_d] per dimension,
@@ -147,16 +147,12 @@ class Prior:
             Returns {"log_diag": shape (input_dim,)}
 
         Wishart mode (basis_degree set):
-            Returns {"W": Rectangular coefficient matrices (Hong et al. design)
-            For 2D: (degree+1, degree+1, input_dim, embedding_dim)
-            For 3D: (degree+1, degree+1, degree+1, input_dim, embedding_dim)
+            Returns {"W": shape (degree+1, degree+1, input_dim, embedding_dim)}
+            for 2D, where embedding_dim = input_dim + extra_embedding_dims
 
-            where embedding_dim = input_dim + extra_embedding_dims
-
-            This produces U(x) ∈ ℝ^(input_dim × embedding_dim) via:
-                U(x) = Σ_ij W_ij * φ_ij(x)
-
-            And covariance Σ(x) = U(x) @ U(x)^T ∈ ℝ^(input_dim × input_dim)
+            Note: The 3rd dimension is input_dim (output space dimension).
+            This matches the einsum in _compute_U:
+            U = einsum("ijde,ij->de", W, phi) where d indexes input_dim.
 
         Parameters
         ----------
@@ -172,34 +168,33 @@ class Prior:
             log_diag = jr.normal(key, shape=(self.input_dim,)) * self.scale
             return {"log_diag": log_diag}
 
-        # Wishart mode: basis function coefficients W (rectangular design)
+        # Wishart mode: basis function coefficients W
         variances = self._compute_W_prior_variances()
         embedding_dim = self.input_dim + self.extra_embedding_dims
 
         if self.input_dim == 2:
-            # Rectangular U(x): (input_dim, embedding_dim) = (2, 2+extra_dims)
-            # W shape: (degree+1, degree+1, input_dim, embedding_dim)
+            # Sample W ~ Normal(0, variances) for each matrix entry
+            # Shape: (degree+1, degree+1, input_dim, embedding_dim)
             # Note: degree+1 to match number of basis functions [T_0, ..., T_degree]
             W = jnp.sqrt(variances)[:, :, None, None] * jr.normal(
                 key,
                 shape=(
                     self.basis_degree + 1,
                     self.basis_degree + 1,
-                    self.input_dim,  # rows: stimulus space
-                    embedding_dim,  # cols: embedding space
+                    self.input_dim,
+                    embedding_dim,
                 ),
             )
         elif self.input_dim == 3:
-            # Rectangular U(x): (input_dim, embedding_dim) = (3, 3+extra_dims)
-            # W shape: (degree+1, degree+1, degree+1, input_dim, embedding_dim)
+            # Shape: (degree+1, degree+1, degree+1, input_dim, embedding_dim)
             W = jnp.sqrt(variances)[:, :, :, None, None] * jr.normal(
                 key,
                 shape=(
                     self.basis_degree + 1,
                     self.basis_degree + 1,
                     self.basis_degree + 1,
-                    self.input_dim,  # rows: stimulus space
-                    embedding_dim,  # cols: embedding space
+                    self.input_dim,
+                    embedding_dim,
                 ),
             )
         else:
@@ -218,7 +213,7 @@ class Prior:
 
         Wishart mode:
             Gaussian prior on W with smoothness via decay_rate
-            log p(W) = Σ_ij log N(W_ij | 0, σ_ij²) where σ_ij² = prior variance
+            log p(W) = Σ_ij log N(W_ij | 0, σ_ij^2) where σ_ij^2 = prior variance
 
         Parameters
         ----------
@@ -242,8 +237,8 @@ class Prior:
             variances = self._compute_W_prior_variances()
 
             # Gaussian log probability for each entry
-            # log N(x | 0, σ²) = -0.5 * (x²/σ² + log(2πσ²))
-            # Up to constant: -0.5 * x²/σ²
+            # log N(x | 0, σ^2) = -0.5 * (x^2/σ^2 + log(2πσ^2))
+            # Up to constant: -0.5 * x^2/σ^2
 
             if self.input_dim == 2:
                 # Each W[i,j,:,:] ~ Normal(0, variance[i,j] * I)

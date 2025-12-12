@@ -53,8 +53,10 @@ class WPPM(Model):
         Dimensionality of the *input stimulus space* (e.g., 2 for isoluminant plane,
         3 for RGB). Both reference and probe live in R^{input_dim}.
     prior : Prior
-        Prior distribution over model parameters. MVP uses a simple Gaussian prior
-        over diagonal log-variances (see Prior.sample_params()).
+        Prior distribution over model parameters. Controls basis_degree for Wishart
+        mode (basis expansion) vs MVP mode (diagonal covariance). The WPPM delegates
+        to prior.basis_degree to ensure consistency between parameter sampling and
+        basis evaluation.
     task : TaskLikelihood
         Psychophysical task mapping that defines how discriminability translates
         to p(correct) and how log-likelihood of responses is computed.
@@ -63,10 +65,11 @@ class WPPM(Model):
         Noise model describing internal representation noise (e.g., GaussianNoise).
         Not used in MVP mapping but passed to the task interface for future MC sims.
 
-    Forward-compatible hyperparameters (MVP stubs)
-    ----------------------------------------------
+    Forward-compatible hyperparameters
+    -----------------------------------
     extra_dims : int, default=0
-        Additional embedding dimensions for basis expansions (unused in MVP).
+        Additional embedding dimensions for basis expansions (beyond input_dim).
+        In Wishart mode, embedding_dim = input_dim + extra_dims.
     variance_scale : float, default=1.0
         Global scaling factor for covariance magnitude (unused in MVP).
     lengthscale : float, default=1.0
@@ -84,7 +87,6 @@ class WPPM(Model):
         task: TaskLikelihood,
         noise: Any | None = None,
         *,  # everything after here is keyword-only
-        basis_degree: int | None = 5,  # Chebyshev degree (None = MVP mode)
         extra_dims: int = 0,
         variance_scale: float = 1.0,
         lengthscale: float = 1.0,
@@ -100,16 +102,31 @@ class WPPM(Model):
         self.task = task  # task mapping and likelihood
         self.noise = noise  # noise model
 
-        # --- basis expansion (Hong et al. Issue #3) ---
-        if basis_degree is not None and basis_degree < 0:
-            raise ValueError("basis_degree must be non-negative or None")
-        self.basis_degree = basis_degree  # None = MVP mode (no embedding)
-
         # --- forward-compatible hyperparameters (stubs in MVP) ---
         self.extra_dims = int(extra_dims)
         self.variance_scale = float(variance_scale)
         self.lengthscale = float(lengthscale)
         self.diag_term = float(diag_term)
+
+    @property
+    def basis_degree(self) -> int | None:
+        """
+        Chebyshev polynomial degree for Wishart process basis expansion.
+
+        This property delegates to self.prior.basis_degree to ensure consistency
+        between parameter sampling and basis evaluation.
+
+        Returns
+        -------
+        int | None
+            Degree of Chebyshev polynomial basis (0 = constant, 1 = linear, etc.)
+            None indicates MVP mode (no basis expansion)
+
+        Notes
+        -----
+        WPPM gets its basis_degree parameter from Prior.basis_degree.
+        """
+        return self.prior.basis_degree
 
     @property
     def embedding_dim(self) -> int:
@@ -281,7 +298,7 @@ class WPPM(Model):
         return phi
 
     def _compute_U(self, params: Params, x: jnp.ndarray) -> jnp.ndarray:
-        """
+        r"""
         Compute "square root" matrix U(x) from basis expansion.
 
         This is the core of the Wishart process: U(x) = Σ_ij W_ij * φ_ij(x)
@@ -300,7 +317,7 @@ class WPPM(Model):
         Returns
         -------
         U : jnp.ndarray, shape (input_dim, embedding_dim)
-            Rectangular square root matrix (Hong et al. design).
+            Rectangular square root matrix if extra_dims > 0.
             embedding_dim = input_dim + extra_dims
 
         Raises
@@ -310,9 +327,9 @@ class WPPM(Model):
 
         Notes
         -----
-        U is rectangular: (input_dim, embedding_dim).
+        U is rectangular when extra_dims > 0.
         When multiplied U @ U^T, this produces covariance in stimulus space:
-        Σ(x) ∈ R^(input_dim x input_dim)
+        Σ(x) \in R^(input_dim x input_dim)
         """
         if "W" not in params:
             raise ValueError(
@@ -328,12 +345,12 @@ class WPPM(Model):
         if self.input_dim == 2:
             # W[i,j,d,e] * phi[i,j] -> U[d,e]
             # W is (degree+1, degree+1, input_dim, embedding_dim)
-            # U is rectangular if embedding_dim > input_dim: (input_dim, embedding_dim)
+            # U is rectangular if extra_dims > 0: (input_dim, embedding_dim)
             U = jnp.einsum("ijde,ij->de", W, phi)
         elif self.input_dim == 3:
             # W[i,j,k,d,e] * phi[i,j,k] -> U[d,e]
             # W is (degree+1, degree+1, degree+1, input_dim, embedding_dim)
-            # U is rectangular if embedding_dim > input_dim: (input_dim, embedding_dim)
+            # U is rectangular if extra_dims > 0: (input_dim, embedding_dim)
             U = jnp.einsum("ijkde,ijk->de", W, phi)
         else:
             raise NotImplementedError(
@@ -355,7 +372,7 @@ class WPPM(Model):
 
         Wishart mode (basis_degree set):
             Σ(x) = U(x) @ U(x)^T + diag_term * I
-            where U(x) is rectangular (input_dim, embedding_dim) if embedding_dim > input_dim.
+            where U(x) is rectangular (input_dim, embedding_dim) if extra_dims > 0.
             - Varies smoothly with x
             - Guaranteed positive-definite
             - Returns stimulus covariance directly (input_dim, input_dim)
@@ -401,7 +418,7 @@ class WPPM(Model):
             d = sqrt( (probe - ref)^T Σ(ref)^{-1} (probe - ref) )
             with Σ(ref) the local covariance at the reference in stimulus space.
 
-        Wishart mode (rectangular U design) if input_dim < embedding_dim:
+        Wishart mode (rectangular U design) if extra_dims > 0:
             d = sqrt( (probe - ref)^T Σ(ref)^{-1} (probe - ref) )
             where Σ(ref) is directly computed in stimulus space (input_dim, input_dim)
             via U(x) @ U(x)^T with U rectangular.
@@ -485,8 +502,7 @@ class WPPM(Model):
 
         IMPORTANT:
             We delegate to the TaskLikelihood to avoid duplicating Bernoulli (MPV)
-            or MC likelihood logic in multiple places. This keeps responsibilities
-            clean and makes adding new tasks straightforward.
+            or MC likelihood logic in multiple places.
 
         Parameters
         ----------
