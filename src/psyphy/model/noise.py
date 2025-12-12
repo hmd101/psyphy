@@ -2,6 +2,9 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
+import jax
+import jax.random as jr
+
 """
 Noise models for observer's internal representations.
 
@@ -22,6 +25,10 @@ class GaussianNoise:
         _ = residual
         return -0.5
 
+    def sample_standard(self, key: jax.Array, shape: tuple[int, ...]) -> jax.Array:
+        """Sample from standard Gaussian (mean=0, var=1)."""
+        return jr.normal(key, shape)
+
 
 @dataclass
 class StudentTNoise:
@@ -31,3 +38,7 @@ class StudentTNoise:
     def log_prob(self, residual: float) -> float:
         _ = residual
         return -0.5
+
+    def sample_standard(self, key: jax.Array, shape: tuple[int, ...]) -> jax.Array:
+        """Sample from standard Student-t (df=self.df)."""
+        return jr.t(key, self.df, shape)
