@@ -31,7 +31,6 @@ def mvp_field():
         input_dim=2,
         prior=Prior(input_dim=2),
         task=OddityTask(),
-        basis_degree=None,  # MVP mode
     )
     key = jr.PRNGKey(42)
     return WPPMCovarianceField.from_prior(model, key)
@@ -44,7 +43,6 @@ def wishart_field():
         input_dim=2,
         prior=Prior(input_dim=2, basis_degree=3, extra_embedding_dims=1),
         task=OddityTask(),
-        basis_degree=3,
         extra_dims=1,
     )
     key = jr.PRNGKey(123)
@@ -56,9 +54,8 @@ def field_3d():
     """Create 3D covariance field for testing."""
     model = WPPM(
         input_dim=3,
-        prior=Prior(input_dim=3, basis_degree=3),
+        prior=Prior(input_dim=3),
         task=OddityTask(),
-        basis_degree=3,
     )
     key = jr.PRNGKey(456)
     return WPPMCovarianceField.from_prior(model, key)
@@ -383,9 +380,8 @@ class TestEdgeCases:
         """For input_dim=1, single point has shape (1,)."""
         model = WPPM(
             input_dim=1,
-            prior=Prior(input_dim=1, basis_degree=3),
+            prior=Prior(input_dim=1),
             task=OddityTask(),
-            basis_degree=3,
         )
         field = WPPMCovarianceField.from_prior(model, jr.PRNGKey(789))
 
@@ -400,9 +396,8 @@ class TestEdgeCases:
         """For input_dim=1, batch requires shape (n, 1)."""
         model = WPPM(
             input_dim=1,
-            prior=Prior(input_dim=1, basis_degree=3),
+            prior=Prior(input_dim=1),
             task=OddityTask(),
-            basis_degree=3,
         )
         field = WPPMCovarianceField.from_prior(model, jr.PRNGKey(789))
 

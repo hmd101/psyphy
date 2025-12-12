@@ -45,12 +45,12 @@ class TestParameterPosterior:
         data = ResponseData()
         data.add_trial(
             ref=jnp.array([0.0, 0.0]),
-            probe=jnp.array([0.5, 0.5]),
+            comparison=jnp.array([0.5, 0.5]),
             resp=1,
         )
         data.add_trial(
             ref=jnp.array([1.0, 1.0]),
-            probe=jnp.array([1.5, 1.0]),
+            comparison=jnp.array([1.5, 1.0]),
             resp=0,
         )
         return data
@@ -148,8 +148,8 @@ class TestPredictivePosterior:
         data = ResponseData()
         for _ in range(10):  # More data for better posterior
             ref = jr.normal(jr.PRNGKey(0), (2,))
-            probe = ref + jr.normal(jr.PRNGKey(1), (2,)) * 0.3
-            data.add_trial(ref, probe, resp=1)
+            comparison = ref + jr.normal(jr.PRNGKey(1), (2,)) * 0.3
+            data.add_trial(ref, comparison, resp=1)
         return data
 
     @pytest.fixture
@@ -254,8 +254,8 @@ class TestIntegration:
             key, subkey = jr.split(key)
             ref = jr.normal(subkey, (2,))
             key, subkey = jr.split(key)
-            probe = ref + jr.normal(subkey, (2,)) * 0.5
-            data.add_trial(ref, probe, resp=1)
+            comparison = ref + jr.normal(subkey, (2,)) * 0.5
+            data.add_trial(ref, comparison, resp=1)
 
         # 3. Fit model → ParameterPosterior
         optimizer = MAPOptimizer(steps=50)

@@ -32,18 +32,18 @@ class ResponseData:
     ----------
     refs : List[Any]
         List of reference stimuli.
-    probes : List[Any]
-        List of probe stimuli.
+    comparisons : List[Any]
+        List of comparison stimuli.
     responses : List[int]
         List of subject responses (e.g., 0/1 or categorical).
     """
 
     def __init__(self) -> None:
         self.refs: list[Any] = []
-        self.probes: list[Any] = []
+        self.comparisons: list[Any] = []
         self.responses: list[int] = []
 
-    def add_trial(self, ref: Any, probe: Any, resp: int) -> None:
+    def add_trial(self, ref: Any, comparison: Any, resp: int) -> None:
         """
         append a single trial.
 
@@ -51,13 +51,13 @@ class ResponseData:
         ----------
         ref : Any
             Reference stimulus (numpy array, list, etc.)
-        probe : Any
+        comparison : Any
             Probe stimulus
         resp : int
             Subject response (binary or categorical)
         """
         self.refs.append(ref)
-        self.probes.append(probe)
+        self.comparisons.append(comparison)
         self.responses.append(resp)
 
     def add_batch(self, responses: list[int], trial_batch: TrialBatch) -> None:
@@ -67,40 +67,40 @@ class ResponseData:
         Parameters
         ----------
         responses : List[int]
-            Responses corresponding to each (ref, probe) in the trial batch.
+            Responses corresponding to each (ref, comparison) in the trial batch.
         trial_batch : TrialBatch
             The batch of proposed trials.
         """
-        for (ref, probe), resp in zip(trial_batch.stimuli, responses):
-            self.add_trial(ref, probe, resp)
+        for (ref, comparison), resp in zip(trial_batch.stimuli, responses):
+            self.add_trial(ref, comparison, resp)
 
     def to_numpy(self) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
         """
-        Return refs, probes, responses as numpy arrays.
+        Return refs, comparisons, responses as numpy arrays.
 
         Returns
         -------
         refs : np.ndarray
-        probes : np.ndarray
+        comparisons : np.ndarray
         responses : np.ndarray
         """
         return (
             np.array(self.refs),
-            np.array(self.probes),
+            np.array(self.comparisons),
             np.array(self.responses),
         )
 
     @property
     def trials(self) -> list[tuple[Any, Any, int]]:
         """
-        Return list of (ref, probe, response) tuples.
+        Return list of (ref, comparison, response) tuples.
 
         Returns
         -------
         list[tuple]
-            Each element is (ref, probe, resp)
+            Each element is (ref, comparison, resp)
         """
-        return list(zip(self.refs, self.probes, self.responses))
+        return list(zip(self.refs, self.comparisons, self.responses))
 
     def __len__(self) -> int:
         """Return number of trials."""
@@ -112,7 +112,7 @@ class ResponseData:
         X: jnp.ndarray | np.ndarray,
         y: jnp.ndarray | np.ndarray,
         *,
-        probes: jnp.ndarray | np.ndarray | None = None,
+        comparisons: jnp.ndarray | np.ndarray | None = None,
     ) -> ResponseData:
         """
         Construct ResponseData from arrays.
@@ -120,11 +120,11 @@ class ResponseData:
         Parameters
         ----------
         X : array, shape (n_trials, 2, input_dim) or (n_trials, input_dim)
-            Stimuli. If 3D, second axis is [reference, probe].
-            If 2D, probes must be provided separately.
+            Stimuli. If 3D, second axis is [reference, comparison].
+            If 2D, comparisons must be provided separately.
         y : array, shape (n_trials,)
             Responses
-        probes : array, shape (n_trials, input_dim), optional
+        comparisons : array, shape (n_trials, input_dim), optional
             Probe stimuli. Only needed if X is 2D.
 
         Returns
@@ -139,10 +139,10 @@ class ResponseData:
         >>> y = jnp.array([1, 0])
         >>> data = ResponseData.from_arrays(X, y)
 
-        >>> # From separate refs and probes
+        >>> # From separate refs and comparisons
         >>> refs = jnp.array([[0, 0], [1, 1]])
-        >>> probes = jnp.array([[1, 0], [2, 1]])
-        >>> data = ResponseData.from_arrays(refs, y, probes=probes)
+        >>> comparisons = jnp.array([[1, 0], [2, 1]])
+        >>> data = ResponseData.from_arrays(refs, y, comparisons=comparisons)
         """
         data = cls()
 
@@ -152,18 +152,18 @@ class ResponseData:
         if X.ndim == 3:
             # X is (n_trials, 2, input_dim)
             refs = X[:, 0, :]
-            probes_arr = X[:, 1, :]
-        elif X.ndim == 2 and probes is not None:
+            comparisons_arr = X[:, 1, :]
+        elif X.ndim == 2 and comparisons is not None:
             refs = X
-            probes_arr = np.asarray(probes)
+            comparisons_arr = np.asarray(comparisons)
         else:
             raise ValueError(
                 "X must be shape (n_trials, 2, input_dim) or "
-                "(n_trials, input_dim) with probes argument"
+                "(n_trials, input_dim) with comparisons argument"
             )
 
-        for ref, probe, response in zip(refs, probes_arr, y):
-            data.add_trial(ref, probe, int(response))
+        for ref, comparison, response in zip(refs, comparisons_arr, y):
+            data.add_trial(ref, comparison, int(response))
 
         return data
 
@@ -177,7 +177,7 @@ class ResponseData:
             Dataset to merge
         """
         self.refs.extend(other.refs)
-        self.probes.extend(other.probes)
+        self.comparisons.extend(other.comparisons)
         self.responses.extend(other.responses)
 
     def tail(self, n: int) -> ResponseData:
@@ -196,7 +196,7 @@ class ResponseData:
         """
         new_data = ResponseData()
         new_data.refs = self.refs[-n:]
-        new_data.probes = self.probes[-n:]
+        new_data.comparisons = self.comparisons[-n:]
         new_data.responses = self.responses[-n:]
         return new_data
 
@@ -211,7 +211,7 @@ class ResponseData:
         """
         new_data = ResponseData()
         new_data.refs = list(self.refs)
-        new_data.probes = list(self.probes)
+        new_data.comparisons = list(self.comparisons)
         new_data.responses = list(self.responses)
         return new_data
 
@@ -223,7 +223,7 @@ class TrialBatch:
     Attributes
     ----------
     stimuli : List[Tuple[Any, Any]]
-        Each trial is a (reference, probe) tuple.
+        Each trial is a (reference, comparison) tuple.
     """
 
     def __init__(self, stimuli: list[tuple[Any, Any]]) -> None:
@@ -232,6 +232,6 @@ class TrialBatch:
     @classmethod
     def from_stimuli(cls, pairs: list[tuple[Any, Any]]) -> TrialBatch:
         """
-        Construct a TrialBatch from a list of stimuli (ref, probe) pairs.
+        Construct a TrialBatch from a list of stimuli (ref, comparison) pairs.
         """
         return cls(pairs)

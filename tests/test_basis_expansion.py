@@ -29,7 +29,6 @@ class TestBasisExpansion:
             prior=Prior(input_dim=2),
             task=OddityTask(),
             noise=GaussianNoise(),
-            basis_degree=3,  # New parameter
         )
 
         # Test with stimulus in [0, 1] range
@@ -50,10 +49,9 @@ class TestBasisExpansion:
         basis_degree = 5  # Hong et al. uses degree 5
         model = WPPM(
             input_dim=input_dim,
-            prior=Prior(input_dim=input_dim),
+            prior=Prior(input_dim=input_dim, basis_degree=basis_degree),
             task=OddityTask(),
             noise=GaussianNoise(),
-            basis_degree=basis_degree,
         )
 
         x = jnp.array([0.5, 0.3])
@@ -68,10 +66,9 @@ class TestBasisExpansion:
         """Embedding should use Chebyshev polynomials."""
         model = WPPM(
             input_dim=2,
-            prior=Prior(input_dim=2),
+            prior=Prior(input_dim=2, basis_degree=3),
             task=OddityTask(),
             noise=GaussianNoise(),
-            basis_degree=3,
         )
 
         x = jnp.array([0.5, 0.8])
@@ -93,10 +90,9 @@ class TestBasisExpansion:
         """Embedding should work on batches of stimuli."""
         model = WPPM(
             input_dim=2,
-            prior=Prior(input_dim=2),
+            prior=Prior(input_dim=2, basis_degree=3),
             task=OddityTask(),
             noise=GaussianNoise(),
-            basis_degree=3,
         )
 
         # Batch of 5 stimuli
@@ -109,10 +105,9 @@ class TestBasisExpansion:
         """Basis expansion should be approximately invertible."""
         model = WPPM(
             input_dim=2,
-            prior=Prior(input_dim=2),
+            prior=Prior(input_dim=2, basis_degree=3),
             task=OddityTask(),
             noise=GaussianNoise(),
-            basis_degree=5,  # Higher degree for better approximation
         )
 
         # Original stimulus
@@ -146,7 +141,6 @@ class TestBasisExpansion:
             ),
             task=OddityTask(),
             noise=GaussianNoise(),
-            basis_degree=basis_degree,
             extra_dims=extra_dims,
         )
 
@@ -167,7 +161,6 @@ class TestBasisExpansion:
             prior=Prior(input_dim=2, basis_degree=5),
             task=OddityTask(),
             noise=GaussianNoise(),
-            basis_degree=5,  # Hong et al. uses degree 5
             extra_dims=0,  # No extra dimensions by default
         )
 
@@ -183,7 +176,6 @@ class TestBasisExpansion:
             prior=Prior(input_dim=2),
             task=OddityTask(),
             noise=GaussianNoise(),
-            basis_degree=None,  # Disable embedding (MVP mode)
         )
 
         x = jnp.array([0.5, 0.3])
@@ -202,10 +194,9 @@ class TestBasisExpansionIntegration:
         """Discriminability should work in embedding space."""
         model = WPPM(
             input_dim=2,
-            prior=Prior(input_dim=2),
+            prior=Prior(input_dim=2, basis_degree=3),
             task=OddityTask(),
             noise=GaussianNoise(),
-            basis_degree=3,
         )
 
         # Initialize parameters
@@ -226,10 +217,9 @@ class TestBasisExpansionIntegration:
         """Local covariance should operate in embedding space (TODO: Issue #3 Task 2)."""
         model = WPPM(
             input_dim=2,
-            prior=Prior(input_dim=2),
+            prior=Prior(input_dim=2, basis_degree=3),
             task=OddityTask(),
             noise=GaussianNoise(),
-            basis_degree=3,
         )
 
         params = model.init_params(jr.PRNGKey(0))
@@ -254,10 +244,9 @@ class TestBasisExpansionIntegration:
         """Model fitting should work with basis expansion."""
         model = WPPM(
             input_dim=2,
-            prior=Prior(input_dim=2),
+            prior=Prior(input_dim=2, basis_degree=3),
             task=OddityTask(),
             noise=GaussianNoise(),
-            basis_degree=3,
         )
 
         # Generate simple training data
@@ -284,20 +273,18 @@ class TestBasisExpansionEdgeCases:
         with pytest.raises(ValueError, match="basis_degree"):
             WPPM(
                 input_dim=2,
-                prior=Prior(input_dim=2),
+                prior=Prior(input_dim=2, basis_degree=-1),  # Negative should raise
                 task=OddityTask(),
                 noise=GaussianNoise(),
-                basis_degree=-1,
             )
 
     def test_stimulus_outside_expected_range(self):
         """Stimulus outside [0, 1] should still work (extrapolation)."""
         model = WPPM(
             input_dim=2,
-            prior=Prior(input_dim=2),
+            prior=Prior(input_dim=2, basis_degree=3),
             task=OddityTask(),
             noise=GaussianNoise(),
-            basis_degree=3,
         )
 
         # Stimulus outside [0, 1]
@@ -314,10 +301,9 @@ class TestBasisExpansionEdgeCases:
         basis_degree = 3
         model = WPPM(
             input_dim=input_dim,
-            prior=Prior(input_dim=input_dim),
+            prior=Prior(input_dim=input_dim, basis_degree=basis_degree),
             task=OddityTask(),
             noise=GaussianNoise(),
-            basis_degree=basis_degree,
         )
 
         x = jr.uniform(jr.PRNGKey(0), (input_dim,))
