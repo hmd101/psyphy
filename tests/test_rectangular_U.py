@@ -94,7 +94,7 @@ class TestRectangularUShape:
         params = prior.sample_params(jr.PRNGKey(42))
         x = jnp.ones(input_dim) * 0.5
 
-        U = model._compute_U(params, x)
+        U = model._compute_sqrt(params, x)
 
         embedding_dim = input_dim + extra_dims
         expected_shape = (input_dim, embedding_dim)

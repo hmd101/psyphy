@@ -354,9 +354,9 @@ class TestWishartIntegration:
 
 
 class TestComputeU:
-    """Tests for internal _compute_U method."""
+    """Tests for internal _compute_sqrt method."""
 
-    def test_compute_U_shape(self):
+    def test_compute_sqrt_shape(self):
         """
         U(x) should have correct shape (rectangular).
 
@@ -375,14 +375,14 @@ class TestComputeU:
         params = model.init_params(jr.PRNGKey(0))
         x = jnp.array([0.5, 0.3])
 
-        U = model._compute_U(params, x)
+        U = model._compute_sqrt(params, x)
 
         # Rectangular design: U is (input_dim, embedding_dim)
         embedding_dim = model.embedding_dim  # input_dim + extra_dims = 4
         expected_shape = (model.input_dim, embedding_dim)  # (2, 4)
         assert U.shape == expected_shape
 
-    def test_compute_U_varies_with_location(self):
+    def test_compute_sqrt_varies_with_location(self):
         """U(x) should vary with stimulus location."""
         model = WPPM(
             input_dim=2,
@@ -396,8 +396,8 @@ class TestComputeU:
         x1 = jnp.array([0.2, 0.3])
         x2 = jnp.array([0.7, 0.8])
 
-        U1 = model._compute_U(params, x1)
-        U2 = model._compute_U(params, x2)
+        U1 = model._compute_sqrt(params, x1)
+        U2 = model._compute_sqrt(params, x2)
 
         # Should be different
         assert not jnp.allclose(U1, U2, atol=1e-6)
@@ -416,7 +416,7 @@ class TestComputeU:
         params = model.init_params(jr.PRNGKey(0))
         x = jnp.array([0.5, 0.3])
 
-        U = model._compute_U(params, x)
+        U = model._compute_sqrt(params, x)
         Sigma = model.local_covariance(params, x)
 
         # Manual computation

@@ -297,7 +297,7 @@ class WPPM(Model):
 
         return phi
 
-    def _compute_U(self, params: Params, x: jnp.ndarray) -> jnp.ndarray:
+    def _compute_sqrt(self, params: Params, x: jnp.ndarray) -> jnp.ndarray:
         r"""
         Compute "square root" matrix U(x) from basis expansion.
 
@@ -399,7 +399,7 @@ class WPPM(Model):
 
         # Wishart mode: spatially-varying covariance
         if "W" in params:
-            U = self._compute_U(params, x)  # (input_dim, embedding_dim)
+            U = self._compute_sqrt(params, x)  # (input_dim, embedding_dim)
             # Σ(x) = U(x) @ U(x)^T + diag_term * I
             # Result is (input_dim, input_dim)
             Sigma = U @ U.T + self.diag_term * jnp.eye(self.input_dim)

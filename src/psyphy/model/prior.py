@@ -151,7 +151,7 @@ class Prior:
             for 2D, where embedding_dim = input_dim + extra_embedding_dims
 
             Note: The 3rd dimension is input_dim (output space dimension).
-            This matches the einsum in _compute_U:
+            This matches the einsum in _compute_sqrt:
             U = einsum("ijde,ij->de", W, phi) where d indexes input_dim.
 
         Parameters
