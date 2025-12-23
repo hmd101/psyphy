@@ -95,6 +95,22 @@ class MAPPosterior(BasePosterior):
         Delta distribution has no randomness - returns repeated MAP estimate.
         """
         # Stack params n times along new leading dimension
+        # Create a batched pytree by repeating each parameter array n times
+        # along a new leading dimension.
+        #
+        # jax.tree.map applies the lambda to every leaf in the parameter pytree
+        # (e.g., each ndarray in the dict) and preserves the overall tree
+        # structure (same keys / nesting).
+        #
+        # for each leaf `x`:
+        # - `x[None, ...]` inserts a new leading axis, turning shape (...) into (1, ...).
+        # - `(n,) + (1,) * x.ndim` builds a repetition tuple that repeats only the
+        #   new leading axis n times and leaves all original axes unchanged.
+        # - `jnp.tile(...)` replicates the array accordingly, producing an array
+        #   of shape (n, ...) where every slice along axis 0 is the same MAP value.
+        #
+        # the result is a parameter pytree where each array has shape (n, ...) and
+        # represents n identical draws from the delta (MAP) posterior.
         return jax.tree.map(
             lambda x: jnp.tile(x[None, ...], (n,) + (1,) * x.ndim), self._params
         )

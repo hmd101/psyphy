@@ -190,7 +190,7 @@ class Model(ABC):
         ...
 
     # ------------------------------------------------------------------
-    # BoTorch-style API: fit, posterior, condition_on_observations
+    # High-level Facade: fit, posterior, condition_on_observations
     # ------------------------------------------------------------------
 
     def fit(
