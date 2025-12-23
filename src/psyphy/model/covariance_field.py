@@ -111,7 +111,7 @@ class WPPMCovarianceField:
     Parameters
     ----------
     model : WPPM
-        Model providing evaluation logic (local_covariance, _compute_U)
+        Model providing evaluation logic (local_covariance, _compute_sqrt)
     params : dict
         Model parameters:
         - MVP: {"log_diag": (input_dim,)}
@@ -119,7 +119,7 @@ class WPPMCovarianceField:
           where embedding_dim = input_dim + extra_embedding_dims
 
           Note: The 3rd dimension is input_dim (output/stimulus space), not
-          embedding_dim. This matches the einsum in _compute_U where U(x) has
+          embedding_dim. This matches the einsum in _compute_sqrt where U(x) has
           shape (input_dim, embedding_dim).
 
     Attributes
@@ -487,7 +487,7 @@ class WPPMCovarianceField:
                 "sqrt_cov only available in Wishart mode. "
                 "Set basis_degree when creating WPPM to use Wishart process."
             )
-        return self.model._compute_U(self.params, x)
+        return self.model._compute_sqrt(self.params, x)
 
     def sqrt_cov_batch(self, X: jnp.ndarray) -> jnp.ndarray:
         """
