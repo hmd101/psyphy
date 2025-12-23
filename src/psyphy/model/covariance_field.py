@@ -100,10 +100,6 @@ class CovarianceField(Protocol):
         """Evaluate covariance at multiple locations (deprecated)."""
         ...
 
-    def cov_stimulus(self, x: jnp.ndarray) -> jnp.ndarray:
-        """Extract stimulus-relevant covariance block."""
-        ...
-
 
 class WPPMCovarianceField:
     """
@@ -492,47 +488,6 @@ class WPPMCovarianceField:
                 "Set basis_degree when creating WPPM to use Wishart process."
             )
         return self.model._compute_U(self.params, x)
-
-    def cov_stimulus(self, x: jnp.ndarray) -> jnp.ndarray:
-        """
-        Extract stimulus-relevant covariance block.
-
-        With rectangular U design, this is just an alias for cov(x).
-
-        Parameters
-        ----------
-        x : jnp.ndarray, shape (input_dim,)
-            Stimulus location
-
-        Returns
-        -------
-        jnp.ndarray, shape (input_dim, input_dim)
-            Covariance in observable stimulus subspace
-
-        Examples
-        --------
-        >>> model = WPPM(input_dim=2, basis_degree=3, extra_dims=1, ...)
-        >>> field = WPPMCovarianceField.from_prior(model, key)
-        >>> x = jnp.array([0.5, 0.5])
-        >>>
-        >>> # Both return the same thing now
-        >>> Sigma = field.cov(x)  # (2, 2)
-        >>> Sigma_stim = field.cov_stimulus(x)  # (2, 2)
-        >>>
-        >>> assert jnp.allclose(Sigma, Sigma_stim)
-
-        Notes
-        -----
-        Kept for backward compatibility. With rectangular U design,
-        cov(x) already returns stimulus covariance, so no extraction needed.
-        """
-        # With rectangular U, cov already returns (input_dim, input_dim)
-        warnings.warn(
-            "cov_stimulus() is deprecated. Use field(x) or field.cov(x) instead.",
-            DeprecationWarning,
-            stacklevel=2,
-        )
-        return self._eval_single(x)
 
     def sqrt_cov_batch(self, X: jnp.ndarray) -> jnp.ndarray:
         """
