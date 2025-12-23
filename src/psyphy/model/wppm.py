@@ -99,6 +99,13 @@ class WPPM(Model):
         # --- core components ---
         self.input_dim = int(input_dim)  # stimulus-space dimensionality
         self.prior = prior  # prior over parameter PyTree
+
+        if self.prior.input_dim != self.input_dim:
+            raise ValueError(
+                f"Dimension mismatch: Model initialized with input_dim={self.input_dim}, "
+                f"but Prior expects input_dim={self.prior.input_dim}."
+            )
+
         self.task = task  # task mapping and likelihood
         self.noise = noise  # noise model
 
