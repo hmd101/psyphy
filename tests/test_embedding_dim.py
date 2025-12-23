@@ -168,12 +168,12 @@ def test_local_covariance_shape_mvp():
 
 
 # ==============================================================================
-# Test 6: _compute_U should return (embedding_dim, embedding_dim)
+# Test 6: _compute_sqrt should return (embedding_dim, embedding_dim)
 # ==============================================================================
 
 
-def test_compute_U_shape():
-    """_compute_U should return (input_dim, embedding_dim) with rectangular design."""
+def test_compute_sqrt_shape():
+    """_compute_sqrt should return (input_dim, embedding_dim) with rectangular design."""
     model = WPPM(
         input_dim=2,
         prior=Prior(input_dim=2, basis_degree=3, extra_embedding_dims=1),
@@ -186,7 +186,7 @@ def test_compute_U_shape():
     params = model.init_params(key)
 
     x = jnp.array([0.5, 0.5])
-    U = model._compute_U(params, x)
+    U = model._compute_sqrt(params, x)
 
     # Rectangular design: U should be (input_dim, embedding_dim)
     assert U.shape == (2, 3)  # input_dim=2, embedding_dim=3

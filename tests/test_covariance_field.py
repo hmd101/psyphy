@@ -558,8 +558,8 @@ def test_consistency_with_model_local_covariance(mvp_model):
     assert jnp.allclose(Sigma_field, Sigma_model)
 
 
-def test_consistency_with_model_compute_U(wishart_model):
-    """Test that field.sqrt_cov() matches model._compute_U()."""
+def test_consistency_with_model_compute_sqrt(wishart_model):
+    """Test that field.sqrt_cov() matches model._compute_sqrt()."""
     from psyphy.model.covariance_field import WPPMCovarianceField
 
     key = jr.PRNGKey(1515)
@@ -570,6 +570,6 @@ def test_consistency_with_model_compute_U(wishart_model):
 
     # Compare field vs direct model call
     U_field = field.sqrt_cov(x)
-    U_model = wishart_model._compute_U(params, x)
+    U_model = wishart_model._compute_sqrt(params, x)
 
     assert jnp.allclose(U_field, U_model)
