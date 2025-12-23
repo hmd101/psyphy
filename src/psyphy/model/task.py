@@ -563,10 +563,10 @@ class OddityTask(TaskLikelihood):
             # These U matrices define the two distributions:
 
             # U_ref defines DISTRIBUTION 1 covariance: Σ_ref = U_ref @ U_ref.T + diag_term * I
-            U_ref = model._compute_U(params, ref)  # (input_dim, embedding_dim)
+            U_ref = model._compute_sqrt(params, ref)  # (input_dim, embedding_dim)
 
             # U_comparison defines DISTRIBUTION 2 covariance: Σ_comparison = U_comparison @ U_comparison.T + diag_term * I
-            U_comparison = model._compute_U(
+            U_comparison = model._compute_sqrt(
                 params, comparison
             )  # (input_dim, embedding_dim)
 
