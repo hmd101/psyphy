@@ -186,45 +186,45 @@ class OddityTask(TaskLikelihood):
         g = 0.5 * (jnp.tanh(self.slope * d) + 1.0)
         return self.chance_level + self.performance_range * g
 
-    def loglik(self, params: Any, data: Any, model: Any, noise: Any) -> jnp.ndarray:
-        """
-        Compute log-likelihood using analytical predictions.
+    # def loglik(self, params: Any, data: Any, model: Any, noise: Any) -> jnp.ndarray:
+    #     """
+    #     Compute log-likelihood using ANALYTICAL predictions.
 
-        Parameters
-        ----------
-        params : dict
-            Model parameters
-        data : ResponseData
-            Trial data containing refs, comparisons, responses
-        model : WPPM
-            Model instance
-        noise : NoiseModel
-            Observer noise model
+    #     Parameters
+    #     ----------
+    #     params : dict
+    #         Model parameters
+    #     data : ResponseData
+    #         Trial data containing refs, comparisons, responses
+    #     model : WPPM
+    #         Model instance
+    #     noise : NoiseModel
+    #         Observer noise model
 
-        Returns
-        -------
-        jnp.ndarray
-            Scalar sum of log-likelihoods over all trials
+    #     Returns
+    #     -------
+    #     jnp.ndarray
+    #         Scalar sum of log-likelihoods over all trials
 
-        Notes
-        -----
-        Uses Bernoulli log-likelihood:
-            LL = Σ [y * log(p) + (1-y) * log(1-p)]
-        where p comes from predict() (analytical approximation)
-        """
-        refs, comparisons, responses = data.to_numpy()
-        ps = jnp.array(
-            [
-                self.predict(params, (r, p), model, noise)
-                for r, p in zip(refs, comparisons)
-            ]
-        )
-        eps = 1e-9
-        return jnp.sum(
-            jnp.where(responses == 1, jnp.log(ps + eps), jnp.log(1.0 - ps + eps))
-        )
+    #     Notes
+    #     -----
+    #     Uses Bernoulli log-likelihood:
+    #         LL = Σ [y * log(p) + (1-y) * log(1-p)]
+    #     where p comes from predict() (analytical approximation)
+    #     """
+    #     refs, comparisons, responses = data.to_numpy()
+    #     ps = jnp.array(
+    #         [
+    #             self.predict(params, (r, p), model, noise)
+    #             for r, p in zip(refs, comparisons)
+    #         ]
+    #     )
+    #     eps = 1e-9
+    #     return jnp.sum(
+    #         jnp.where(responses == 1, jnp.log(ps + eps), jnp.log(1.0 - ps + eps))
+    #     )
 
-    def loglik_mc(
+    def loglik(  # formerly loglik_mc
         self,
         params: Any,
         data: Any,
