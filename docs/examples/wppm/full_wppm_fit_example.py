@@ -15,6 +15,7 @@ from __future__ import annotations
 import os
 import sys
 
+os.environ["JAX_PLATFORM_NAME"] = "cpu"
 import jax
 import jax.numpy as jnp
 import matplotlib.pyplot as plt
@@ -36,14 +37,6 @@ from psyphy.model.wppm import WPPM
 PLOTS_DIR = os.path.join(os.path.dirname(__file__), "plots")
 
 # Helper: invert criterion to d* for Oddity task
-
-
-def invert_oddity_criterion_to_d(criterion: float, slope: float = 1.5) -> float:
-    chance = 1.0 / 3.0
-    perf_range = 1.0 - chance
-    g = (criterion - chance) / perf_range
-    val = np.clip(2.0 * float(g) - 1.0, -0.999999, 0.999999)
-    return float(np.arctanh(val) / slope)
 
 
 # Robust ellipse plotting utilities (like in covariance_field_demo.py)
@@ -77,14 +70,29 @@ _UNIT_CIRCLE = np.vstack([np.cos(_THETAS), np.sin(_THETAS)])
 
 
 # 1) Ground truth: Wishart process field
+
+# Original constants describing simulation:
+# NUM_GRID_PTS = jnp.float32(10)      # Number of reference points over stimulus space.
+# MC_SAMPLES = jnp.float32(50)        # Number of simulated trials to compute likelihood.
+# NUM_TRIALS = jnp.float32(4000)      # Number of trials in simulated dataset.
+# # MIN_LR = jnp.float32(-7)
+# # MAX_LR = jnp.float32(-3)
+
+NUM_GRID_PTS = 10  # Number of reference points over stimulus space.
+MC_SAMPLES = 50  # Number of simulated trials to compute likelihood.
+NUM_TRIALS = 40  # Number of trials in simulated dataset.
+# 4000 trials does not work on cpu
+
+
 print("[1/5] Setting up ground-truth WPPM and simulating data...")
 input_dim = 2
 basis_degree = 4  # controls smoothness/complexity
 extra_dims = 1  # embedding dim for Wishart process
-lengthscale = 0.5
-variance_scale = 0.2
+lengthscale = 0.4  # decay rate for basis functions
+variance_scale = 4e-3
+diag_term = 1e-9
 
-task = OddityTask(slope=1.5)
+task = OddityTask()
 noise = GaussianNoise(sigma=0.1)
 # Set all Wishart process arguments in Prior
 truth_prior = Prior(
@@ -100,7 +108,7 @@ truth_model = WPPM(
     prior=truth_prior,
     task=task,
     noise=noise,
-    diag_term=1e-4,  # ensure positive-definite covariances
+    diag_term=diag_term,  # ensure positive-definite covariances
 )
 
 # Sample ground-truth Wishart process weights
@@ -111,12 +119,12 @@ truth_params = truth_model.init_params(jax.random.PRNGKey(123))
 
 
 data = ResponseData()
-num_trials_per_ref = 50
-n_ref_grid = 5
+num_trials_per_ref = NUM_TRIALS  # 4000
+n_ref_grid = 5  # NUM_GRID_PTS
 ref_grid = np.linspace(0.1, 0.9, n_ref_grid)  # [0,1] space, avoid edges
 ref_points = np.stack(np.meshgrid(ref_grid, ref_grid), axis=-1).reshape(-1, 2)
 max_radius = 0.15
-mc_samples = 25
+mc_samples = MC_SAMPLES
 seed = 3
 key = jr.PRNGKey(seed)
 trial_idx = 0
@@ -172,7 +180,6 @@ for ref_np in ref_points:
 print("[2/5] Building model and optimizer...")
 prior = Prior(
     input_dim=input_dim,
-    # scale=0.5,
     basis_degree=basis_degree,
     extra_embedding_dims=extra_dims,
     lengthscale=lengthscale,
@@ -189,8 +196,8 @@ model = WPPM(
 
 # 4) Fit using optimizer (MC-based likelihood)
 print("[3/5] Fitting via MAPOptimizer (MC-based likelihood)...")
-steps = 1200
-lr = 1e-2
+steps = 1000
+lr = 1e-5
 momentum = 0.9
 optimizer = MAPOptimizer(
     steps=steps, learning_rate=lr, momentum=momentum, track_history=True, log_every=10
@@ -216,10 +223,10 @@ def get_cov(params, x):
 
 
 # Compute average scale from ground truth covariances for ellipse scaling
-gt_covs = np.stack([get_cov(truth_params, c) for c in centers])
+gt_covs = np.stack([get_cov(truth_params, c) for c in ref_points])
 gt_scales = np.sqrt([np.mean(np.linalg.eigvalsh(cov)) for cov in gt_covs])
 avg_scale = float(np.mean(gt_scales))
-ellipse_scale = 0.3 * avg_scale  # match simulate_3d.py style
+ellipse_scale = 0.3 * avg_scale  # match simulate_3d.py style, scale is .3 in
 
 fig, ax = plt.subplots(figsize=(7, 7))
 non_pd_counts = [0, 0, 0]
@@ -229,7 +236,7 @@ params_list = [truth_params, init_params, posterior.params]
 legend_handles = []
 for i, (params, color, label) in enumerate(zip(params_list, colors, labels)):
     first = True
-    for center in centers:
+    for center in ref_points:  # centers:
         cov = get_cov(params, center)
         cov = cov + 1e-6 * np.eye(cov.shape[0])
         eigvals = np.linalg.eigvalsh(cov)
@@ -241,7 +248,7 @@ for i, (params, color, label) in enumerate(zip(params_list, colors, labels)):
             [],
             color=color,
             alpha=0.5,
-            linewidth=2.0,
+            linewidth=0.8,
             label=label if first else None,
         )
         plot_ellipse_at_point(
@@ -251,7 +258,7 @@ for i, (params, color, label) in enumerate(zip(params_list, colors, labels)):
             scale=ellipse_scale,
             color=color,
             alpha=0.5,
-            linewidth=2.0,
+            linewidth=0.8,
             label=None,
         )
         if first:
