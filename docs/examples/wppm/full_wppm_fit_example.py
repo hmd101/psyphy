@@ -79,7 +79,7 @@ _UNIT_CIRCLE = np.vstack([np.cos(_THETAS), np.sin(_THETAS)])
 # 1) Ground truth: Wishart process field
 print("[1/5] Setting up ground-truth WPPM and simulating data...")
 input_dim = 2
-basis_degree = 2  # controls smoothness/complexity
+basis_degree = 4  # controls smoothness/complexity
 extra_dims = 1  # embedding dim for Wishart process
 lengthscale = 0.5
 variance_scale = 0.2
@@ -172,7 +172,7 @@ for ref_np in ref_points:
 print("[2/5] Building model and optimizer...")
 prior = Prior(
     input_dim=input_dim,
-    scale=0.5,
+    # scale=0.5,
     basis_degree=basis_degree,
     extra_embedding_dims=extra_dims,
     lengthscale=lengthscale,
