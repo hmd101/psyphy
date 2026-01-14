@@ -70,38 +70,16 @@ class TaskLikelihood(ABC):
 
 class OddityTask(TaskLikelihood):
     """
-    Three-alternative forced-choice oddity task.
+    Three-alternative forced-choice oddity task (MC-based only).
 
-    In an oddity task, the observer is presented with three stimuli: two identical
-    references and one comparison. The task is to identify which stimulus is the "odd one out"
-    (the comparison). Performance depends on the discriminability between reference and comparison.
-
-    This class provides two likelihood computation methods:
-
-    1. Analytical approximation (MVP mode):
-       - `predict()`: maps discriminability to P(correct) via tanh
-       - `loglik()`: Bernoulli likelihood using analytical predictions
-       - Fast, differentiable, suitable for gradient-based optimization
-
-    2. Monte Carlo simulation (Full WPPM mode):
-       - `loglik_mc()`: simulates the full 3-stimulus oddity task
-       - Samples three internal representations per trial (z0, z1, z2)
-       - Uses proper oddity decision rule with three pairwise distances
-       - More accurate for complex covariance structures
-       - Suitable for validation and benchmarking
+    Implements the full 3-stimulus oddity task using Monte Carlo simulation:
+        - Samples three internal representations per trial (z0, z1, z2)
+        - Uses proper oddity decision rule with three pairwise distances
+        - Suitable for complex covariance structures
 
     Parameters
     ----------
-    slope : float, default=1.5
-        Slope parameter for analytical tanh mapping in predict().
-        Controls steepness of discriminability -> performance relationship.
-
-    Attributes
-    ----------
-    chance_level : float
-        Chance performance for oddity task (1/3)
-    performance_range : float
-        Range from chance to perfect performance (2/3)
+    None (no slope parameter needed)
 
     Notes
     -----
@@ -186,45 +164,7 @@ class OddityTask(TaskLikelihood):
         g = 0.5 * (jnp.tanh(self.slope * d) + 1.0)
         return self.chance_level + self.performance_range * g
 
-    # def loglik(self, params: Any, data: Any, model: Any, noise: Any) -> jnp.ndarray:
-    #     """
-    #     Compute log-likelihood using ANALYTICAL predictions.
-
-    #     Parameters
-    #     ----------
-    #     params : dict
-    #         Model parameters
-    #     data : ResponseData
-    #         Trial data containing refs, comparisons, responses
-    #     model : WPPM
-    #         Model instance
-    #     noise : NoiseModel
-    #         Observer noise model
-
-    #     Returns
-    #     -------
-    #     jnp.ndarray
-    #         Scalar sum of log-likelihoods over all trials
-
-    #     Notes
-    #     -----
-    #     Uses Bernoulli log-likelihood:
-    #         LL = Σ [y * log(p) + (1-y) * log(1-p)]
-    #     where p comes from predict() (analytical approximation)
-    #     """
-    #     refs, comparisons, responses = data.to_numpy()
-    #     ps = jnp.array(
-    #         [
-    #             self.predict(params, (r, p), model, noise)
-    #             for r, p in zip(refs, comparisons)
-    #         ]
-    #     )
-    #     eps = 1e-9
-    #     return jnp.sum(
-    #         jnp.where(responses == 1, jnp.log(ps + eps), jnp.log(1.0 - ps + eps))
-    #     )
-
-    def loglik(  # formerly loglik_mc
+    def loglik(
         self,
         params: Any,
         data: Any,
