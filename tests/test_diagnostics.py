@@ -35,7 +35,7 @@ def trained_model():
     # Create and fit model
     model = WPPM(
         input_dim=2,
-        prior=Prior(input_dim=2, scale=0.5),
+        prior=Prior(input_dim=2, basis_degree=3, variance_scale=1.0, decay_rate=0.7),
         task=OddityTask(),
         noise=GaussianNoise(),
     )

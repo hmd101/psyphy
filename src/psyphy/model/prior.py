@@ -4,12 +4,7 @@ prior.py
 
 Prior distributions for WPPM parameters
 
-MVP implementation:
-- Gaussian prior over diagonal log-variances
-
-Forward compatibility (Full WPPM mode):
-- Exposes hyperparameters that will be used when the full Wishart Process
-  covariance field is implemented:
+Hyperparameters:
     * variance_scale : global scaling factor for covariance magnitude
     * lengthscale    : smoothness/length-scale controlling spatial variation
     * extra_embedding_dims : embedding dimension for basis expansions
@@ -18,7 +13,7 @@ Connections
 -----------
 - WPPM calls Prior.sample_params() to initialize model parameters
 - WPPM adds Prior.log_prob(params) to task log-likelihoods to form the log posterior
-- In Full WPPM mode, Prior will generate structured parameters for basis expansions
+- Prior will generate structured parameters for basis expansions
   and lengthscale-controlled smooth covariance fields
 """
 
@@ -42,11 +37,8 @@ class Prior:
     ----------
     input_dim : int
         Dimensionality of the model space (same as WPPM.input_dim)
-    scale : float, default=0.5
-        Stddev of Gaussian prior for log_diag entries (MVP only).
     basis_degree : int | None, default=None
         Degree of Chebyshev basis for Wishart process.
-        If None, uses MVP mode with log_diag parameters.
         If set, uses Wishart mode with W coefficients.
     variance_scale : float, default=1.0
         Prior variance for degree-0 (constant) coefficient in Wishart mode.
@@ -54,7 +46,7 @@ class Prior:
     decay_rate : float, default=0.5
         Geometric decay rate for prior variance over higher-degree coefficients.
         Prior variance for degree-d coefficient = variance_scale * (decay_rate^d).
-        Smaller decay_rate → stronger smoothness prior.
+        Smaller decay_rate -> stronger smoothness prior.
     lengthscale : float, default=1.0
         Alias for decay_rate (kept for backward compatibility).
         If both specified, decay_rate takes precedence.
@@ -64,7 +56,6 @@ class Prior:
     """
 
     input_dim: int
-    scale: float = 0.5
     basis_degree: int | None = None
     variance_scale: float = 1.0
     decay_rate: float = 0.5
@@ -81,16 +72,16 @@ class Prior:
         if self.decay_rate == 0.5 and self.lengthscale != 1.0:
             self.decay_rate = self.lengthscale
 
-    @classmethod
-    def default(cls, input_dim: int, scale: float = 0.5) -> Prior:
-        """Convenience constructor with MVP defaults."""
-        return cls(input_dim=input_dim, scale=scale)
+    # @classmethod
+    # def default(cls, input_dim: int, scale: float = 0.5) -> Prior:
+    #     """Convenience constructor with MVP defaults."""
+    #     return cls(input_dim=input_dim, scale=scale)
 
     def _compute_basis_degree_grid(self) -> jnp.ndarray:
         """
         Compute total degree for each basis function coefficient.
 
-        For 2D: basis functions are products φᵢ(x₁) * φⱼ(x₂)
+        For 2D: basis functions are products φ_i(x_1) * φ_j(x_2)
         Total degree of φ_ij is i + j.
 
         Note: For basis_degree=d, we have (d+1) basis functions [T_0, ..., T_d] per dimension,
@@ -143,16 +134,13 @@ class Prior:
         """
         Sample initial parameters from the prior.
 
-        MVP mode (basis_degree=None):
-            Returns {"log_diag": shape (input_dim,)}
 
-        Wishart mode (basis_degree set):
-            Returns {"W": shape (degree+1, degree+1, input_dim, embedding_dim)}
-            for 2D, where embedding_dim = input_dim + extra_embedding_dims
+        Returns {"W": shape (degree+1, degree+1, input_dim, embedding_dim)}
+        for 2D, where embedding_dim = input_dim + extra_embedding_dims
 
-            Note: The 3rd dimension is input_dim (output space dimension).
-            This matches the einsum in _compute_sqrt:
-            U = einsum("ijde,ij->de", W, phi) where d indexes input_dim.
+        Note: The 3rd dimension is input_dim (output space dimension).
+        This matches the einsum in _compute_sqrt:
+        U = einsum("ijde,ij->de", W, phi) where d indexes input_dim.
 
         Parameters
         ----------
@@ -164,11 +152,12 @@ class Prior:
             Parameter dictionary
         """
         if self.basis_degree is None:
-            # MVP mode: simple diagonal covariance
-            log_diag = jr.normal(key, shape=(self.input_dim,)) * self.scale
-            return {"log_diag": log_diag}
+            raise ValueError(
+                "'basis_degree' is None; please set "
+                "`Prior.basis_degree` to an integer >0."
+            )
 
-        # Wishart mode: basis function coefficients W
+        # basis function coefficients W
         variances = self._compute_W_prior_variances()
         embedding_dim = self.input_dim + self.extra_embedding_dims
 
@@ -208,11 +197,7 @@ class Prior:
         """
         Compute log prior density (up to a constant)
 
-        MVP mode:
-            Isotropic Gaussian on log_diag
-
-        Wishart mode:
-            Gaussian prior on W with smoothness via decay_rate
+        Gaussian prior on W with smoothness via decay_rate
             log p(W) = Σ_ij log N(W_ij | 0, σ_ij^2) where σ_ij^2 = prior variance
 
         Parameters
@@ -225,11 +210,6 @@ class Prior:
         log_prob : float
             Log prior probability (up to normalizing constant)
         """
-        if "log_diag" in params:
-            # MVP mode
-            log_diag = params["log_diag"]
-            var = self.scale**2
-            return -0.5 * jnp.sum((log_diag**2) / var)
 
         if "W" in params:
             # Wishart mode
@@ -246,4 +226,4 @@ class Prior:
             elif self.input_dim == 3:
                 return -0.5 * jnp.sum((W**2) / (variances[:, :, :, None, None] + 1e-10))
 
-        raise ValueError("params must contain either 'log_diag' (MVP) or 'W' (Wishart)")
+        raise ValueError("params must contain weights 'W'")
