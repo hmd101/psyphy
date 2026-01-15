@@ -170,7 +170,7 @@ class TestConditionOnObservations:
         """Create a model with online config."""
         return WPPM(
             input_dim=2,
-            prior=Prior(input_dim=2, scale=0.5),
+            prior=Prior(input_dim=2),
             task=OddityTask(),
             noise=GaussianNoise(),
             online_config=OnlineConfig(strategy="full", refit_interval=1),
