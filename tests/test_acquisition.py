@@ -56,7 +56,7 @@ def fitted_model():
     """Create and fit a simple WPPM model."""
     model = WPPM(
         input_dim=2,
-        prior=Prior(input_dim=2, scale=0.5),
+        prior=Prior(input_dim=2),
         task=OddityTask(),
         noise=GaussianNoise(),
     )

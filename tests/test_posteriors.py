@@ -34,7 +34,7 @@ class TestParameterPosterior:
         """Create a simple WPPM model."""
         return WPPM(
             input_dim=2,
-            prior=Prior(input_dim=2, scale=0.5),
+            prior=Prior(input_dim=2),
             task=OddityTask(),
             noise=GaussianNoise(),
         )
@@ -137,7 +137,7 @@ class TestPredictivePosterior:
         """Create a simple WPPM model."""
         return WPPM(
             input_dim=2,
-            prior=Prior(input_dim=2, scale=0.5),
+            prior=Prior(input_dim=2),
             task=OddityTask(),
             noise=GaussianNoise(),
         )
@@ -242,7 +242,7 @@ class TestIntegration:
         # 1. Create model
         model = WPPM(
             input_dim=2,
-            prior=Prior(input_dim=2, scale=0.5),
+            prior=Prior(input_dim=2),
             task=OddityTask(),
             noise=GaussianNoise(),
         )
