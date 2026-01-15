@@ -45,7 +45,7 @@ class TaskLikelihood(ABC):
 
     @abstractmethod
     def predict(
-        self, params: Any, stimuli: Stimulus, model: Any, noise: Any
+    self, params: Any, stimuli: Stimulus, model: Any, noise: Any
     ) -> jnp.ndarray:
         """Predict probability of correct response for a stimulus."""
         ...
@@ -120,13 +120,84 @@ class OddityTask(TaskLikelihood):
     def predict(
         self, params: Any, stimuli: Stimulus, model: Any, noise: Any
     ) -> jnp.ndarray:
-        """Predict p(correct) for a stimulus.
+        """Predict p(correct) for a single (ref, comparison) stimulus.
 
-        OddityTask currently has no analytical approximation in MC-only mode.
-        Use `loglik()` for fitting or implement a task-specific approximation.
+        Even though OddityTask is *MC-only*, we still implement ``predict``.
+        Reason: large parts of the library (posterior predictive, acquisition
+        functions, diagnostics, etc.) need a forward model that returns
+        p(correct) at candidate stimuli. Historically this used an analytical
+        approximation, but in MC-only mode we compute it via simulation.
+
+        Notes
+        -----
+        - This method is intentionally lightweight: it performs the same
+          single-trial Monte Carlo simulation used by ``loglik``.
+        - If you need to control MC fidelity/smoothing/reproducibility, prefer
+          calling ``loglik(..., num_samples=..., bandwidth=..., key=...)`` or
+          calling the model APIs that forward these task kwargs.
         """
-        raise NotImplementedError(
-            "OddityTask.predict() is not available in MC-only mode; use loglik()."
+
+        # Default MC controls for prediction. We keep them modest so that
+        # prediction-heavy workflows (acquisition, plotting) don't become
+        # prohibitively expensive. Callers that need higher fidelity should
+        # use ``loglik`` with explicit kwargs.
+        num_samples = 512
+        bandwidth = 1e-2
+        key = jr.PRNGKey(0)
+
+        ref, comparison = stimuli
+        return self._simulate_trial_mc(
+            params=params,
+            ref=ref,
+            comparison=comparison,
+            model=model,
+            noise=noise,
+            num_samples=num_samples,
+            bandwidth=bandwidth,
+            key=key,
+        )
+
+    # NOTE: We allow optional kwargs on predict as a non-breaking extension.
+    # The base class doesn't expose kwargs here to keep the main API simple, but
+    # model/inference utilities that need control can call this method directly
+    # (or, preferably, go through ``loglik``).
+    def predict_with_kwargs(
+        self,
+        params: Any,
+        stimuli: Stimulus,
+        model: Any,
+        noise: Any,
+        **kwargs: Any,
+    ) -> jnp.ndarray:
+        """Like ``predict`` but with explicit MC controls.
+
+        This exists mainly to support internal callers that want to thread
+        through ``num_samples``, ``bandwidth``, and ``key`` in MC-only mode.
+        """
+        num_samples = int(kwargs.pop("num_samples", 512))
+        bandwidth = float(kwargs.pop("bandwidth", 1e-2))
+        key = kwargs.pop("key", None)
+        if kwargs:
+            unexpected = ", ".join(sorted(kwargs.keys()))
+            raise TypeError(
+                f"Unexpected keyword arguments for OddityTask.predict_with_kwargs: {unexpected}"
+            )
+
+        if num_samples <= 0:
+            raise ValueError(f"num_samples must be > 0, got {num_samples}")
+        if key is None:
+            key = jr.PRNGKey(0)
+
+        ref, comparison = stimuli
+        return self._simulate_trial_mc(
+            params=params,
+            ref=ref,
+            comparison=comparison,
+            model=model,
+            noise=noise,
+            num_samples=num_samples,
+            bandwidth=bandwidth,
+            key=key,
         )
 
     def loglik(

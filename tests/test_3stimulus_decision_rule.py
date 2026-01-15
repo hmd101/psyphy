@@ -29,7 +29,7 @@ class TestThreeStimulusDecisionRule:
         # Create  model
         model = WPPM(
             input_dim=2,
-            prior=Prior(input_dim=2),
+            prior=Prior(input_dim=2, basis_degree=2),
             task=OddityTask(),
             noise=GaussianNoise(sigma=0.01),  # Small noise
         )
@@ -73,7 +73,7 @@ class TestThreeStimulusDecisionRule:
         # Create a simple MVP model with small noise
         model = WPPM(
             input_dim=2,
-            prior=Prior(input_dim=2),
+            prior=Prior(input_dim=2, basis_degree=2),
             task=OddityTask(),
             noise=GaussianNoise(sigma=0.01),  # Small noise for easy discrimination
         )
@@ -113,7 +113,7 @@ class TestThreeStimulusDecisionRule:
         """
         model = WPPM(
             input_dim=2,
-            prior=Prior(input_dim=2),
+            prior=Prior(input_dim=2, basis_degree=2),
             task=OddityTask(),
             noise=GaussianNoise(sigma=0.05),
         )
@@ -306,7 +306,7 @@ class TestEdgeCases:
         """
         model = WPPM(
             input_dim=2,
-            prior=Prior(input_dim=2),
+            prior=Prior(input_dim=2, basis_degree=2),
             task=OddityTask(),
             noise=GaussianNoise(sigma=0.01),
         )
@@ -345,7 +345,7 @@ class TestEdgeCases:
         """
         model = WPPM(
             input_dim=2,
-            prior=Prior(input_dim=2),
+            prior=Prior(input_dim=2, basis_degree=2),
             task=OddityTask(),
             noise=GaussianNoise(sigma=0.01),
         )
@@ -383,7 +383,7 @@ class TestEdgeCases:
         """
         model = WPPM(
             input_dim=2,
-            prior=Prior(input_dim=2),
+            prior=Prior(input_dim=2, basis_degree=2),
             task=OddityTask(),
             noise=GaussianNoise(sigma=0.01),
         )
@@ -421,7 +421,7 @@ class TestEdgeCases:
         """
         model = WPPM(
             input_dim=2,
-            prior=Prior(input_dim=2),
+            prior=Prior(input_dim=2, basis_degree=2),
             task=OddityTask(),
             noise=GaussianNoise(sigma=0.01),
         )
@@ -470,7 +470,7 @@ class TestEdgeCases:
         """
         model = WPPM(
             input_dim=2,
-            prior=Prior(input_dim=2),
+            prior=Prior(input_dim=2, basis_degree=2),
             task=OddityTask(),
             noise=GaussianNoise(sigma=0.01),
         )
@@ -525,7 +525,7 @@ class TestEdgeCases:
         """Test that num_samples=0 raises an error."""
         model = WPPM(
             input_dim=2,
-            prior=Prior(input_dim=2),
+            prior=Prior(input_dim=2, basis_degree=2),
             task=OddityTask(),
             noise=GaussianNoise(sigma=0.01),
         )
@@ -553,7 +553,7 @@ class TestEdgeCases:
         """
         model = WPPM(
             input_dim=2,
-            prior=Prior(input_dim=2),
+            prior=Prior(input_dim=2, basis_degree=2),
             task=OddityTask(),
             noise=GaussianNoise(sigma=0.01),
         )
@@ -602,7 +602,7 @@ class TestDecisionRuleSymmetry:
         """
         model = WPPM(
             input_dim=2,
-            prior=Prior(input_dim=2),
+            prior=Prior(input_dim=2, basis_degree=2),
             task=OddityTask(),
             noise=GaussianNoise(sigma=0.01),
         )
