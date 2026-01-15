@@ -46,7 +46,7 @@ class TestBasisExpansion:
     def test_embed_stimulus_shape(self):
         """Embedding should transform input_dim -> embedding_dim."""
         input_dim = 2
-        basis_degree = 5  # Hong et al. uses degree 5
+        basis_degree = 5
         model = WPPM(
             input_dim=input_dim,
             prior=Prior(input_dim=input_dim, basis_degree=basis_degree),

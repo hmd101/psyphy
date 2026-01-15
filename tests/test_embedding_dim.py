@@ -15,7 +15,7 @@ from psyphy.model.noise import GaussianNoise
 from psyphy.model.task import OddityTask
 
 # ==============================================================================
-# Test 1: WPPM constructor should NOT accept embedding_dim parameter
+# Test WPPM constructor should NOT accept embedding_dim parameter
 # ==============================================================================
 
 
@@ -46,7 +46,7 @@ def test_wppm_no_embedding_dim_parameter():
 
 
 # ==============================================================================
-# Test 2: embedding_dim should be computed from input_dim + extra_dims
+# Test embedding_dim should be computed from input_dim + extra_dims
 # ==============================================================================
 
 
@@ -78,26 +78,7 @@ def test_embedding_dim_computed_correctly(
 
 
 # ==============================================================================
-# Test 3: MVP mode should have embedding_dim = input_dim (no extra_dims)
-# ==============================================================================
-
-
-def test_mvp_mode_embedding_dim():
-    """In MVP mode, embedding_dim should equal input_dim (extra_dims unused)."""
-    model = WPPM(
-        input_dim=2,
-        prior=Prior(input_dim=2),
-        task=OddityTask(),
-        noise=GaussianNoise(),
-        extra_dims=1,  # Should be ignored in MVP
-    )
-
-    # MVP mode: embedding_dim = input_dim (extra_dims don't make sense in MVP)
-    assert model.embedding_dim == 2
-
-
-# ==============================================================================
-# Test 4: Wishart mode W parameter shape should use full embedding space
+# Test Wishart model W parameter shape should use full embedding space
 # ==============================================================================
 
 
@@ -124,7 +105,7 @@ def test_wishart_W_shape_uses_full_embedding_dim():
 
 
 # ==============================================================================
-# Test 5: local_covariance should return (input_dim, input_dim)
+# Test local_covariance should return (input_dim, input_dim)
 # ==============================================================================
 
 
@@ -148,27 +129,8 @@ def test_local_covariance_shape_wishart():
     assert Sigma.shape == (2, 2)
 
 
-def test_local_covariance_shape_mvp():
-    """In MVP mode, local_covariance should return (input_dim, input_dim)."""
-    model = WPPM(
-        input_dim=2,
-        prior=Prior(input_dim=2),
-        task=OddityTask(),
-        noise=GaussianNoise(),
-    )
-
-    key = jr.PRNGKey(42)
-    params = model.init_params(key)
-
-    x = jnp.array([0.5, 0.5])
-    Sigma = model.local_covariance(params, x)
-
-    # MVP: should be (input_dim, input_dim) = (2, 2)
-    assert Sigma.shape == (2, 2)
-
-
 # ==============================================================================
-# Test 6: _compute_sqrt should return (embedding_dim, embedding_dim)
+# Test _compute_sqrt should return (embedding_dim, embedding_dim)
 # ==============================================================================
 
 
@@ -222,7 +184,7 @@ def test_full_embedding_covariance_positive_definite():
 
 
 # ==============================================================================
-# Test 9: Stimulus subspace should also be positive definite
+# Test  Stimulus subspace should also be positive definite
 # ==============================================================================
 
 
@@ -245,54 +207,3 @@ def test_stimulus_subspace_positive_definite():
     # Check positive definiteness
     eigvals = jnp.linalg.eigvalsh(Sigma_stim)
     assert jnp.all(eigvals > 0)
-
-
-# ==============================================================================
-# Test  Backward compatibility - old tests should still pass
-# ==============================================================================
-
-
-def test_backward_compat_mvp_field():
-    """Ensure MVP mode CovarianceField still works as before."""
-    model = WPPM(
-        input_dim=2,
-        prior=Prior(input_dim=2),
-        task=OddityTask(),
-        noise=GaussianNoise(),
-    )
-
-    key = jr.PRNGKey(42)
-    field = WPPMCovarianceField.from_prior(model, key)
-
-    x = jnp.array([0.5, 0.5])
-    Sigma = field.cov(x)
-
-    # MVP should return (input_dim, input_dim)
-    assert Sigma.shape == (2, 2)
-    assert jnp.all(jnp.linalg.eigvalsh(Sigma) > 0)
-
-
-def test_backward_compat_wishart_field():
-    """Ensure Wishart mode CovarianceField works with rectangular U design."""
-    model = WPPM(
-        input_dim=2,
-        prior=Prior(input_dim=2, basis_degree=3, extra_embedding_dims=1),
-        task=OddityTask(),
-        noise=GaussianNoise(),
-        extra_dims=1,
-    )
-
-    key = jr.PRNGKey(42)
-    field = WPPMCovarianceField.from_prior(model, key)
-
-    x = jnp.array([0.5, 0.5])
-    Sigma = field.cov(x)
-    U = field.sqrt_cov(x)
-
-    # Rectangular design: Σ is stimulus size, U is rectangular
-    assert Sigma.shape == (2, 2)  # input_dim = 2
-    assert U.shape == (2, 3)  # input_dim × embedding_dim = 2×3
-
-    # Verify Σ = U U^T + λI
-    Sigma_from_U = U @ U.T + model.diag_term * jnp.eye(2)
-    assert jnp.allclose(Sigma, Sigma_from_U, rtol=1e-5)
