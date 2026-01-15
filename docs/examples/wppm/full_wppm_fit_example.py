@@ -88,7 +88,7 @@ print("[1/5] Setting up ground-truth WPPM and simulating data...")
 input_dim = 2
 basis_degree = 4  # controls smoothness/complexity
 extra_dims = 1  # embedding dim for Wishart process
-lengthscale = 0.4  # decay rate for basis functions
+decay_rate = 0.4  # decay rate for basis functions
 variance_scale = 4e-3
 diag_term = 1e-9
 
@@ -99,7 +99,7 @@ truth_prior = Prior(
     input_dim=input_dim,
     basis_degree=basis_degree,
     extra_embedding_dims=extra_dims,
-    lengthscale=lengthscale,
+    decay_rate=decay_rate,
     variance_scale=variance_scale,
 )
 truth_model = WPPM(
@@ -182,7 +182,7 @@ prior = Prior(
     input_dim=input_dim,
     basis_degree=basis_degree,
     extra_embedding_dims=extra_dims,
-    lengthscale=lengthscale,
+    decay_rate=decay_rate,
     variance_scale=variance_scale,
 )
 model = WPPM(

@@ -27,7 +27,7 @@ Core design
    - Defines the distribution over model parameters.
    - MVP: Gaussian prior over diagonal log-variances.
    - Full WPPM mode: structured prior over basis weights and
-     lengthscale-controlled covariance fields.
+     decay_rate-controlled covariance fields.
 
 3. TaskLikelihood (model/task.py):
    - Encodes the psychophysical decision rule.

@@ -29,7 +29,7 @@ from psyphy.model.noise import GaussianNoise
 input_dim = 2
 basis_degree = 2
 extra_dims = 1
-lengthscale = 0.5
+decay_rate = 0.5
 variance_scale = 0.2
 
 task = OddityTask(slope=1.5)
@@ -42,7 +42,7 @@ model = WPPM(
     noise=noise,
     basis_degree=basis_degree,
     extra_dims=extra_dims,
-    lengthscale=lengthscale,
+    decay_rate=decay_rate,
     variance_scale=variance_scale,
 )
 ```
