@@ -503,6 +503,7 @@ class WPPM(Model):
         refs: jnp.ndarray,
         probes: jnp.ndarray,
         responses: jnp.ndarray,
+        **task_kwargs: Any,
     ) -> jnp.ndarray:
         """
         Compute the log-likelihood for arrays of trials.
@@ -534,16 +535,17 @@ class WPPM(Model):
         # ResponseData.add_trial(ref, probe, resp)
         for r, p, y in zip(refs, probes, responses):
             data.add_trial(r, p, int(y))
-        return self.task.loglik(params, data, self, self.noise)
+        return self.task.loglik(params, data, self, self.noise, **task_kwargs)
 
-    def log_likelihood_from_data(self, params: Params, data: Any) -> jnp.ndarray:
-        """
-        Compute log-likelihood directly from a ResponseData object.
+    def log_likelihood_from_data(
+        self, params: Params, data: Any, **task_kwargs: Any
+    ) -> jnp.ndarray:
+        """Compute log-likelihood directly from a ResponseData object.
 
         Why delegate to the task?
             - The task knows the decision rule (oddity, 2AFC, ...).
-            - The task can use the model (this WPPM) to fetch discriminabilities
-            - and the task can use the noise model if it needs MC simulation
+            - The task can use the model (this WPPM) to fetch discriminabilities.
+            - The task can use the noise model if it needs MC simulation.
 
         Parameters
         ----------
@@ -555,9 +557,9 @@ class WPPM(Model):
         Returns
         -------
         loglik : jnp.ndarray
-            scalar log-likelihood (task-only; add prior outside if needed)
+            Scalar log-likelihood (task-only; add prior outside if needed).
         """
-        return self.task.loglik(params, data, self, self.noise)
+        return self.task.loglik(params, data, self, self.noise, **task_kwargs)
 
     # ----------------------------------------------------------------------
     # POSTERIOR-STYLE CONVENIENCE (OPTIONAL)

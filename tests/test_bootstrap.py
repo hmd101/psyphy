@@ -334,7 +334,9 @@ class TestBootstrapCompareModels:
         # Same model configuration
         model1 = WPPM(
             input_dim=2,
-            prior=Prior(input_dim=2),
+            prior=Prior(
+                input_dim=2,
+            ),
             task=OddityTask(),
             noise=GaussianNoise(),
         )

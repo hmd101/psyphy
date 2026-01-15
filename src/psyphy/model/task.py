@@ -1,41 +1,29 @@
-"""
-task.py
--------
+"""psyphy.model.task
 
-Task likelihoods for different psychophysical experimetns.
+Task likelihoods for psychophysical experiments.
 
-Each TaskLikelihood defines:
-- predict(params, stimuli, model, noise)
-    Map discriminability (computed by model) to probability of correct response.
+This module defines task-specific mappings from a model (e.g., WPPM) and stimuli
+to response likelihoods.
 
-- loglik(params, data, model, noise)
+Current direction
+-----------------
+`OddityTask`: the log-likelihood is computed via Monte Carlo observer
+simulation of the full 3-stimulus oddity decision rule (two identical references,
+one comparison).
+
+The public API is:
+
+- ``TaskLikelihood.predict(params, stimuli, model, noise)``
+    Optional fast predictor for p(correct). For MC-only tasks this may be
+    unimplemented.
+
+- ``TaskLikelihood.loglik(params, data, model, noise, **kwargs)``
     Compute log-likelihood of observed responses under this task.
-
-- loglik_mc(params, data, model, noise, num_samples, bandwidth, key)
-    [Optional] Compute log-likelihood via Monte Carlo observer simulation.
-
-
-MVP implementation:
-- OddityTask (3AFC) and TwoAFC.
-- Both use simple sigmoid-like mappings of discriminability -> performance
-- loglik implemented as Bernoulli log-prob with these predictions
-
-Full WPPM mode:
-- OddityTask.loglik_mc() provides Monte Carlo likelihood computation:
-  * Implements the full 3-stimulus oddity task (two refs, 1 comparison)
-  * Sample three internal noisy representations: z0, z1 ~ N(ref, Σ_ref), z2 ~ N(comparison, Σ_comparison)
-  * Compute three pairwise Mahalanobis distances: d^2(z0,z1), d^2(z0,z2), d^2(z1,z2)
-  * Decision rule: comparison z2 is odd one out if min[d^2(z0,z2), d^2(z1,z2)] > d^2(z0,z1)
-  * Apply logistic CDF smoothing with bandwidth parameter
-  * Average over MC samples to estimate P(correct)
-
 
 Connections
 -----------
-- WPPM delegates to task.predict and task.loglik (never re-implements likelihood)
-- Noise model is passed through from WPPM so tasks can simulate responses.
-- We can define new tasks by subclassing TaskLikelihood and implementing
-  predict() and loglik().
+- WPPM delegates to the task to compute likelihood.
+- Noise models are passed through so tasks can simulate observer responses.
 """
 
 from __future__ import annotations
@@ -63,9 +51,19 @@ class TaskLikelihood(ABC):
         ...
 
     @abstractmethod
-    def loglik(self, params: Any, data: Any, model: Any, noise: Any) -> jnp.ndarray:
-        """Compute log-likelihood of observed responses under this task"""
-        ...
+    def loglik(
+        self, params: Any, data: Any, model: Any, noise: Any, **kwargs: Any
+    ) -> jnp.ndarray:
+                """Compute log-likelihood of observed responses under this task.
+
+                Why ``**kwargs``?
+                - Different tasks may need different optional controls.
+                - MC-based tasks (like :class:`OddityTask`) need parameters such as
+                    ``num_samples``, ``bandwidth``, and a PRNG ``key``.
+                - Keeping these as kwargs lets model/inference code forward task-specific
+                    options while preserving a single polymorphic API.
+                """
+                ...
 
 
 class OddityTask(TaskLikelihood):
@@ -77,16 +75,9 @@ class OddityTask(TaskLikelihood):
         - Uses proper oddity decision rule with three pairwise distances
         - Suitable for complex covariance structures
 
-    Parameters
-    ----------
-    None (no slope parameter needed)
-
     Notes
     -----
-    The analytical approximation in `predict()` uses:
-        P(correct) = 1/3 + 2/3 * (1 + tanh(slope * d)) / 2
-
-    MC simulation in loglik_mc() (Full 3-stimulus oddity):
+    MC simulation in loglik() (full 3-stimulus oddity):
         1. Sample three internal representations: z_ref, z_refprime ~ N(ref, Σ_ref), z_comparison ~ N(comparison, Σ_comparison)
         2. Compute average covariance: Σ_avg = (2/3) Σ_ref + (1/3) Σ_comparison
         3. Compute three pairwise Mahalanobis distances:
@@ -106,73 +97,40 @@ class OddityTask(TaskLikelihood):
     >>> import jax.random as jr
     >>>
     >>> # Create task and model
-    >>> task = OddityTask(slope=1.5)
+    >>> task = OddityTask()
     >>> model = WPPM(
     ...     input_dim=2, prior=Prior(input_dim=2), task=task, noise=GaussianNoise()
     ... )
     >>> params = model.init_params(jr.PRNGKey(0))
-    >>>
-    >>> # Analytical prediction
-    >>> ref = jnp.array([0.0, 0.0])
-    >>> comparison = jnp.array([0.5, 0.5])
-    >>> p_correct = task.predict(params, (ref, comparison), model, model.noise)
-    >>> print(f"P(correct) \approx {p_correct:.3f}")
-    >>>
-    >>> # MC simulation (more accurate)
+
+    >>> # MC simulation
     >>> from psyphy.data.dataset import ResponseData
     >>> data = ResponseData()
     >>> data.add_trial(ref, comparison, resp=1)
-    >>> ll_mc = task.loglik_mc(
+    >>> ll_mc = task.loglik(
     ...     params, data, model, model.noise, num_samples=1000, key=jr.PRNGKey(42)
     ... )
     >>> print(f"Log-likelihood (MC): {ll_mc:.4f}")
     """
 
-    def __init__(self, slope: float = 1.5) -> None:
-        self.slope = float(slope)
-        self.chance_level: float = 1.0 / 3.0
-        self.performance_range: float = 1.0 - self.chance_level
+    def __init__(self) -> None:
+        # No analytical parameters in MC-only mode.
+        pass
 
     def predict(
         self, params: Any, stimuli: Stimulus, model: Any, noise: Any
     ) -> jnp.ndarray:
+        """Predict p(correct) for a stimulus.
+
+        OddityTask currently has no analytical approximation in MC-only mode.
+        Use `loglik()` for fitting or implement a task-specific approximation.
         """
-        Predict probability of correct response using analytical approximation.
-
-        Parameters
-        ----------
-        params : dict
-            Model parameters (e.g., W for WPPM)
-        stimuli : tuple[jnp.ndarray, jnp.ndarray]
-            (reference, comparison) stimulus pair
-        model : WPPM
-            Model instance providing discriminability()
-        noise : NoiseModel
-            Observer noise model (currently unused in analytical version)
-
-        Returns
-        -------
-        jnp.ndarray
-            Scalar probability of correct response, in range [1/3, 1]
-
-        Notes
-        -----
-        Uses tanh mapping: P(correct) = 1/3 + 2/3 * sigmoid(slope * d)
-        where d is discriminability from model.discriminability()
-        """
-        d = model.discriminability(params, stimuli)
-        g = 0.5 * (jnp.tanh(self.slope * d) + 1.0)
-        return self.chance_level + self.performance_range * g
+        raise NotImplementedError(
+            "OddityTask.predict() is not available in MC-only mode; use loglik()."
+        )
 
     def loglik(
-        self,
-        params: Any,
-        data: Any,
-        model: Any,
-        noise: Any,
-        num_samples: int = 1000,
-        bandwidth: float = 1e-2,
-        key: Any = None,
+        self, params: Any, data: Any, model: Any, noise: Any, **kwargs: Any
     ) -> jnp.ndarray:
         """
         Compute log-likelihood via Monte Carlo observer simulation.
@@ -189,14 +147,14 @@ class OddityTask(TaskLikelihood):
 
         Parameters
         ----------
-        params : dict
-            Model parameters (must contain 'W' for WPPM basis coefficients)
+        params : Any
+            Model parameters as expected by ``model._compute_sqrt``.
         data : ResponseData
             Trial data with refs, comparisons, and responses
         model : WPPM
-            Model instance providing compute_U() for covariance computation
+            Model instance providing ``_compute_sqrt`` for covariance computation.
         noise : NoiseModel
-            Observer noise model (provides sigma for diagonal noise term)
+            Observer noise model (provides ``sample_standard``).
         num_samples : int, default=1000
             Number of Monte Carlo samples per trial.
             - Use 1000-5000 for accurate likelihood estimation
@@ -214,7 +172,7 @@ class OddityTask(TaskLikelihood):
         -------
         jnp.ndarray
             Scalar sum of log-likelihoods over all trials.
-            Same shape and interpretation as loglik().
+            Same shape and interpretation as ``loglik``.
 
         Raises
         ------
@@ -251,16 +209,9 @@ class OddityTask(TaskLikelihood):
            - LL = Σ [y * log(p) + (1-y) * log(1-p)]
 
         Performance:
-        - Time complexity: O(n_trials * num_samples * input_dim³)
         - Memory: O(num_samples * input_dim) per trial
         - Vectorized across trials using jax.vmap for GPU acceleration
-        - Can be JIT-compiled for additional speed (future optimization)
-
-        Comparison to analytical:
-        - MC implements full 3-stimulus oddity (more realistic)
-        - MC is more accurate for complex Σ(x) structures
-        - Analytical is faster and differentiable
-        - Use MC for validation and benchmarking, analytical for optimization
+    - Can be JIT-compiled for additional speed (future optimization)
 
         Examples
         --------
@@ -286,9 +237,7 @@ class OddityTask(TaskLikelihood):
         ...     ref=jnp.array([0.0, 0.0]), comparison=jnp.array([0.3, 0.2]), resp=1
         ... )
         >>>
-        >>> # Compare analytical vs MC
-        >>> ll_analytical = model.task.loglik(params, data, model, model.noise)
-        >>> ll_mc = model.task.loglik_mc(
+        >>> loglik = model.task.loglik(
         ...     params,
         ...     data,
         ...     model,
@@ -297,23 +246,28 @@ class OddityTask(TaskLikelihood):
         ...     bandwidth=1e-3,
         ...     key=jr.PRNGKey(42),
         ... )
-        >>> print(f"Analytical: {ll_analytical:.4f}")
-        >>> print(f"MC (N=5000): {ll_mc:.4f}")
-        >>> print(f"Difference: {abs(ll_mc - ll_analytical):.4f}")
-
-        See Also
-        --------
-        loglik : Analytical log-likelihood (faster, differentiable)
-        predict : Analytical prediction for single trial
-
+        >>> print(f"MC (N=5000): {loglik:.4f}")
 
 
         """
+    # Task-specific controls.
+    # We keep these as kwargs so inference / higher-level model code can tune
+    # MC fidelity (num_samples), smoothing (bandwidth), and randomness (key)
+    # without changing the core TaskLikelihood interface.
+        num_samples = int(kwargs.pop("num_samples", 1000))
+        bandwidth = float(kwargs.pop("bandwidth", 1e-2))
+        key = kwargs.pop("key", None)
+        if kwargs:
+            unexpected = ", ".join(sorted(kwargs.keys()))
+            raise TypeError(
+                f"Unexpected keyword arguments for OddityTask.loglik: {unexpected}"
+            )
+
         # Validate inputs
         if num_samples <= 0:
             raise ValueError(f"num_samples must be > 0, got {num_samples}")
 
-        # Default key for reproducibility (warn: not secure)
+        # Default key for reproducibility
         if key is None:
             key = jr.PRNGKey(0)
 
@@ -367,8 +321,8 @@ class OddityTask(TaskLikelihood):
 
         Parameters
         ----------
-        params : dict
-            Model parameters (W for Wishart mode, log_diag for MVP mode)
+        params : Any
+            Model parameters as expected by ``model._compute_sqrt``.
         refs : jnp.ndarray, shape (n_trials, input_dim)
             Reference stimuli for all trials
         comparisons : jnp.ndarray, shape (n_trials, input_dim)
@@ -422,8 +376,8 @@ class OddityTask(TaskLikelihood):
 
         Parameters
         ----------
-        params : dict
-            Model parameters (W for Wishart, log_diag for MVP)
+        params : Any
+            Model parameters as expected by ``model._compute_sqrt``.
         ref : jnp.ndarray, shape (input_dim,)
             Reference stimulus (2 samples represented)
         comparison : jnp.ndarray, shape (input_dim,)
@@ -475,54 +429,36 @@ class OddityTask(TaskLikelihood):
            - P(correct) \approx mean over num_samples
 
         """
-        # Get input dimension and check if model is in Wishart mode
+    # Get input dimension and require Wishart mode.
+    # OddityTask is intentionally MC-only and currently only supports the
+    # WPPM/Wishart covariance parameterization.
         input_dim = ref.shape[0]
         is_wishart = model.basis_degree is not None
-
-        # ========================================================================
-        # DISTRIBUTION INITIALIZATION: Define the two distributions we'll sample from
-        # ========================================================================
-        # DISTRIBUTION 1 (Reference): N(ref, Σ_ref)
-        #   - Mean: ref (reference stimulus location)
-        #   - Covariance: Σ_ref = U_ref @ U_ref.T + diag_term * I  (if Wishart)
-        #                 Σ_ref = diag(exp(log_diag))              (if MVP)
-        #   - we will sample z_ref and z_refprime from this distribution
-        #
-        # DISTRIBUTION 2 (Comparison): N(comparison, Σ_comparison)
-        #   - Mean: comparison (comparison stimulus location, DIFFERENT from ref)
-        #   - Covariance: Σ_comparison = U_comparison @ U_comparison.T + diag_term * I  (if Wishart)
-        #                 Σ_comparison = diag(exp(log_diag))                  (if MVP)
-        #   - we will sample z_comparison from this distribution
+        if not is_wishart:
+            raise ValueError(
+                "OddityTask is MC-only and currently requires Wishart mode "
+                "(model.basis_degree must not be None)."
+            )
 
         # ========================================================================
         # STEP 1: Compute covariance structures at ref and comparison locations
         # ========================================================================
-        if is_wishart:
-            # Wishart mode: Spatially-varying covariance
-            # Compute U matrices that define covariances at each location
-            # These U matrices define the two distributions:
 
-            # U_ref defines DISTRIBUTION 1 covariance: Σ_ref = U_ref @ U_ref.T + diag_term * I
-            U_ref = model._compute_sqrt(params, ref)  # (input_dim, embedding_dim)
+        # Wishart mode: Spatially-varying covariance
+        # Compute U matrices that define covariances at each location
+        # These U matrices define the two distributions:
 
-            # U_comparison defines DISTRIBUTION 2 covariance: Σ_comparison = U_comparison @ U_comparison.T + diag_term * I
-            U_comparison = model._compute_sqrt(
-                params, comparison
-            )  # (input_dim, embedding_dim)
+        # U_ref defines DISTRIBUTION 1 covariance: Σ_ref = U_ref @ U_ref.T + diag_term * I
+        U_ref = model._compute_sqrt(params, ref)  # (input_dim, embedding_dim)
 
-            # Diagonal noise term (small regularization, same for both distributions)
-            diag_term = model.diag_term
-            sqrt_diag = jnp.sqrt(diag_term)
+        # U_comparison defines DISTRIBUTION 2 covariance: Σ_comparison = U_comparison @ U_comparison.T + diag_term * I
+        U_comparison = model._compute_sqrt(
+            params, comparison
+        )  # (input_dim, embedding_dim)
 
-        else:
-            # MVP mode: Constant diagonal covariance (same everywhere)
-            # Compute covariance matrices that DEFINE the two distributions:
-
-            # Σ_ref defines DISTRIBUTION 1 covariance (diagonal, constant)
-            Sigma_ref = model.local_covariance(params, ref)  # (input_dim, input_dim)
-
-            # Σ_comparison defines DISTRIBUTION 2 covariance (diagonal, constant, SAME as Σ_ref in MVP!)
-            Sigma_comparison = model.local_covariance(params, comparison)
+        # Diagonal noise term (small regularization, same for both distributions)
+        diag_term = model.diag_term
+        sqrt_diag = jnp.sqrt(diag_term)
 
         # ========================================================================
         # STEP 2: Sample internal representations (3 samples from 2 distributions)
@@ -530,91 +466,59 @@ class OddityTask(TaskLikelihood):
         # Split random key: 3 for embedding samples + 3 for diagonal noise
         keys = jr.split(key, 6)
 
-        if is_wishart:
-            # Wishart mode: manual sampling using reparameterization trick
-            # Covariance structure: Σ = U @ U.T + diag_term * I
-            # Reparameterization: z = n_embed @ U.T + mean + sqrt(diag_term) * n_diag
+        # manual sampling using reparameterization trick
+        # Covariance structure: Σ = U @ U.T + diag_term * I
+        # Reparameterization: z = n_embed @ U.T + mean + sqrt(diag_term) * n_diag
 
-            embed_dim = U_ref.shape[1]  # type: ignore
+        embed_dim = U_ref.shape[1]  # type: ignore
 
-            # Samples from standard normal  (will be transformed to our target distributions 1 and 2)
-            n_ref_embed = noise.sample_standard(keys[0], (num_samples, embed_dim))
-            n_refprime_embed = noise.sample_standard(keys[1], (num_samples, embed_dim))
-            n_comparison_embed = noise.sample_standard(
-                keys[2], (num_samples, embed_dim)
-            )
+        # Samples from standard normal  (will be transformed to our target distributions 1 and 2)
+        n_ref_embed = noise.sample_standard(keys[0], (num_samples, embed_dim))
+        n_refprime_embed = noise.sample_standard(keys[1], (num_samples, embed_dim))
+        n_comparison_embed = noise.sample_standard(keys[2], (num_samples, embed_dim))
 
-            # Sample diagonal noise (independent across dimensions)
-            n_ref_diag = noise.sample_standard(keys[3], (num_samples, input_dim))
-            n_refprime_diag = noise.sample_standard(keys[4], (num_samples, input_dim))
-            n_comparison_diag = noise.sample_standard(keys[5], (num_samples, input_dim))
+        # Sample diagonal noise (independent across dimensions)
+        n_ref_diag = noise.sample_standard(keys[3], (num_samples, input_dim))
+        n_refprime_diag = noise.sample_standard(keys[4], (num_samples, input_dim))
+        n_comparison_diag = noise.sample_standard(keys[5], (num_samples, input_dim))
 
-            # =================================================================
-            # SAMPLING: Transform standard normals to samples from our 2 distributions
-            # =================================================================
+        # =================================================================
+        # SAMPLING: Transform standard normals to samples from our 2 distributions
+        # =================================================================
 
-            # SAMPLE 1 & 2: From DISTRIBUTION 1 (Reference), z_ref ~ N(ref, Σ_ref)
-            # Both z_ref and z_refprime sampled from N(ref, Σ_ref)
-            # where Σ_ref = U_ref @ U_ref.T + diag_term * I
-            z_ref = n_ref_embed @ U_ref.T + ref[None, :] + sqrt_diag * n_ref_diag  # type: ignore
-            #       ^^^^^^        ^^^^^       ^^^^^^^
-            #       |                |          |
-            #       |                |          +--- MEAN: ref (same for z_ref and z_refprime)
-            #       |                +--- COVARIANCE: Uses U_ref (defines Σ_ref)
-            #       +--- Independent noise (different from z_refprime, but same distribution)
+        # SAMPLE 1 & 2: From DISTRIBUTION 1 (Reference), z_ref ~ N(ref, Σ_ref)
+        # Both z_ref and z_refprime sampled from N(ref, Σ_ref)
+        # where Σ_ref = U_ref @ U_ref.T + diag_term * I
+        z_ref = n_ref_embed @ U_ref.T + ref[None, :] + sqrt_diag * n_ref_diag  # type: ignore
+        #       ^^^^^^        ^^^^^       ^^^^^^^
+        #       |                |          |
+        #       |                |          +--- MEAN: ref (same for z_ref and z_refprime)
+        #       |                +--- COVARIANCE: Uses U_ref (defines Σ_ref)
+        #       +--- Independent noise (different from z_refprime, but same distribution)
 
-            #  z_refprime ~ N(ref, Σ_ref)
-            z_refprime = (
-                n_refprime_embed @ U_ref.T + ref[None, :] + sqrt_diag * n_refprime_diag
-            )  # type: ignore
-            #              ^^^^^                   ^^^^      ^^^^^^^^^^
-            #              |                     |          |
-            #              |                     |          +--- MEAN: ref (SAME as z_ref!)
-            #              |                     +--- COVARIANCE: Uses U_ref (SAME as z_ref!)
-            #              +--- Independent noise (different from z_ref)
+        #  z_refprime ~ N(ref, Σ_ref)
+        z_refprime = (
+            n_refprime_embed @ U_ref.T + ref[None, :] + sqrt_diag * n_refprime_diag
+        )  # type: ignore
+        #              ^^^^^                   ^^^^      ^^^^^^^^^^
+        #              |                     |          |
+        #              |                     |          +--- MEAN: ref (SAME as z_ref!)
+        #              |                     +--- COVARIANCE: Uses U_ref (SAME as z_ref!)
+        #              +--- Independent noise (different from z_ref)
 
-            # SAMPLE 3: From DISTRIBUTION 2 (Probe), z_comparison ~ N(comparison, Σ_comparison)
-            # z_comparison sampled from N(comparison, Σ_comparison)
-            # where Σ_comparison = U_comparison @ U_comparison.T + diag_term * I
-            z_comparison = (
-                n_comparison_embed @ U_comparison.T
-                + comparison[None, :]
-                + sqrt_diag * n_comparison_diag
-            )  # type: ignore
-            #         ^^^^^^^^        ^^^^^^        ^^^^^^^^^^
-            #         |               |             |
-            #         |               |             +--- MEAN: comparison (DIFFERENT from ref!)
-            #         |               +--- COVARIANCE: Uses U_comparison (DIFFERENT from U_ref!)
-            #         +--- independent noise (different distribution from z_ref and z_refprime)
-
-        else:
-            # MVP mode: Use standard multivariate normal sampling
-            # Covariance is diagonal and constant across space
-
-            # =================================================================
-            # SAMPLING: Draw from our 2 distributions using JAX's built-in sampler
-            # =================================================================
-
-            # Note: For MVP mode with non-Gaussian noise, we can't use jr.multivariate_normal directly
-            # because it assumes Gaussianity. Instead, we use the reparameterization trick manually:
-            # z = mean + L @ n_standard
-            # Since Sigma is diagonal in MVP, L = sqrt(Sigma) = diag(sqrt(diag_sigma))
-
-            # Compute sqrt of diagonal covariance (standard deviation per dimension)
-            # Sigma_ref is diagonal, so we can just take sqrt of diagonal elements
-            std_ref = jnp.sqrt(jnp.diag(Sigma_ref))  # (input_dim,)
-            std_comparison = jnp.sqrt(jnp.diag(Sigma_comparison))  # (input_dim,)
-
-            # Sample standard noise from the specified noise model
-            n_ref = noise.sample_standard(keys[0], (num_samples, input_dim))
-            n_refprime = noise.sample_standard(keys[1], (num_samples, input_dim))
-            n_comparison = noise.sample_standard(keys[2], (num_samples, input_dim))
-
-            # Transform to target distributions
-            # z = mean + std * noise
-            z_ref = ref[None, :] + n_ref * std_ref[None, :]
-            z_refprime = ref[None, :] + n_refprime * std_ref[None, :]
-            z_comparison = comparison[None, :] + n_comparison * std_comparison[None, :]
+        # SAMPLE 3: From DISTRIBUTION 2 (Probe), z_comparison ~ N(comparison, Σ_comparison)
+        # z_comparison sampled from N(comparison, Σ_comparison)
+        # where Σ_comparison = U_comparison @ U_comparison.T + diag_term * I
+        z_comparison = (
+            n_comparison_embed @ U_comparison.T
+            + comparison[None, :]
+            + sqrt_diag * n_comparison_diag
+        )  # type: ignore
+        #         ^^^^^^^^        ^^^^^^        ^^^^^^^^^^
+        #         |               |             |
+        #         |               |             +--- MEAN: comparison (DIFFERENT from ref!)
+        #         |               +--- COVARIANCE: Uses U_comparison (DIFFERENT from U_ref!)
+        #         +--- independent noise (different distribution from z_ref and z_refprime)
 
         # ========================================================================
         # STEP 3: Compute average covariance for Mahalanobis distance
@@ -623,29 +527,19 @@ class OddityTask(TaskLikelihood):
         # Weight by frequency: we sampled 2 times from N(ref, Σ_ref) and 1 time from N(comparison, Σ_comparison)
         # -> so we use weights (2/3) for reference distribution and (1/3) for comparison distribution
 
-        if is_wishart:
-            # For Wishart mode, explicitly construct full covariances from U matrices
-            # Σ_ref = U_ref @ U_ref.T + diag_term * I  (covariance of DISTRIBUTION 1)
-            Sigma_ref_full = U_ref @ U_ref.T + diag_term * jnp.eye(input_dim)  # type: ignore
+        # For Wishart mode, explicitly construct full covariances from U matrices
+        # Σ_ref = U_ref @ U_ref.T + diag_term * I  (covariance of DISTRIBUTION 1)
+        Sigma_ref_full = U_ref @ U_ref.T + diag_term * jnp.eye(input_dim)  # type: ignore
 
-            # Σ_comparison = U_comparison @ U_comparison.T + diag_term * I  (covariance of DISTRIBUTION 2)
-            Sigma_comparison_full = U_comparison @ U_comparison.T + diag_term * jnp.eye(
-                input_dim
-            )  # type: ignore
+        # Σ_comparison = U_comparison @ U_comparison.T + diag_term * I  (covariance of DISTRIBUTION 2)
+        Sigma_comparison_full = U_comparison @ U_comparison.T + diag_term * jnp.eye(
+            input_dim
+        )  # type: ignore
 
-            # Weighted average: (2/3) * Σ_ref + (1/3) * Σ_comparison
-            Sigma_avg = (2.0 / 3.0) * Sigma_ref_full + (
-                1.0 / 3.0
-            ) * Sigma_comparison_full
-            #           ^^^^^^^                         ^^^^^^^
-            #           2 samples from ref               1 sample from comparison
-
-        else:
-            # For MVP mode, average the covariances (which are already computed)
-            # Note: In MVP, Σ_ref = Σ_comparison (constant), but we still do this for consistency
-            Sigma_avg = (2.0 / 3.0) * Sigma_ref + (1.0 / 3.0) * Sigma_comparison  # type: ignore
-            #           ^^^^^^^                    ^^^^^^^
-            #           2 samples from ref          1 sample from comparison
+        # Weighted average: (2/3) * Σ_ref + (1/3) * Σ_comparison
+        Sigma_avg = (2.0 / 3.0) * Sigma_ref_full + (1.0 / 3.0) * Sigma_comparison_full
+        #           ^^^^^^^                         ^^^^^^^
+        #           2 samples from ref               1 sample from comparison
 
         # ========================================================================
         # STEP 4: Compute three pairwise Mahalanobis distances
@@ -746,7 +640,16 @@ class TwoAFC(TaskLikelihood):
         d = model.discriminability(params, stimuli)
         return self.chance_level + self.performance_range * jnp.tanh(self.slope * d)
 
-    def loglik(self, params: Any, data: Any, model: Any, noise: Any) -> jnp.ndarray:
+    def loglik(
+        self, params: Any, data: Any, model: Any, noise: Any, **kwargs: Any
+    ) -> jnp.ndarray:
+        if kwargs:
+            # TwoAFC currently has no task-specific knobs; reject unknown kwargs
+            # so typos don't silently change behavior.
+            unexpected = ", ".join(sorted(kwargs.keys()))
+            raise TypeError(
+                f"Unexpected keyword arguments for TwoAFC.loglik: {unexpected}"
+            )
         refs, comparisons, responses = data.to_numpy()
         ps = jnp.array(
             [
