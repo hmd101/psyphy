@@ -47,7 +47,7 @@ def unfitted_model():
     """Create an unfitted WPPM model for bootstrap."""
     return WPPM(
         input_dim=2,
-        prior=Prior(input_dim=2),
+        prior=Prior(input_dim=2, basis_degree=3),
         task=OddityTask(),
         noise=GaussianNoise(),
     )
@@ -287,13 +287,13 @@ class TestBootstrapCompareModels:
         # Create two models with different priors
         model1 = WPPM(
             input_dim=2,
-            prior=Prior(input_dim=2),
+            prior=Prior(input_dim=2, basis_degree=3),
             task=OddityTask(),
             noise=GaussianNoise(),
         )
         model2 = WPPM(
             input_dim=2,
-            prior=Prior(input_dim=2),
+            prior=Prior(input_dim=2, basis_degree=2),
             task=OddityTask(),
             noise=GaussianNoise(),
         )
@@ -335,14 +335,14 @@ class TestBootstrapCompareModels:
         model1 = WPPM(
             input_dim=2,
             prior=Prior(
-                input_dim=2,
+                input_dim=2, basis_degree=3
             ),
             task=OddityTask(),
             noise=GaussianNoise(),
         )
         model2 = WPPM(
             input_dim=2,
-            prior=Prior(input_dim=2),
+            prior=Prior(input_dim=2, basis_degree=2),
             task=OddityTask(),
             noise=GaussianNoise(),
         )
@@ -382,13 +382,13 @@ class TestBootstrapCompareModels:
 
         model1 = WPPM(
             input_dim=2,
-            prior=Prior(input_dim=2),
+            prior=Prior(input_dim=2, basis_degree=3),
             task=OddityTask(),
             noise=GaussianNoise(),
         )
         model2 = WPPM(
             input_dim=2,
-            prior=Prior(input_dim=2),
+            prior=Prior(input_dim=2, basis_degree=2),
             task=OddityTask(),
             noise=GaussianNoise(),
         )
