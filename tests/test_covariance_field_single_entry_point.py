@@ -42,7 +42,7 @@ def field_3d():
     """Create 3D covariance field for testing."""
     model = WPPM(
         input_dim=3,
-        prior=Prior(input_dim=3),
+        prior=Prior(input_dim=3, basis_degree=2),
         task=OddityTask(),
     )
     key = jr.PRNGKey(456)
@@ -325,7 +325,7 @@ class TestEdgeCases:
         """For input_dim=1, single point has shape (1,)."""
         model = WPPM(
             input_dim=1,
-            prior=Prior(input_dim=1),
+            prior=Prior(input_dim=1, basis_degree=2),
             task=OddityTask(),
         )
         field = WPPMCovarianceField.from_prior(model, jr.PRNGKey(789))
@@ -341,7 +341,7 @@ class TestEdgeCases:
         """For input_dim=1, batch requires shape (n, 1)."""
         model = WPPM(
             input_dim=1,
-            prior=Prior(input_dim=1),
+            prior=Prior(input_dim=1, basis_degree=2),
             task=OddityTask(),
         )
         field = WPPMCovarianceField.from_prior(model, jr.PRNGKey(789))
