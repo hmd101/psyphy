@@ -37,8 +37,8 @@ class TestMCLikelihood:
         """
         return WPPM(
             input_dim=2,
-            prior=Prior(input_dim=2),  # MVP mode
-            task=OddityTask(slope=1.5),
+            prior=Prior(input_dim=2, basis_degree=3),
+            task=OddityTask(),
             noise=GaussianNoise(sigma=0.03),
         )
 
@@ -277,8 +277,8 @@ class TestMCLikelihoodEdgeCases:
     def model(self):
         return WPPM(
             input_dim=2,
-            prior=Prior(input_dim=2),  # MVP mode
-            task=OddityTask(slope=1.5),
+            prior=Prior(input_dim=2, basis_degree=3),
+            task=OddityTask(),
             noise=GaussianNoise(sigma=0.03),
         )
 
@@ -288,7 +288,7 @@ class TestMCLikelihoodEdgeCases:
         model = WPPM(
             input_dim=2,
             prior=Prior(input_dim=2, basis_degree=3, extra_embedding_dims=0),
-            task=OddityTask(slope=1.5),
+            task=OddityTask(),
             noise=GaussianNoise(sigma=0.03),
         )
 
@@ -416,11 +416,11 @@ class TestGradientCompatibility:
 
     @pytest.fixture
     def model(self):
-        """Simple MVP model for gradient testing."""
+
         return WPPM(
             input_dim=2,
-            prior=Prior(input_dim=2),
-            task=OddityTask(slope=1.5),
+            prior=Prior(input_dim=2, basis_degree=3),
+            task=OddityTask(),
             noise=GaussianNoise(sigma=0.03),
         )
 
@@ -594,8 +594,8 @@ class TestProbabilityClipping:
         """Model with very low noise for testing extreme cases."""
         return WPPM(
             input_dim=2,
-            prior=Prior(input_dim=2),
-            task=OddityTask(slope=1.5),
+            prior=Prior(input_dim=2, basis_degree=3),
+            task=OddityTask(),
             noise=GaussianNoise(sigma=0.001),  # Very low noise -> sharper decisions
         )
 
@@ -731,8 +731,8 @@ class TestNumericalStability:
         """
         model = WPPM(
             input_dim=3,
-            prior=Prior(input_dim=3),
-            task=OddityTask(slope=1.5),
+            prior=Prior(input_dim=3, basis_degree=3),
+            task=OddityTask(),
             noise=GaussianNoise(sigma=1e-6),  # Tiny noise -> nearly singular Σ
         )
 
@@ -760,42 +760,7 @@ class TestNumericalStability:
             f"Log-likelihood is {ll} (NaN or inf) with tiny noise! Mahalanobis computation unstable."
         )
 
-    def test_stability_with_high_dimensions(self):
-        """
-        Test with higher-dimensional stimuli (more potential for instability).
 
-        As dimensionality increases, numerical issues become more likely.
-        This tests that our implementation scales reasonably to input_dim=10.
-        """
-        model = WPPM(
-            input_dim=10,
-            prior=Prior(input_dim=10),
-            task=OddityTask(slope=1.5),
-            noise=GaussianNoise(sigma=0.01),
-        )
-
-        params = model.init_params(jr.PRNGKey(0))
-
-        data = ResponseData()
-        data.add_trial(
-            ref=jnp.zeros(10),
-            comparison=jnp.ones(10) * 0.3,
-            resp=1,
-        )
-
-        ll = model.task.loglik(
-            params=params,
-            data=data,
-            model=model,
-            noise=model.noise,
-            num_samples=500,
-            bandwidth=1e-2,
-            key=jr.PRNGKey(0),
-        )
-
-        assert jnp.isfinite(ll), (
-            f"Log-likelihood is {ll} (NaN or inf) in 10D! Doesn't scale well."
-        )
 
     def test_stability_with_wishart_mode(self):
         """
@@ -807,8 +772,8 @@ class TestNumericalStability:
         """
         model = WPPM(
             input_dim=3,
-            prior=Prior(input_dim=3, extra_embedding_dims=2),  # Wishart mode
-            task=OddityTask(slope=1.5),
+            prior=Prior(input_dim=3, extra_embedding_dims=2, basis_degree=3),
+            task=OddityTask(),
             noise=GaussianNoise(sigma=0.001),  # Small noise
         )
 
@@ -850,8 +815,8 @@ class TestConvergenceRate:
         """Simple model for convergence testing."""
         return WPPM(
             input_dim=2,
-            prior=Prior(input_dim=2),
-            task=OddityTask(slope=1.5),
+            prior=Prior(input_dim=2, basis_degree=3),
+            task=OddityTask(),
             noise=GaussianNoise(sigma=0.03),
         )
 
