@@ -373,10 +373,7 @@ class WPPM(Model):
         """
         Return local covariance Σ(x) at stimulus location x.
 
-        MVP mode (basis_degree=None):
-            Σ(x) = diag(exp(log_diag)), constant across x.
-            - Positive-definite because exp(log_diag) > 0.
-
+  
         Wishart mode (basis_degree set):
             Σ(x) = U(x) @ U(x)^T + diag_term * I
             where U(x) is rectangular (input_dim, embedding_dim) if extra_dims > 0.
@@ -474,7 +471,9 @@ class WPPM(Model):
     # ----------------------------------------------------------------------
     # PREDICTION (delegates to task)
     # ----------------------------------------------------------------------
-    def predict_prob(self, params: Params, stimulus: Stimulus) -> jnp.ndarray:
+    def predict_prob(
+        self, params: Params, stimulus: Stimulus, **task_kwargs: Any
+    ) -> jnp.ndarray:
         """
         Predict probability of a correct response for a single stimulus.
 
@@ -492,6 +491,33 @@ class WPPM(Model):
         -------
         p_correct : jnp.ndarray
         """
+        # Some tasks (like OddityTask in MC-only mode) benefit from receiving
+        # MC controls (num_samples/bandwidth/key). The base TaskLikelihood API
+        # keeps predict() minimal, so we pass kwargs only when callers provide
+        # them and the task exposes an extended entry point.
+        predict_with_kwargs = getattr(self.task, "predict_with_kwargs", None)
+        if task_kwargs and callable(predict_with_kwargs):
+            from typing import Callable, cast
+
+            fn = cast(
+                Callable[..., jnp.ndarray],
+                predict_with_kwargs,
+            )
+            return fn(
+                params=params,
+                stimuli=stimulus,
+                model=self,
+                noise=self.noise,
+                **task_kwargs,
+            )
+
+        if task_kwargs:
+            unexpected = ", ".join(sorted(task_kwargs.keys()))
+            raise TypeError(
+                "This task does not accept task-specific prediction kwargs. "
+                f"Unexpected: {unexpected}"
+            )
+
         return self.task.predict(params, stimulus, self, self.noise)
 
     # ----------------------------------------------------------------------
