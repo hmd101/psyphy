@@ -22,8 +22,8 @@ class TestNoiseModels:
     def model_gaussian(self):
         return WPPM(
             input_dim=2,
-            prior=Prior(input_dim=2),
-            task=OddityTask(slope=1.5),
+            prior=Prior(input_dim=2, basis_degree=3),
+            task=OddityTask(),
             noise=GaussianNoise(sigma=0.03),
         )
 
@@ -31,8 +31,8 @@ class TestNoiseModels:
     def model_student_t(self):
         return WPPM(
             input_dim=2,
-            prior=Prior(input_dim=2),
-            task=OddityTask(slope=1.5),
+            prior=Prior(input_dim=2, basis_degree=3),
+            task=OddityTask(),
             noise=StudentTNoise(df=3.0, scale=0.03),
         )
 
