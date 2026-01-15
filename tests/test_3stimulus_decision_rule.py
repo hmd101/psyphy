@@ -43,7 +43,7 @@ class TestThreeStimulusDecisionRule:
 
         # Compute P(correct) with many samples for accurate estimate
         # loglik = log P(correct | ref, comparison, params)
-        loglik = model.task.loglik_mc(
+        loglik = model.task.loglik(
             params,
             data,
             model,
@@ -86,7 +86,7 @@ class TestThreeStimulusDecisionRule:
         data.add_trial(ref, comparison, resp=1)
 
         # Compute P(correct)
-        loglik = model.task.loglik_mc(
+        loglik = model.task.loglik(
             params,
             data,
             model,
@@ -126,7 +126,7 @@ class TestThreeStimulusDecisionRule:
         data.add_trial(ref, comparison, resp=1)
 
         # Compute P(correct)
-        loglik = model.task.loglik_mc(
+        loglik = model.task.loglik(
             params,
             data,
             model,
@@ -167,7 +167,7 @@ class TestThreeStimulusDecisionRule:
         ref = jnp.array([0.5, 0.5])
         data_identical.add_trial(ref, ref, resp=1)
 
-        loglik_identical = model.task.loglik_mc(
+        loglik_identical = model.task.loglik(
             params,
             data_identical,
             model,
@@ -183,7 +183,7 @@ class TestThreeStimulusDecisionRule:
         comparison_far = jnp.array([5.0, 5.0])
         data_distant.add_trial(ref, comparison_far, resp=1)
 
-        loglik_distant = model.task.loglik_mc(
+        loglik_distant = model.task.loglik(
             params,
             data_distant,
             model,
@@ -318,7 +318,7 @@ class TestEdgeCases:
         data.add_trial(ref, comparison, resp=1)
 
         # Very small bandwidth
-        loglik = model.task.loglik_mc(
+        loglik = model.task.loglik(
             params,
             data,
             model,
@@ -357,7 +357,7 @@ class TestEdgeCases:
         data.add_trial(ref, comparison, resp=1)
 
         # Large bandwidth
-        loglik = model.task.loglik_mc(
+        loglik = model.task.loglik(
             params,
             data,
             model,
@@ -395,7 +395,7 @@ class TestEdgeCases:
         data.add_trial(ref, comparison, resp=1)
 
         # Small num_samples
-        loglik = model.task.loglik_mc(
+        loglik = model.task.loglik(
             params,
             data,
             model,
@@ -433,7 +433,7 @@ class TestEdgeCases:
         data.add_trial(ref, comparison, resp=1)
 
         # Compute with two different large num_samples
-        loglik1 = model.task.loglik_mc(
+        loglik1 = model.task.loglik(
             params,
             data,
             model,
@@ -443,7 +443,7 @@ class TestEdgeCases:
             key=jr.PRNGKey(42),
         )
 
-        loglik2 = model.task.loglik_mc(
+        loglik2 = model.task.loglik(
             params,
             data,
             model,
@@ -485,7 +485,7 @@ class TestEdgeCases:
             data_multi.add_trial(ref, comparison, resp=1)
 
         # Compute combined loglik
-        loglik_multi = model.task.loglik_mc(
+        loglik_multi = model.task.loglik(
             params,
             data_multi,
             model,
@@ -499,7 +499,7 @@ class TestEdgeCases:
         data_single = ResponseData()
         data_single.add_trial(ref, comparison, resp=1)
 
-        loglik_single = model.task.loglik_mc(
+        loglik_single = model.task.loglik(
             params,
             data_single,
             model,
@@ -535,7 +535,7 @@ class TestEdgeCases:
         data.add_trial(jnp.array([0.0, 0.0]), jnp.array([1.0, 1.0]), resp=1)
 
         with pytest.raises(ValueError, match="num_samples must be > 0"):
-            model.task.loglik_mc(
+            model.task.loglik(
                 params,
                 data,
                 model,
@@ -563,7 +563,7 @@ class TestEdgeCases:
         data.add_trial(jnp.array([0.0, 0.0]), jnp.array([1.0, 1.0]), resp=1)
 
         # Compute twice with same seed
-        loglik1 = model.task.loglik_mc(
+        loglik1 = model.task.loglik(
             params,
             data,
             model,
@@ -573,7 +573,7 @@ class TestEdgeCases:
             key=jr.PRNGKey(42),  # Same seed
         )
 
-        loglik2 = model.task.loglik_mc(
+        loglik2 = model.task.loglik(
             params,
             data,
             model,
@@ -615,7 +615,7 @@ class TestDecisionRuleSymmetry:
         data.add_trial(ref, comparison, resp=1)
 
         # Compute with one seed
-        loglik1 = model.task.loglik_mc(
+        loglik1 = model.task.loglik(
             params,
             data,
             model,
@@ -626,7 +626,7 @@ class TestDecisionRuleSymmetry:
         )
 
         # Compute with different seed (different sampling order)
-        loglik2 = model.task.loglik_mc(
+        loglik2 = model.task.loglik(
             params,
             data,
             model,

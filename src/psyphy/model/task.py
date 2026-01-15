@@ -54,16 +54,16 @@ class TaskLikelihood(ABC):
     def loglik(
         self, params: Any, data: Any, model: Any, noise: Any, **kwargs: Any
     ) -> jnp.ndarray:
-                """Compute log-likelihood of observed responses under this task.
+        """Compute log-likelihood of observed responses under this task.
 
-                Why ``**kwargs``?
-                - Different tasks may need different optional controls.
-                - MC-based tasks (like :class:`OddityTask`) need parameters such as
-                    ``num_samples``, ``bandwidth``, and a PRNG ``key``.
-                - Keeping these as kwargs lets model/inference code forward task-specific
-                    options while preserving a single polymorphic API.
-                """
-                ...
+        Why ``**kwargs``?
+        - Different tasks may need different optional controls.
+        - MC-based tasks (like :class:`OddityTask`) need parameters such as
+            ``num_samples``, ``bandwidth``, and a PRNG ``key``.
+        - Keeping these as kwargs lets model/inference code forward task-specific
+            options while preserving a single polymorphic API.
+        """
+        ...
 
 
 class OddityTask(TaskLikelihood):
@@ -133,127 +133,127 @@ class OddityTask(TaskLikelihood):
         self, params: Any, data: Any, model: Any, noise: Any, **kwargs: Any
     ) -> jnp.ndarray:
         """
-        Compute log-likelihood via Monte Carlo observer simulation.
+            Compute log-likelihood via Monte Carlo observer simulation.
 
-        This method implements the FULL 3-stimulus oddity task. Instead of using
-        an analytical approximation, we:
-        1. Sample three internal noisy representations per trial:
-           - z_ref, z_refprime ~ N(ref, Σ_ref)  [two samples from reference]
-           - z_comparison ~ N(comparison, Σ_comparison)           [one sample from comparison]
-        2. Compute three pairwise Mahalanobis distances
-        3. Apply oddity decision rule: comparison is odd if it's farther from BOTH ref and reference_prime
-        4. Apply logistic smoothing to approximate P(correct)
-        5. Average over MC samples
+            This method implements the FULL 3-stimulus oddity task. Instead of using
+            an analytical approximation, we:
+            1. Sample three internal noisy representations per trial:
+               - z_ref, z_refprime ~ N(ref, Σ_ref)  [two samples from reference]
+               - z_comparison ~ N(comparison, Σ_comparison)           [one sample from comparison]
+            2. Compute three pairwise Mahalanobis distances
+            3. Apply oddity decision rule: comparison is odd if it's farther from BOTH ref and reference_prime
+            4. Apply logistic smoothing to approximate P(correct)
+            5. Average over MC samples
 
-        Parameters
-        ----------
-        params : Any
-            Model parameters as expected by ``model._compute_sqrt``.
-        data : ResponseData
-            Trial data with refs, comparisons, and responses
-        model : WPPM
-            Model instance providing ``_compute_sqrt`` for covariance computation.
-        noise : NoiseModel
-            Observer noise model (provides ``sample_standard``).
-        num_samples : int, default=1000
-            Number of Monte Carlo samples per trial.
-            - Use 1000-5000 for accurate likelihood estimation
-            - Larger values reduce MC variance but increase compute time
-        bandwidth : float, default=1e-2
-            Smoothing parameter for logistic CDF approximation.
-            - Smaller values -> sharper transition (closer to step function)
-            - Larger values -> smoother approximation
-            - Typical range: [1e-3, 5e-2]
-        key : jax.random.PRNGKey, optional
-            Random key for reproducible sampling.
-            If None, uses PRNGKey(0) (deterministic but not recommended for production)
+            Parameters
+            ----------
+            params : Any
+                Model parameters as expected by ``model._compute_sqrt``.
+            data : ResponseData
+                Trial data with refs, comparisons, and responses
+            model : WPPM
+                Model instance providing ``_compute_sqrt`` for covariance computation.
+            noise : NoiseModel
+                Observer noise model (provides ``sample_standard``).
+            num_samples : int, default=1000
+                Number of Monte Carlo samples per trial.
+                - Use 1000-5000 for accurate likelihood estimation
+                - Larger values reduce MC variance but increase compute time
+            bandwidth : float, default=1e-2
+                Smoothing parameter for logistic CDF approximation.
+                - Smaller values -> sharper transition (closer to step function)
+                - Larger values -> smoother approximation
+                - Typical range: [1e-3, 5e-2]
+            key : jax.random.PRNGKey, optional
+                Random key for reproducible sampling.
+                If None, uses PRNGKey(0) (deterministic but not recommended for production)
 
-        Returns
-        -------
-        jnp.ndarray
-            Scalar sum of log-likelihoods over all trials.
-            Same shape and interpretation as ``loglik``.
+            Returns
+            -------
+            jnp.ndarray
+                Scalar sum of log-likelihoods over all trials.
+                Same shape and interpretation as ``loglik``.
 
-        Raises
-        ------
-        ValueError
-            If num_samples <= 0
+            Raises
+            ------
+            ValueError
+                If num_samples <= 0
 
-        Notes
-        -----
-        **Full 3-stimulus oddity task algorithm:**
+            Notes
+            -----
+            **Full 3-stimulus oddity task algorithm:**
 
-        For each trial (ref, comparison, response):
-        1. Compute covariances:
-           - Σ_ref = U_ref @ U_ref.T + σ^2 I
-           - Σ_comparison = U_comparison @ U_comparison.T + σ^2 I
-           - Σ_avg = (2/3) Σ_ref + (1/3) Σ_comparison  [weighted by stimulus frequency]
+            For each trial (ref, comparison, response):
+            1. Compute covariances:
+               - Σ_ref = U_ref @ U_ref.T + σ^2 I
+               - Σ_comparison = U_comparison @ U_comparison.T + σ^2 I
+               - Σ_avg = (2/3) Σ_ref + (1/3) Σ_comparison  [weighted by stimulus frequency]
 
-        2. Sample three internal representations:
-           - z_ref, z_refprime ~ N(ref, Σ_ref)  [2 samples from reference, num_samples times each]
-           - z_comparison ~ N(comparison, Σ_comparison)           [1 sample from comparison, num_samples times]
+            2. Sample three internal representations:
+               - z_ref, z_refprime ~ N(ref, Σ_ref)  [2 samples from reference, num_samples times each]
+               - z_comparison ~ N(comparison, Σ_comparison)           [1 sample from comparison, num_samples times]
 
-        3. Compute three pairwise Mahalanobis distances:
-           - d^2(z_ref, z_refprime) = (z_ref - z_refprime).T @ Σ_avg^{-1} @ (z_ref - z_refprime)  [ref vs reference_prime]
-           - d^2(z_ref, z_comparison) = (z_ref - z_comparison).T @ Σ_avg^{-1} @ (z_ref - z_comparison)  [ref vs comparison]
-           - d^2(z_refprime, z_comparison) = (z_refprime - z_comparison).T @ Σ_avg^{-1} @ (z_refprime - z_comparison)  [reference_prime vs comparison]
+            3. Compute three pairwise Mahalanobis distances:
+               - d^2(z_ref, z_refprime) = (z_ref - z_refprime).T @ Σ_avg^{-1} @ (z_ref - z_refprime)  [ref vs reference_prime]
+               - d^2(z_ref, z_comparison) = (z_ref - z_comparison).T @ Σ_avg^{-1} @ (z_ref - z_comparison)  [ref vs comparison]
+               - d^2(z_refprime, z_comparison) = (z_refprime - z_comparison).T @ Σ_avg^{-1} @ (z_refprime - z_comparison)  [reference_prime vs comparison]
 
-        4. Apply oddity decision rule:
-           - delta = min(d^2(z_ref,z_comparison), d^2(z_refprime,z_comparison)) - d^2(z_ref,z_refprime)
-           - delta > 0 means comparison is farther from BOTH ref and reference_prime -> correct identification
+            4. Apply oddity decision rule:
+               - delta = min(d^2(z_ref,z_comparison), d^2(z_refprime,z_comparison)) - d^2(z_ref,z_refprime)
+               - delta > 0 means comparison is farther from BOTH ref and reference_prime -> correct identification
 
-        5. Apply logistic smoothing:
-           - P(correct) \approx mean(logistic.cdf(delta / bandwidth))
+            5. Apply logistic smoothing:
+               - P(correct) \approx mean(logistic.cdf(delta / bandwidth))
 
-        6. Bernoulli log-likelihood:
-           - LL = Σ [y * log(p) + (1-y) * log(1-p)]
+            6. Bernoulli log-likelihood:
+               - LL = Σ [y * log(p) + (1-y) * log(1-p)]
 
-        Performance:
-        - Memory: O(num_samples * input_dim) per trial
-        - Vectorized across trials using jax.vmap for GPU acceleration
-    - Can be JIT-compiled for additional speed (future optimization)
+            Performance:
+            - Memory: O(num_samples * input_dim) per trial
+            - Vectorized across trials using jax.vmap for GPU acceleration
+        - Can be JIT-compiled for additional speed (future optimization)
 
-        Examples
-        --------
-        >>> import jax.numpy as jnp
-        >>> import jax.random as jr
-        >>> from psyphy.model import WPPM, Prior
-        >>> from psyphy.model.task import OddityTask
-        >>> from psyphy.model.noise import GaussianNoise
-        >>> from psyphy.data.dataset import ResponseData
-        >>>
-        >>> # Setup
-        >>> model = WPPM(
-        ...     input_dim=2,
-        ...     prior=Prior(input_dim=2, basis_degree=3),
-        ...     task=OddityTask(),
-        ...     noise=GaussianNoise(sigma=0.03),
-        ... )
-        >>> params = model.init_params(jr.PRNGKey(0))
-        >>>
-        >>> # Create trial data
-        >>> data = ResponseData()
-        >>> data.add_trial(
-        ...     ref=jnp.array([0.0, 0.0]), comparison=jnp.array([0.3, 0.2]), resp=1
-        ... )
-        >>>
-        >>> loglik = model.task.loglik(
-        ...     params,
-        ...     data,
-        ...     model,
-        ...     model.noise,
-        ...     num_samples=5000,
-        ...     bandwidth=1e-3,
-        ...     key=jr.PRNGKey(42),
-        ... )
-        >>> print(f"MC (N=5000): {loglik:.4f}")
+            Examples
+            --------
+            >>> import jax.numpy as jnp
+            >>> import jax.random as jr
+            >>> from psyphy.model import WPPM, Prior
+            >>> from psyphy.model.task import OddityTask
+            >>> from psyphy.model.noise import GaussianNoise
+            >>> from psyphy.data.dataset import ResponseData
+            >>>
+            >>> # Setup
+            >>> model = WPPM(
+            ...     input_dim=2,
+            ...     prior=Prior(input_dim=2, basis_degree=3),
+            ...     task=OddityTask(),
+            ...     noise=GaussianNoise(sigma=0.03),
+            ... )
+            >>> params = model.init_params(jr.PRNGKey(0))
+            >>>
+            >>> # Create trial data
+            >>> data = ResponseData()
+            >>> data.add_trial(
+            ...     ref=jnp.array([0.0, 0.0]), comparison=jnp.array([0.3, 0.2]), resp=1
+            ... )
+            >>>
+            >>> loglik = model.task.loglik(
+            ...     params,
+            ...     data,
+            ...     model,
+            ...     model.noise,
+            ...     num_samples=5000,
+            ...     bandwidth=1e-3,
+            ...     key=jr.PRNGKey(42),
+            ... )
+            >>> print(f"MC (N=5000): {loglik:.4f}")
 
 
         """
-    # Task-specific controls.
-    # We keep these as kwargs so inference / higher-level model code can tune
-    # MC fidelity (num_samples), smoothing (bandwidth), and randomness (key)
-    # without changing the core TaskLikelihood interface.
+        # Task-specific controls.
+        # We keep these as kwargs so inference / higher-level model code can tune
+        # MC fidelity (num_samples), smoothing (bandwidth), and randomness (key)
+        # without changing the core TaskLikelihood interface.
         num_samples = int(kwargs.pop("num_samples", 1000))
         bandwidth = float(kwargs.pop("bandwidth", 1e-2))
         key = kwargs.pop("key", None)
@@ -429,9 +429,9 @@ class OddityTask(TaskLikelihood):
            - P(correct) \approx mean over num_samples
 
         """
-    # Get input dimension and require Wishart mode.
-    # OddityTask is intentionally MC-only and currently only supports the
-    # WPPM/Wishart covariance parameterization.
+        # Get input dimension and require Wishart mode.
+        # OddityTask is intentionally MC-only and currently only supports the
+        # WPPM/Wishart covariance parameterization.
         input_dim = ref.shape[0]
         is_wishart = model.basis_degree is not None
         if not is_wishart:

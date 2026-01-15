@@ -49,10 +49,8 @@ class TestMCLikelihood:
         return model.init_params(jr.PRNGKey(42))
 
     def test_mc_likelihood_method_exists(self, model):
-        """Test that OddityTask has a loglik_mc method."""
-        assert hasattr(model.task, "loglik_mc"), (
-            "OddityTask should have loglik_mc method"
-        )
+        """Test that OddityTask has a loglik method."""
+        assert hasattr(model.task, "loglik"), "OddityTask should have loglik method"
 
     def test_mc_likelihood_shape_and_dtype(self, model, simple_params):
         """Test MC likelihood returns scalar with correct dtype."""
@@ -63,7 +61,7 @@ class TestMCLikelihood:
         )
 
         # Compute MC likelihood
-        ll_mc = model.task.loglik_mc(
+        ll_mc = model.task.loglik(
             params=simple_params,
             data=data,
             model=model,
@@ -98,7 +96,7 @@ class TestMCLikelihood:
         )
 
         # MC likelihood with many samples
-        ll_mc = model.task.loglik_mc(
+        ll_mc = model.task.loglik(
             params=simple_params,
             data=data,
             model=model,
@@ -128,7 +126,7 @@ class TestMCLikelihood:
         )
 
         # Compute with different sample sizes
-        ll_100 = model.task.loglik_mc(
+        ll_100 = model.task.loglik(
             params=simple_params,
             data=data,
             model=model,
@@ -138,7 +136,7 @@ class TestMCLikelihood:
             key=jr.PRNGKey(0),
         )
 
-        ll_1000 = model.task.loglik_mc(
+        ll_1000 = model.task.loglik(
             params=simple_params,
             data=data,
             model=model,
@@ -170,7 +168,7 @@ class TestMCLikelihood:
             ref=jnp.array([-0.3, 0.2]), comparison=jnp.array([-0.2, 0.3]), resp=1
         )
 
-        ll_mc = model.task.loglik_mc(
+        ll_mc = model.task.loglik(
             params=simple_params,
             data=data,
             model=model,
@@ -197,7 +195,7 @@ class TestMCLikelihood:
             ref=jnp.array([0.0, 0.0]), comparison=jnp.array([0.1, 0.1]), resp=1
         )
 
-        ll_mc = model.task.loglik_mc(
+        ll_mc = model.task.loglik(
             params=simple_params,
             data=data,
             model=model,
@@ -217,7 +215,7 @@ class TestMCLikelihood:
             ref=jnp.array([0.0, 0.0]), comparison=jnp.array([0.1, 0.1]), resp=1
         )
 
-        ll_1 = model.task.loglik_mc(
+        ll_1 = model.task.loglik(
             params=simple_params,
             data=data,
             model=model,
@@ -227,7 +225,7 @@ class TestMCLikelihood:
             key=jr.PRNGKey(42),
         )
 
-        ll_2 = model.task.loglik_mc(
+        ll_2 = model.task.loglik(
             params=simple_params,
             data=data,
             model=model,
@@ -246,7 +244,7 @@ class TestMCLikelihood:
             ref=jnp.array([0.0, 0.0]), comparison=jnp.array([0.1, 0.1]), resp=1
         )
 
-        ll_1 = model.task.loglik_mc(
+        ll_1 = model.task.loglik(
             params=simple_params,
             data=data,
             model=model,
@@ -256,7 +254,7 @@ class TestMCLikelihood:
             key=jr.PRNGKey(0),
         )
 
-        ll_2 = model.task.loglik_mc(
+        ll_2 = model.task.loglik(
             params=simple_params,
             data=data,
             model=model,
@@ -311,7 +309,7 @@ class TestMCLikelihoodEdgeCases:
         )
 
         # Compute MC likelihood
-        loglik = model.task.loglik_mc(
+        loglik = model.task.loglik(
             params=params,
             data=data,
             model=model,
@@ -338,7 +336,7 @@ class TestMCLikelihoodEdgeCases:
         stim = jnp.array([0.5, 0.5])
         data.add_trial(ref=stim, comparison=stim, resp=1)
 
-        ll_mc = model.task.loglik_mc(
+        ll_mc = model.task.loglik(
             params=params,
             data=data,
             model=model,
@@ -362,7 +360,7 @@ class TestMCLikelihoodEdgeCases:
             ref=jnp.array([-0.9, -0.9]), comparison=jnp.array([0.9, 0.9]), resp=1
         )
 
-        ll_mc = model.task.loglik_mc(
+        ll_mc = model.task.loglik(
             params=params,
             data=data,
             model=model,
@@ -386,7 +384,7 @@ class TestMCLikelihoodEdgeCases:
         )
 
         with pytest.raises((ValueError, AssertionError)):
-            model.task.loglik_mc(
+            model.task.loglik(
                 params=params,
                 data=data,
                 model=model,
@@ -443,7 +441,7 @@ class TestGradientCompatibility:
 
         # Define loss function (negative log-likelihood)
         def loss_fn(p):
-            return -model.task.loglik_mc(
+            return -model.task.loglik(
                 params=p,
                 data=data,
                 model=model,
@@ -492,7 +490,7 @@ class TestGradientCompatibility:
         )
 
         def loss_fn(p):
-            return -model.task.loglik_mc(
+            return -model.task.loglik(
                 params=p,
                 data=data,
                 model=model,
@@ -528,7 +526,7 @@ class TestGradientCompatibility:
         )
 
         def loss_fn(p):
-            return -model.task.loglik_mc(
+            return -model.task.loglik(
                 params=p,
                 data=data,
                 model=model,
@@ -563,7 +561,7 @@ class TestGradientCompatibility:
         )
 
         def loss_fn(p):
-            return -model.task.loglik_mc(
+            return -model.task.loglik(
                 params=p,
                 data=data,
                 model=model,
@@ -617,7 +615,7 @@ class TestProbabilityClipping:
             ref=jnp.array([0.0, 0.0]), comparison=jnp.array([0.0, 0.0]), resp=1
         )
 
-        ll = model.task.loglik_mc(
+        ll = model.task.loglik(
             params=params,
             data=data,
             model=model,
@@ -653,7 +651,7 @@ class TestProbabilityClipping:
             ref=jnp.array([0.0, 0.0]), comparison=jnp.array([10.0, 10.0]), resp=1
         )
 
-        ll = model.task.loglik_mc(
+        ll = model.task.loglik(
             params=params,
             data=data,
             model=model,
@@ -694,7 +692,7 @@ class TestProbabilityClipping:
             data = ResponseData()
             data.add_trial(ref=ref, comparison=comp, resp=1)
 
-            ll = model.task.loglik_mc(
+            ll = model.task.loglik(
                 params=params,
                 data=data,
                 model=model,
@@ -748,7 +746,7 @@ class TestNumericalStability:
         )
 
         # This should not crash or return NaN
-        ll = model.task.loglik_mc(
+        ll = model.task.loglik(
             params=params,
             data=data,
             model=model,
@@ -785,7 +783,7 @@ class TestNumericalStability:
             resp=1,
         )
 
-        ll = model.task.loglik_mc(
+        ll = model.task.loglik(
             params=params,
             data=data,
             model=model,
@@ -823,7 +821,7 @@ class TestNumericalStability:
             resp=1,
         )
 
-        ll = model.task.loglik_mc(
+        ll = model.task.loglik(
             params=params,
             data=data,
             model=model,
@@ -881,7 +879,7 @@ class TestConvergenceRate:
             # Compute MC likelihood multiple times with different seeds
             lls = []
             for seed in range(30):  # 30 independent estimates
-                ll = model.task.loglik_mc(
+                ll = model.task.loglik(
                     params=params,
                     data=data,
                     model=model,
