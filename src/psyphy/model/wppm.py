@@ -17,7 +17,7 @@ Goals
    - Expose hyperparameters needed to for example use Model config used in Hong et al.:
        * extra_dims: embedding size for basis expansions (unused in MVP)
        * variance_scale: global covariance scale (unused in MVP)
-       * lengthscale: smoothness/length-scale for covariance field (unused in MVP)
+       * decay_rate: smoothness/length-scale for covariance field (unused in MVP)
        * diag_term: numerical stabilizer added to covariance diagonals (used in MVP)
    - Later, replace `local_covariance` with a basis-expansion Wishart process
      and swap discriminability/likelihood with MC observer simulation.
@@ -72,7 +72,7 @@ class WPPM(Model):
         In Wishart mode, embedding_dim = input_dim + extra_dims.
     variance_scale : float, default=1.0
         Global scaling factor for covariance magnitude (unused in MVP).
-    lengthscale : float, default=1.0
+    decay_rate : float, default=1.0
         Smoothness/length-scale for spatial covariance variation (unused in MVP).
         (formerly "decay_rate")
     diag_term : float, default=1e-6
@@ -89,7 +89,7 @@ class WPPM(Model):
         *,  # everything after here is keyword-only
         extra_dims: int = 0,
         variance_scale: float = 1.0,
-        lengthscale: float = 1.0,
+        decay_rate: float = 1.0,
         diag_term: float = 1e-6,
         **kwargs,  # Accept online_config from model base
     ) -> None:
@@ -112,7 +112,7 @@ class WPPM(Model):
         # --- forward-compatible hyperparameters (stubs in MVP) ---
         self.extra_dims = int(extra_dims)
         self.variance_scale = float(variance_scale)
-        self.lengthscale = float(lengthscale)
+        self.decay_rate = float(decay_rate)
         self.diag_term = float(diag_term)
 
     @property

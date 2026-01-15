@@ -19,7 +19,7 @@ def test_local_covariance_positive_definite(diag_term):
         basis_degree=basis_degree,
         extra_embedding_dims=extra_dims,
         variance_scale=0.2,
-        lengthscale=0.5,
+        decay_rate=0.5,
     )
     task = OddityTask(slope=1.5)
     noise = GaussianNoise(sigma=1.0)

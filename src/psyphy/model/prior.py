@@ -6,7 +6,7 @@ Prior distributions for WPPM parameters
 
 Hyperparameters:
     * variance_scale : global scaling factor for covariance magnitude
-    * lengthscale    : smoothness/length-scale controlling spatial variation
+    * decay_rate     : smoothness controlling spatial variation
     * extra_embedding_dims : embedding dimension for basis expansions
 
 Connections
@@ -14,7 +14,7 @@ Connections
 - WPPM calls Prior.sample_params() to initialize model parameters
 - WPPM adds Prior.log_prob(params) to task log-likelihoods to form the log posterior
 - Prior will generate structured parameters for basis expansions
-  and lengthscale-controlled smooth covariance fields
+  and decay_rate-controlled smooth covariance fields
 """
 
 from __future__ import annotations
@@ -47,9 +47,6 @@ class Prior:
         Geometric decay rate for prior variance over higher-degree coefficients.
         Prior variance for degree-d coefficient = variance_scale * (decay_rate^d).
         Smaller decay_rate -> stronger smoothness prior.
-    lengthscale : float, default=1.0
-        Alias for decay_rate (kept for backward compatibility).
-        If both specified, decay_rate takes precedence.
     extra_embedding_dims : int, default=0
         Additional latent dimensions in U matrices beyond input dimensions.
         Allows richer ellipsoid shapes in Wishart mode.
@@ -59,23 +56,12 @@ class Prior:
     basis_degree: int | None = None
     variance_scale: float = 1.0
     decay_rate: float = 0.5
-    lengthscale: float = 1.0  # Kept for compatibility
     extra_embedding_dims: int = 0
 
     def __post_init__(self):
         """Validate and normalize parameters."""
         if self.basis_degree is not None and self.basis_degree < 0:
             raise ValueError("basis_degree must be non-negative or None")
-
-        # Use lengthscale as decay_rate if only lengthscale specified
-        # (for backward compatibility with old API)
-        if self.decay_rate == 0.5 and self.lengthscale != 1.0:
-            self.decay_rate = self.lengthscale
-
-    # @classmethod
-    # def default(cls, input_dim: int, scale: float = 0.5) -> Prior:
-    #     """Convenience constructor with MVP defaults."""
-    #     return cls(input_dim=input_dim, scale=scale)
 
     def _compute_basis_degree_grid(self) -> jnp.ndarray:
         """
