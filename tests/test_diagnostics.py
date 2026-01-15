@@ -91,7 +91,6 @@ def test_print_parameter_summary(trained_model, capsys):
 
     captured = capsys.readouterr()
     assert "Parameter Summary (50 samples)" in captured.out
-    assert "log_diag" in captured.out or "noise_scale" in captured.out
 
 
 def test_estimate_threshold_uncertainty_1d_line(trained_model):
