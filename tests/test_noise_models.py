@@ -52,7 +52,7 @@ class TestNoiseModels:
         )
 
         # Compute likelihood with Gaussian noise
-        ll_gaussian = model_gaussian.task.loglik_mc(
+        ll_gaussian = model_gaussian.task.loglik(
             params=params,
             data=data,
             model=model_gaussian,
@@ -63,7 +63,7 @@ class TestNoiseModels:
         )
 
         # Compute likelihood with Student-t noise
-        ll_student = model_student_t.task.loglik_mc(
+        ll_student = model_student_t.task.loglik(
             params=params,
             data=data,
             model=model_student_t,
@@ -89,7 +89,7 @@ class TestNoiseModels:
             ref=jnp.array([0.0, 0.0]), comparison=jnp.array([0.5, 0.5]), resp=1
         )
 
-        ll = model_student_t.task.loglik_mc(
+        ll = model_student_t.task.loglik(
             params=params,
             data=data,
             model=model_student_t,
