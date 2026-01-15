@@ -169,23 +169,6 @@ class TestBasisExpansion:
         # New design: embedding_dim = input_dim + extra_dims = 2 + 0 = 2
         assert model.embedding_dim == 2
 
-    def test_mvp_mode_no_embedding(self):
-        """MVP mode (basis_degree=None) should skip embedding."""
-        model = WPPM(
-            input_dim=2,
-            prior=Prior(input_dim=2),
-            task=OddityTask(),
-            noise=GaussianNoise(),
-        )
-
-        x = jnp.array([0.5, 0.3])
-
-        # In MVP mode, embedding should return input unchanged
-        # (or model should work directly in input space)
-        assert model.embedding_dim == 2  # Same as input_dim
-        x_embed = model._embed_stimulus(x)
-        assert jnp.allclose(x_embed, x, atol=1e-10)
-
 
 class TestBasisExpansionIntegration:
     """Integration tests for basis expansion with full WPPM."""

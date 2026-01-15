@@ -222,7 +222,7 @@ def test_posterior_get_covariance_field_wishart(wishart_model, sample_data):
 
     API Design Note
     ---------------
-    Like test_posterior_get_covariance_field_mvp(), this demonstrates the
+    this demonstrates the
     BoTorch-style two-step pattern. The covariance field will reflect the
     spatially-varying structure learned during fitting.
     """
