@@ -28,7 +28,7 @@ class TestModelFit:
         """Create a WPPM model."""
         return WPPM(
             input_dim=2,
-            prior=Prior(input_dim=2, scale=0.5),
+            prior=Prior(input_dim=2),
             task=OddityTask(),
             noise=GaussianNoise(),
         )
@@ -103,7 +103,7 @@ class TestModelPosterior:
         """Create and fit a model."""
         model = WPPM(
             input_dim=2,
-            prior=Prior(input_dim=2, scale=0.5),
+            prior=Prior(input_dim=2),
             task=OddityTask(),
             noise=GaussianNoise(),
         )
