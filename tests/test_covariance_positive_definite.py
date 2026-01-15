@@ -21,7 +21,7 @@ def test_local_covariance_positive_definite(diag_term):
         variance_scale=0.2,
         decay_rate=0.5,
     )
-    task = OddityTask(slope=1.5)
+    task = OddityTask()
     noise = GaussianNoise(sigma=1.0)
     model = WPPM(
         input_dim=input_dim,
