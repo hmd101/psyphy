@@ -48,7 +48,8 @@ class MAPOptimizer(InferenceEngine):
         optimizer: optax.GradientTransformation | None = None,
         *,
         track_history: bool = False,
-        log_every: int = 10,
+        log_every: int = 1,
+        max_grad_norm: float | None = 1.0,
     ):
         """Create a MAP optimizer.
 
@@ -66,13 +67,24 @@ class MAPOptimizer(InferenceEngine):
             When True, record loss history during fitting for plotting.
         log_every : int, optional
             Record every N steps (also records the last step).
+        max_grad_norm : float | None, optional
+            If set, clip gradients by global norm to this value before applying
+            optimizer updates. This stabilizes optimization when gradients blow up.
         """
         self.steps = steps
-        self.optimizer = optimizer or optax.sgd(
+        base_optimizer = optimizer or optax.sgd(
             learning_rate=learning_rate, momentum=momentum
         )
+        if max_grad_norm is None:
+            self.optimizer = base_optimizer
+        else:
+            self.optimizer = optax.chain(
+                optax.clip_by_global_norm(float(max_grad_norm)),
+                base_optimizer,
+            )
         self.track_history = track_history
         self.log_every = max(1, int(log_every))
+        self.max_grad_norm = max_grad_norm
         # Exposed after fit() when tracking is enabled
         self.loss_steps: list[int] = []
         self.loss_history: list[float] = []
@@ -131,6 +143,22 @@ class MAPOptimizer(InferenceEngine):
 
         for i in range(self.steps):
             params, opt_state, loss = step(params, opt_state)
+
+            # Non-finite guard: if loss becomes NaN/Inf, optimization has diverged.
+            # Stop early so downstream plots don’t look “truncated” due to NaNs.
+            if not bool(jax.numpy.isfinite(loss)):
+                if self.track_history:
+                    try:
+                        self.loss_steps.append(i)
+                        self.loss_history.append(float(loss))
+                    except Exception:
+                        pass
+                print(
+                    f"[MAPOptimizer] Non-finite loss at step {i}: {loss}. "
+                    "Stopping early."
+                )
+                break
+
             if self.track_history and (
                 (i % self.log_every == 0) or (i == self.steps - 1)
             ):

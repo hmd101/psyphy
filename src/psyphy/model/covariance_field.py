@@ -456,11 +456,7 @@ class WPPMCovarianceField:
         jnp.ndarray, shape (input_dim, embedding_dim)
             Rectangular square root matrix U(x).
             embedding_dim = input_dim + extra_dims
-
-        Raises
-        ------
-        ValueError
-            If in MVP mode (basis_degree=None).
+\
 
         Notes
         -----
