@@ -234,10 +234,6 @@ class WPPM(Model):
         """
         Sample initial parameters from the prior.
 
-        MVP parameters:
-            {"log_diag": shape (input_dim,)}
-        which defines a constant diagonal covariance across the space.
-
         Returns
         -------
         params : dict[str, jnp.ndarray]
@@ -373,7 +369,7 @@ class WPPM(Model):
         """
         Return local covariance Σ(x) at stimulus location x.
 
-  
+
         Wishart mode (basis_degree set):
             Σ(x) = U(x) @ U(x)^T + diag_term * I
             where U(x) is rectangular (input_dim, embedding_dim) if extra_dims > 0.
