@@ -20,9 +20,9 @@ dependencies = [
 ]
 
 [project.urls]
-Homepage = "https://github.com/hmd101/psyphy"
-Repository = "https://github.com/hmd101/psyphy"
-Issues = "https://github.com/hmd101/psyphy/issues"
+Homepage = "https://flatironinstitute.github.io/psyphy"
+Repository = "https://flatironinstitute.github.io/psyphy"
+Issues = "https://flatironinstitute.github.io/psyphy/issues"
 
 [tool.hatch.build.targets.wheel]
 packages = ["src/psyphy"]
