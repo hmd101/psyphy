@@ -8,7 +8,7 @@ Includes
 --------
 - WPPM (core model)
 - Priors (Prior)
-- Tasks (TaskLikelihood base, OddityTask, TwoAFC)
+- Tasks (TaskLikelihood base, OddityTask)
 - Noise models (GaussianNoise, StudentTNoise)
 
 All functions/classes use JAX arrays (jax.numpy as jnp) for autodiff
@@ -22,7 +22,7 @@ Typical usage
 from .base import Model, OnlineConfig
 from .noise import GaussianNoise, StudentTNoise
 from .prior import Prior
-from .task import OddityTask, TaskLikelihood, TwoAFC
+from .task import OddityTask, TaskLikelihood
 from .wppm import WPPM
 
 __all__ = [
@@ -36,7 +36,6 @@ __all__ = [
     # Tasks
     "TaskLikelihood",
     "OddityTask",
-    "TwoAFC",
     # Noise models
     "GaussianNoise",
     "StudentTNoise",
