@@ -1,8 +1,8 @@
 site_name: psyphy
 site_description: Psychophysical modeling and adaptive trial placement
-site_url: https://hmd101.github.io/psyphy/
-repo_url: https://github.com/hmd101/psyphy
-repo_name: hmd101/psyphy
+site_url: https://flatironinstitute.github.io/psyphy/
+repo_url: https://github.com/flatironinstitute/psyphy
+repo_name: flatironinstitute/psyphy
 
 theme:
   name: material
