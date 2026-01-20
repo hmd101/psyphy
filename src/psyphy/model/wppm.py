@@ -33,6 +33,8 @@ import jax
 import jax.numpy as jnp
 import jax.random as jr
 
+from psyphy.utils.math import chebyshev_basis
+
 from .base import Model
 from .prior import Prior
 from .task import TaskLikelihood
@@ -203,11 +205,10 @@ class WPPM(Model):
         Otherwise, applies Chebyshev basis separately to each input dimension
         and concatenates the results.
         """
-        from psyphy.utils.math import chebyshev_basis
 
-        # MVP mode: no embedding
         if self.basis_degree is None:
-            return x
+            raise ValueError("Cannot embed stimulus: basis_degree is None . "
+                             "Set basis_degree to use Wishart process.")
 
         # Normalize to [-1, 1] for numerical stability
         x_norm = self._normalize_stimulus(x)
@@ -245,6 +246,8 @@ class WPPM(Model):
     # ----------------------------------------------------------------------
     def _evaluate_basis_at_point(self, x: jnp.ndarray) -> jnp.ndarray:
         """
+        TODO: require user to provide input in chebychev range [-1,1] and have this 
+        function only check whether valid range
         Evaluate all Chebyshev basis functions at point x, keeping structure for einsum.
 
         For 2D: returns φ_ij(x) = T_i(x_1) * T_j(x_2) with shape (degree+1, degree+1)
@@ -263,7 +266,6 @@ class WPPM(Model):
             Basis function values with structured shape for efficient einsum.
             Shape is (degree+1, degree+1) for 2D or (degree+1, degree+1, degree+1) for 3D.
         """
-        from psyphy.utils.math import chebyshev_basis
 
         if self.basis_degree is None:
             raise ValueError(
@@ -271,8 +273,10 @@ class WPPM(Model):
                 "Set basis_degree to use Wishart process."
             )
 
+        # TODO: re-implement normalize_stimulus to check valid input range
+        # user is required to provide valid input in [-1, 1] for Chebyshev basis
         # Normalize to [-1, 1]
-        x_norm = self._normalize_stimulus(x)
+        x_norm = x #self._normalize_stimulus(x)
 
         if self.input_dim == 2:
             # Evaluate basis functions: φ_ij(x) = T_i(x_1) * T_j(x_2)
@@ -391,12 +395,6 @@ class WPPM(Model):
         Σ : jnp.ndarray, shape (input_dim, input_dim)
             Covariance matrix in stimulus space.
         """
-        # MVP mode: constant diagonal covariance
-        if "log_diag" in params:
-            log_diag = params["log_diag"]
-            diag = jnp.exp(log_diag)
-            return jnp.diag(diag)
-
         # Wishart mode: spatially-varying covariance
         if "W" in params:
             U = self._compute_sqrt(params, x)  # (input_dim, embedding_dim)
@@ -405,7 +403,7 @@ class WPPM(Model):
             Sigma = U @ U.T + self.diag_term * jnp.eye(self.input_dim)
             return Sigma
 
-        raise ValueError("params must contain either 'log_diag' (MVP) or 'W' (Wishart)")
+        raise ValueError("params must contain 'W' (Wishart)")
 
     # ----------------------------------------------------------------------
     # DISCRIMINABILITY (d), later implemented via MC simulation
