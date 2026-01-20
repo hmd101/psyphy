@@ -79,8 +79,8 @@ _UNIT_CIRCLE = np.vstack([np.cos(_THETAS), np.sin(_THETAS)])
 # # MAX_LR = jnp.float32(-3)
 
 NUM_GRID_PTS = 10  # Number of reference points over stimulus space.
-MC_SAMPLES = 60  # Number of simulated trials to compute likelihood.
-NUM_TRIALS = 4000  # Number of trials in simulated dataset.
+MC_SAMPLES = 6  # Number of simulated trials to compute likelihood.
+NUM_TRIALS = 40  # Number of trials in simulated dataset.
 # 4000 trials does not work on cpu
 
 
@@ -192,8 +192,8 @@ model = WPPM(
 
 # 4) Fit using optimizer
 print("[3/5] Fitting via MAPOptimizer ...")
-steps = 3000
-lr = 1e-5
+steps = 1000
+lr = 1e-3
 momentum = 0.9
 map_optimizer = MAPOptimizer(
     steps=steps, learning_rate=lr, momentum=momentum, track_history=True, log_every=1
