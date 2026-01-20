@@ -5,7 +5,6 @@ def test_top_level_api_imports():
         "WPPM",
         "Prior",
         "OddityTask",
-        "TwoAFC",
         "GaussianNoise",
         "StudentTNoise",
         "MAPOptimizer",
