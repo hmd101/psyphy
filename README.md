@@ -12,10 +12,10 @@
 
 
 <h4 align="center">
-  <a href="https://hmd101.github.io/psyphy/#install/">Installation</a> |
-  <a href="https://hmd101.github.io/psyphy/reference/">Documentation</a> |
-  <a href="https://hmd101.github.io/psyphy/examples/mvp/offline_fit_mvp/">Examples</a> |
-  <a href="https://hmd101.github.io/psyphy/CONTRIBUTING/">Contributing</a>
+  <a href="https://flatironinstitute.github.io/psyphy/#install/">Installation</a> |
+  <a href="https://flatironinstitute.github.io/psyphy/reference/">Documentation</a> |
+  <a href="https://flatironinstitute.github.io/psyphy/examples/mvp/offline_fit_mvp/">Examples</a> |
+  <a href="https://flatironinstitute.github.io/psyphy/CONTRIBUTING/">Contributing</a>
 </h4>
 
 #### This package provides:
@@ -43,14 +43,14 @@
 ## Install (editable)
 
 ```bash
-git clone https://github.com/hmd101/psyphy.git
+git clone https://flatironinstitute.github.io/psyphy.git
 cd psyphy
 pip install -e .
 
 ```
 
 ## Quickstart (MVP)
-If you already have data and just want to fit and predict without the experiment orchestrator, otherwise [go here](https://hmd101.github.io/psyphy/usage/) for a more comprehensive example including the entire experiment orchestrator.
+If you already have data and just want to fit and predict without the experiment orchestrator, otherwise [go here](https://flatironinstitute.github.io/psyphy/usage/) for a more comprehensive example including the entire experiment orchestrator.
 
 ```python
 from psyphy.data.dataset import ResponseData
