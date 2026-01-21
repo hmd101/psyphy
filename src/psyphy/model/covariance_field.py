@@ -25,7 +25,6 @@ where:
     W_ij are learned coefficients
     λ is a numerical stabilizer (diag_term)
 
-In MVP mode, Σ(x) is constant: Σ(x) = diag(exp(log_diag)).
 
 Usage Examples
 --------------
@@ -40,7 +39,7 @@ Usage Examples
 >>> Sigmas = field.cov_batch(X_grid)
 
 # Access square root
->>> U = field.sqrt_cov(x)  # Only in Wishart mode
+>>> U = field.sqrt_cov(x)
 """
 
 from __future__ import annotations
@@ -103,8 +102,7 @@ class CovarianceField(Protocol):
 
 class WPPMCovarianceField:
     """
-    Covariance field for WPPM with Wishart process or MVP mode.
-
+    Covariance field for WPPM with Wishart process
     Encapsulates model + parameters to provide clean evaluation interface
     for Σ(x) and U(x).
 
