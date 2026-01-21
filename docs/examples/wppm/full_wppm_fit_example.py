@@ -59,30 +59,30 @@ print("Device used:", jax.devices()[0])
 # Helper: invert criterion to d* for Oddity task
 
 
-# Robust ellipse plotting utilities (like in covariance_field_demo.py)
-def matrix_sqrt(Sigma: jnp.ndarray) -> jnp.ndarray:
-    eigvals, eigvecs = jnp.linalg.eigh(Sigma)
-    sqrt_eigvals = jnp.sqrt(jnp.maximum(eigvals, 0))
-    return eigvecs @ jnp.diag(sqrt_eigvals) @ eigvecs.T
+# # Robust ellipse plotting utilities
+# def matrix_sqrt(Sigma: jnp.ndarray) -> jnp.ndarray:
+#     eigvals, eigvecs = jnp.linalg.eigh(Sigma)
+#     sqrt_eigvals = jnp.sqrt(jnp.maximum(eigvals, 0))
+#     return eigvecs @ jnp.diag(sqrt_eigvals) @ eigvecs.T
 
 
-def plot_ellipse_at_point(
-    ax,
-    center: jnp.ndarray,
-    Sigma: jnp.ndarray,
-    scale: float = 1.0,
-    color: str = "blue",
-    alpha: float = 1.0,
-    linewidth: float = 0.5,
-    label: str | None = None,
-):
-    sqrt_Sigma = matrix_sqrt(Sigma)
-    ellipse_points = scale * (sqrt_Sigma @ _UNIT_CIRCLE)
-    x_coords = center[0] + ellipse_points[0]
-    y_coords = center[1] + ellipse_points[1]
-    ax.plot(
-        x_coords, y_coords, color=color, alpha=alpha, linewidth=linewidth, label=label
-    )
+# def plot_ellipse_at_point(
+#     ax,
+#     center: jnp.ndarray,
+#     Sigma: jnp.ndarray,
+#     scale: float = 1.0,
+#     color: str = "blue",
+#     alpha: float = 1.0,
+#     linewidth: float = 0.5,
+#     label: str | None = None,
+# ):
+#     sqrt_Sigma = matrix_sqrt(Sigma)
+#     ellipse_points = scale * (sqrt_Sigma @ _UNIT_CIRCLE)
+#     x_coords = center[0] + ellipse_points[0]
+#     y_coords = center[1] + ellipse_points[1]
+#     ax.plot(
+#         x_coords, y_coords, color=color, alpha=alpha, linewidth=linewidth, label=label
+#     )
 
 
 _THETAS = jnp.linspace(0, 2 * jnp.pi, 100)
@@ -157,7 +157,7 @@ variance_scale = 4e-3
 diag_term = 1e-9
 # for ground-truth model
 bandwidth = 1e-2
-learning_rate = 5e-3  # 5e-5
+learning_rate = 5e-4  # 5e-5
 num_steps = 300
 
 task = OddityTask()
