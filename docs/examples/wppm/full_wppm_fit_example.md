@@ -10,7 +10,7 @@ This note explains what the example script [`full_wppm_fit_example.py`](full_wpp
 
 ---
 
-## What the WPPM is (in one paragraph)
+## What the WPPM is in a nutshell
 
 WPPM defines a *covariance matrix field* \(\Sigma(x)\) over stimulus space. Intuitively, \(\Sigma(x)\) describes the local noise/uncertainty ellipse around stimulus \(x\). The model represents \(\Sigma(x)\) as
 
@@ -26,6 +26,7 @@ A psychophysical task model (here: `OddityTask`) uses \(\Sigma\) to compute prob
 \log p(\theta \mid \mathcal{D}) = \log p(\mathcal{D} \mid \theta) + \log p(\theta).
 \]
 
+For more details on how the Wishart Psychophysical Model (WPPM) works, please checkout this [tutorial](`docs/examples/wppm/wppm_tutorial.md`).
 ---
 
 ## Files to know (where to look in the repo)
@@ -64,15 +65,8 @@ In `full_wppm_fit_example.py`, the important imports are:
 - `WPPMCovarianceField` (fast batched \(\Sigma\) evaluation)
 - `GaussianNoise`, `Prior`, `OddityTask`, `WPPM`
 
-The script also sets the JAX backend (CPU vs GPU) and prints the device.
 
-```python title="Imports"
---8<-- "docs/examples/wppm/full_wppm_fit_example.py:imports"
-```
 
-```python title="JAX device / backend selection"
---8<-- "docs/examples/wppm/full_wppm_fit_example.py:jax_device_setup"
-```
 
 ---
 
@@ -157,7 +151,7 @@ In the example script, the model is created like:
 
 ---
 
-## Step 3 — Evaluate the covariance field \(\Sigma(x)\)
+## Step 3 — Evaluate the covariance field $\Sigma(x)$
 
 The example uses a convenience wrapper:
 
