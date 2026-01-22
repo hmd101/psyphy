@@ -6,14 +6,16 @@ For this purpose, we expose how the MAP optimizer is implemented in `psyphy`.
 
 You can run the toy example with this from scratch implementation yourself with the following script:
 ```bash
-python docs/examples/mvp/offline_fit_mvp_with_map_optimizer.py
+python docs/examples/wppm/full_wppm_fit_example.py
 ```
 
 ---
 
 ## Model
 ```python title="Model"
---8<-- "docs/examples/mvp/offline_fit_mvp.py:model"
+--8<-- "docs/examples/wppm/full_wppm_fit_example.py:truth_model"
+--8<-- "docs/examples/wppm/full_wppm_fit_example.py:simulate_data"
+--8<-- "docs/examples/wppm/full_wppm_fit_example.py:build_model"
 ```
 
 ---
@@ -23,7 +25,7 @@ Here, we define the training loop that minimizes the model’s negative log post
 
 
 ```python title="Fitting with psyphy"
---8<-- "docs/examples/mvp/offline_fit_mvp_with_map_optimizer.py:training"
+--8<-- "docs/examples/wppm/full_wppm_fit_example.py:fit_map"
 ```
 
 ### Implementing optimizers with `jax` --  exposing psyphy's MAP implementation in Jax
@@ -37,7 +39,7 @@ To make this work, we represent parameters and optimizer states as PyTrees (nest
 This approach lets us scale optimization and inference routines from small CPU experiments to large GPU-accelerated Bayesian models with minimal code changes.
 
 ```python title="From scratch: training loop exposing psyphy's MAP implementation in Jax"
---8<-- "docs/examples/mvp/offline_fit_mvp.py:training"
+--8<-- "docs/examples/wppm/full_wppm_fit_example.py:fit_map"
 ```
 
 

@@ -93,23 +93,24 @@ nav:
   - Home: index.md
   - Quickstart: usage.md
   - API:
-      - Overview: reference/overview.md
-      - Reference: reference.md
-      - Data: reference/data.md
-      - Model: reference/model.md
-      - Inference: reference/inference.md
-      - Posterior: reference/posterior.md
-      - Acquisition: reference/acquisition.md
-      - Trial Placement: reference/trial_placement.md
-      - Session: reference/session.md
-      - Utils: reference/utils.md
-  # - Examples:
-  #     - MVP Offline Fit: examples/mvp/offline_fit_mvp.md
-  # - Contributing: CONTRIBUTING.md
+    - Overview: reference/overview.md
+    - Reference: reference.md
+    - Data: reference/data.md
+    - Model: reference/model.md
+    - Inference: reference/inference.md
+    - Posterior: reference/posterior.md
+    - Acquisition: reference/acquisition.md
+    - Trial Placement: reference/trial_placement.md
+    - Session: reference/session.md
+    - Utils: reference/utils.md
   - Examples:
-      - MVP Offline Fit: examples/mvp/offline_fit_mvp.md
-      - Build your own optimizer with optax: examples/optim/map.md
-      - Covariance Field Visualization: examples/covariance_field.md
+    - Overview: examples/index.md
+    # - MVP Offline Fit: examples/mvp/offline_fit_mvp.md
+    - Full WPPM fit (end-to-end): examples/wppm/full_wppm_fit_example.md
+    - Build your own optimizer with optax: examples/optim/map.md
+    - Covariance Field Visualization: examples/covariance_field.md
+    - Covariance Field (full page): examples/covariance_field/covariance_field.md
+  - Design Doc: API_DESIGN_DOCUMENT.md
   - Contributing: CONTRIBUTING.md
 
 extra_javascript:
