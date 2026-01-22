@@ -55,7 +55,7 @@ else:
 
 
 # print device used
-print("Device used:", jax.devices()[0])
+print("DEVICE USED:", jax.devices()[0])
 # Helper: invert criterion to d* for Oddity task
 
 
@@ -99,11 +99,11 @@ def _ellipse_segments_from_covs(
 ) -> tuple[jnp.ndarray, jnp.ndarray]:
     """Convert batched covariances into polyline segments for LineCollection.
 
-    Why this is faster:
-      - All heavy math (jittering, eigvals, Cholesky, circle transform) is done
-        in one batched JAX computation rather than inside a Python loop.
+    Speed improvements through:
+      - all heavy math (jittering, eigvals, Cholesky, circle transform) is done
+        in one batched JAX computation rather than inside a Python loop
       - Matplotlib then receives one big array (n_lines, n_pts, 2) instead of
-        creating hundreds of individual Line2D artists via ax.plot.
+        creating hundreds of individual Line2D artists via ax.plot
 
     Returns
     -------
@@ -120,7 +120,7 @@ def _ellipse_segments_from_covs(
     valid = jnp.all(eigvals > 0, axis=-1)
 
     # Cholesky is faster than eigendecomposition for SPD matrices.
-    # We only use it for plotting ellipses (shape/orientation), not inference.
+    # we only use it for plotting ellipses (shape/orientation), not inference.
     def _cov_to_points(cov: jnp.ndarray, center: jnp.ndarray) -> jnp.ndarray:
         L = jnp.linalg.cholesky(cov)
         pts = scale * (L @ unit_circle)  # (2, n_theta)
@@ -143,8 +143,8 @@ def _ellipse_segments_from_covs(
 # # python simulate_2d.py --optimizer sgd --learning_rate 5e-5 --momentum 0.9 --mc_samples 500 --bandwidth 1e-2 --total_steps 1000
 
 NUM_GRID_PTS = 10  # Number of reference points over stimulus space.
-MC_SAMPLES = 5  # Number of simulated trials to compute likelihood. # 500
-NUM_TRIALS = 40  # Number of trials in simulated dataset.
+MC_SAMPLES = 500  # Number of simulated trials to compute likelihood. # 500
+NUM_TRIALS = 4000  # Number of trials in simulated dataset.
 # 4000 trials does not work on cpu
 
 
@@ -158,7 +158,7 @@ diag_term = 1e-9
 # for ground-truth model
 bandwidth = 1e-2
 learning_rate = 5e-5
-num_steps = 300
+num_steps = 2000
 
 task = OddityTask()
 noise = GaussianNoise(sigma=0.1)
@@ -191,17 +191,14 @@ truth_params = truth_model.init_params(jax.random.PRNGKey(123))
 
 # 2) Simulate synthetic data from the ground-truth field
 #
-# We *must* generate synthetic responses using the SAME observer model that the
-# likelihood assumes.
-#
+# Here we generate y ~ Bernoulli(p_correct) where p_correct is computed by the
+# same MC simulation used by the odditiy task:
 # `OddityTask.loglik`
 #   - samples internal reps around the stimulus means (ref / comparison)
 #   - uses the 3-stimulus oddity decision rule via Mahalanobis distances under
 #     an averaged covariance
 #   - uses a logistic CDF smoothing with a configurable bandwidth
 #
-# Here we generate y ~ Bernoulli(p_correct) where p_correct is computed by the
-# same MC simulation used by the task.
 
 
 data = ResponseData()
@@ -209,42 +206,68 @@ num_trials_per_ref = NUM_TRIALS  # 4000
 n_ref_grid = 5  # NUM_GRID_PTS
 ref_grid = jnp.linspace(-1, 1, n_ref_grid)  # [-1,1] space
 ref_points = jnp.stack(jnp.meshgrid(ref_grid, ref_grid), axis=-1).reshape(-1, 2)
-max_radius = 0.15
-mc_samples = MC_SAMPLES
+
+# --- Stimulus design: covariance-scaled probe displacements ---
+#
+# Rather than sampling probes at a fixed Euclidean radius, we scale the probe
+# displacement by sqrt(Σ_ref). This tends to equalize trial difficulty across
+# space (roughly constant Mahalanobis radius).
+
 seed = 3
 key = jr.PRNGKey(seed)
-trial_idx = 0
-for ref_np in ref_points:
-    for _ in range(num_trials_per_ref):
-        # Sample comparison point.
-        # Fold in the trial index so each trial gets independent randomness.
-        trial_key = jr.fold_in(key, trial_idx)
-        k_angle, k_radius, k_pred, k_y = jr.split(trial_key, 4)
 
-        angle = float(jax.random.uniform(k_angle, (), minval=0.0, maxval=2.0 * jnp.pi))
-        radius = float(jax.random.uniform(k_radius, (), minval=0.0, maxval=max_radius))
-        delta = jnp.array([jnp.cos(angle), jnp.sin(angle)]) * radius
-        comparison_np = ref_np + delta
-        comparison_np = jnp.clip(comparison_np, -1.0, 1.0)
+# Build a batched reference list by repeating each grid point.
+n_ref = ref_points.shape[0]
+refs = jnp.repeat(ref_points, repeats=num_trials_per_ref, axis=0)  # (N, 2)
+num_trials = int(refs.shape[0])
 
-        # Use the MC oddity observer model to compute p(correct).
-        # This matches the decision rule used by `OddityTask.loglik`.
-        ref = jnp.array(ref_np)
-        comparison = jnp.array(comparison_np)
-        p_correct = task.predict_with_kwargs(
-            truth_params,
-            (ref, comparison),
-            truth_model,
-            truth_model.noise,
-            num_samples=mc_samples,
-            bandwidth=bandwidth,
-            key=k_pred,
-        )
+# Evaluate Σ(ref) in batch using the psyphy covariance-field wrapper.
+truth_field = WPPMCovarianceField(truth_model, truth_params)
+Sigmas_ref = truth_field(refs)  # (N, 2, 2)
 
-        # Sample an observed response y ~ Bernoulli(p_correct)
-        y = int(jr.bernoulli(k_y, p_correct))
-        data.add_trial(ref=jnp.array(ref), comparison=jnp.array(comparison), resp=y)
-        trial_idx += 1
+# Sample unit directions on the circle.
+k_dir, k_pred, k_y = jr.split(key, 3)
+angles = jr.uniform(k_dir, shape=(num_trials,), minval=0.0, maxval=2.0 * jnp.pi)
+unit_dirs = jnp.stack([jnp.cos(angles), jnp.sin(angles)], axis=1)  # (N, 2)
+
+
+# displacement scale/orientation follows the local ellipse
+# (constant-ish Mahalanobis radius).
+# a constant Mahalanobis radius for generating probes around reference points
+# MAHAL_RADIUS * chol(Sigma_ref) @ unit_dir
+MAHAL_RADIUS = 2.8
+
+# Compute sqrt(Σ) via Cholesky (Σ should be SPD; diag_term/noise keep it stable).
+L = jnp.linalg.cholesky(Sigmas_ref)  # (N, 2, 2)
+deltas = MAHAL_RADIUS * jnp.einsum("nij,nj->ni", L, unit_dirs)  # (N, 2)
+comparisons = jnp.clip(refs + deltas, -1.0, 1.0)
+
+# Compute p(correct) in batch. We vmap the single-trial predictor.
+trial_pred_keys = jr.split(k_pred, num_trials)
+
+
+def _p_correct_one(ref: jnp.ndarray, comp: jnp.ndarray, kk: jnp.ndarray) -> jnp.ndarray:
+    return task.predict_with_kwargs(
+        truth_params,
+        (ref, comp),
+        truth_model,
+        truth_model.noise,
+        num_samples=MC_SAMPLES,
+        bandwidth=bandwidth,
+        key=kk,
+    )
+
+
+p_correct = jax.vmap(_p_correct_one)(refs, comparisons, trial_pred_keys)
+
+# Sample observed y ~ Bernoulli(p_correct) in batch.
+ys = jr.bernoulli(k_y, p_correct, shape=(num_trials,)).astype(jnp.int32)
+
+# Populate ResponseData (kept as Python loop since ResponseData is a Python container).
+for ref, comp, y in zip(
+    jax.device_get(refs), jax.device_get(comparisons), jax.device_get(ys)
+):
+    data.add_trial(ref=jnp.array(ref), comparison=jnp.array(comp), resp=int(y))
 
 # 3) Model to fit and MAPOptimizer
 print("[2/5] Building model and optimizer...")
@@ -272,6 +295,7 @@ momentum = 0.9
 map_optimizer = MAPOptimizer(
     steps=steps, learning_rate=lr, momentum=momentum, track_history=True, log_every=1
 )
+# Initialize at prior sample
 init_params = model.init_params(jax.random.PRNGKey(42))
 
 print(
@@ -281,7 +305,16 @@ print(
     f"log_every={map_optimizer.log_every}",
 )
 
-map_posterior = map_optimizer.fit(model, data, init_params=init_params)
+# Match simulation MC settings during fitting.
+# NOTE: this makes gradients noisier when MC_SAMPLES is small.
+map_posterior = map_optimizer.fit(
+    model,
+    data,
+    init_params=init_params,
+    num_samples=MC_SAMPLES,
+    bandwidth=bandwidth,
+    key=jr.PRNGKey(seed),
+)
 
 # NOTE: MAPOptimizer.fit(...) optimizes a *point estimate* (MAP), not a sampled
 # posterior. The returned object is a MAPPosterior (delta distribution at theta_MAP).
@@ -298,8 +331,8 @@ print("[4/5] Plotting covariance field ellipses ...")
 
 # Visualization-only stabilization: if a covariance is numerically slightly
 # indefinite, we add a small diagonal jitter for plotting.
-_PLOT_JITTER_DEFAULT = 1e-6
-_PLOT_JITTER_FIT = 1e-5
+_PLOT_JITTER_DEFAULT = 0  # 1e-6
+_PLOT_JITTER_FIT = 0  # 1e-5
 
 # Grid for field visualization in [-1,1] space
 n_grid = 12
@@ -387,8 +420,8 @@ for i, (field, _params, color, label) in enumerate(
     )
     ax.add_collection(lc)  # type: ignore[arg-type]
 
-    # Legend handle (proxy artist)
-    (h,) = ax.plot([], [], color=color, alpha=0.5, linewidth=0.8, label=label)
+    # Legend handle
+    h = ax.plot([], [], color=color, alpha=0.5, linewidth=0.8, label=label)[0]
     legend_handles.append(h)
 
 print(
@@ -402,7 +435,7 @@ ref_scatter = ax.scatter(
 legend_handles.append(ref_scatter)
 ax.set_title(
     f"Covariance field  \nSkipped non-PD: GT={non_pd_counts[0]}, Prior={non_pd_counts[1]}, Fit={non_pd_counts[2]}"
-    f"\n lr={lr}, steps={steps} - MC-samples={mc_samples}, num-trials={num_trials_per_ref}"
+    f"\n lr={lr}, steps={steps} - MC-samples={MC_SAMPLES}, num-trials={num_trials_per_ref}"
 )
 ax.set_aspect("equal", adjustable="box")
 ax.set_xlabel("Model space dimension 1")
@@ -429,10 +462,10 @@ if steps_hist and loss_hist:
     ax2.set_xlim(steps_hist[0], steps_hist[-1])
     ax2.plot(steps_hist, loss_hist, color="#4444aa")
     ax2.set_title(
-        f"Learning curve — lr={lr}, steps={steps} - MC-samples={mc_samples}, num-trials={num_trials_per_ref}"
+        f"Learning curve — lr={lr}, steps={steps} - MC-samples={MC_SAMPLES}, num-trials={num_trials_per_ref}"
     )
     ax2.set_xlabel("Step")
-    ax2.set_ylabel("Neg log posterior")
+    ax2.set_ylabel("Neg log likelihood")
     ax2.grid(True, alpha=0.3)
     plt.tight_layout()
     fig2.savefig(
