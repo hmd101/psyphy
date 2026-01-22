@@ -157,7 +157,7 @@ variance_scale = 4e-3
 diag_term = 1e-9
 # for ground-truth model
 bandwidth = 1e-2
-learning_rate = 5e-4  # 5e-5
+learning_rate = 5e-5
 num_steps = 300
 
 task = OddityTask()
