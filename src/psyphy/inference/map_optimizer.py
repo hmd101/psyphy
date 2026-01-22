@@ -107,7 +107,12 @@ class MAPOptimizer(InferenceEngine):
         self.loss_history: list[float] = []
 
     def fit(
-        self, model, data, init_params: dict | None = None, seed: int | None = None
+        self,
+        model,
+        data,
+        init_params: dict | None = None,
+        seed: int | None = None,
+        **task_kwargs,
     ) -> MAPPosterior:
         """
         Fit model parameters with MAP optimization.
@@ -132,7 +137,9 @@ class MAPOptimizer(InferenceEngine):
         """
 
         def loss_fn(params):
-            return -model.log_posterior_from_data(params, data)
+            # Forward any task-specific kwargs (e.g., MC controls for OddityTask)
+            # through the model likelihood.
+            return -model.log_posterior_from_data(params, data, **task_kwargs)
 
         # Initialize parameters
         if init_params is not None:

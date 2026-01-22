@@ -566,7 +566,9 @@ class WPPM(Model):
     # ----------------------------------------------------------------------
     # POSTERIOR-STYLE CONVENIENCE (OPTIONAL)
     # ----------------------------------------------------------------------
-    def log_posterior_from_data(self, params: Params, data: Any) -> jnp.ndarray:
+    def log_posterior_from_data(
+        self, params: Params, data: Any, **task_kwargs: Any
+    ) -> jnp.ndarray:
         """
 
         This simply adds the prior log-probability to the task log-likelihood.
@@ -576,7 +578,9 @@ class WPPM(Model):
         -------
         jnp.ndarray : scalar log posterior = loglik(params | data) + log_prior(params)
         """
-        return self.log_likelihood_from_data(params, data) + self.prior.log_prob(params)
+        return self.log_likelihood_from_data(
+            params, data, **task_kwargs
+        ) + self.prior.log_prob(params)
 
     # ----------------------------------------------------------------------
     # MODEL FORWARD PASS (for predict_with_params)
