@@ -20,6 +20,10 @@ import jax.numpy as jnp
 import matplotlib.pyplot as plt
 from matplotlib.collections import LineCollection
 
+# --8<-- [start:imports]
+# (imports above are included via mkdocs-snippets)
+# --8<-- [end:imports]
+
 # Ensure local src is importable when running directly
 sys.path.insert(
     0, os.path.abspath(os.path.join(os.path.dirname(__file__), "../../../src"))
@@ -37,6 +41,7 @@ from psyphy.model.wppm import WPPM
 PLOTS_DIR = os.path.join(os.path.dirname(__file__), "plots")
 
 
+# --8<-- [start:jax_device_setup]
 # Prefer GPU/TPU if available; otherwise fall back to CPU.
 try:
     has_accel = any(
@@ -57,6 +62,7 @@ else:
 # print device used
 print("DEVICE USED:", jax.devices()[0])
 # Helper: invert criterion to d* for Oddity task
+# --8<-- [end:jax_device_setup]
 
 
 # # Robust ellipse plotting utilities
@@ -142,6 +148,7 @@ def _ellipse_segments_from_covs(
 #
 # # python simulate_2d.py --optimizer sgd --learning_rate 5e-5 --momentum 0.9 --mc_samples 500 --bandwidth 1e-2 --total_steps 1000
 
+# --8<-- [start:truth_model]
 NUM_GRID_PTS = 10  # Number of reference points over stimulus space.
 MC_SAMPLES = 500  # Number of simulated trials to compute likelihood. # 500
 NUM_TRIALS = 4000  # Number of trials in simulated dataset.
@@ -187,6 +194,7 @@ truth_model = WPPM(
 
 # Sample ground-truth Wishart process weights
 truth_params = truth_model.init_params(jax.random.PRNGKey(123))
+# --8<-- [end:truth_model]
 
 
 # 2) Simulate synthetic data from the ground-truth field
@@ -201,6 +209,7 @@ truth_params = truth_model.init_params(jax.random.PRNGKey(123))
 #
 
 
+# --8<-- [start:simulate_data]
 data = ResponseData()
 num_trials_per_ref = NUM_TRIALS  # 4000
 n_ref_grid = 5  # NUM_GRID_PTS
@@ -269,7 +278,10 @@ for ref, comp, y in zip(
 ):
     data.add_trial(ref=jnp.array(ref), comparison=jnp.array(comp), resp=int(y))
 
+# --8<-- [end:simulate_data]
+
 # 3) Model to fit and MAPOptimizer
+# --8<-- [start:build_model]
 print("[2/5] Building model and optimizer...")
 prior = Prior(
     input_dim=input_dim,
@@ -285,9 +297,11 @@ model = WPPM(
     noise=noise,
     diag_term=1e-4,  # ensure positive-definite covariances
 )
+# --8<-- [end:build_model]
 
 
 # 4) Fit using optimizer
+# --8<-- [start:fit_map]
 print("[3/5] Fitting via MAPOptimizer ...")
 steps = num_steps
 lr = learning_rate
@@ -315,6 +329,7 @@ map_posterior = map_optimizer.fit(
     bandwidth=bandwidth,
     key=jr.PRNGKey(seed),
 )
+# --8<-- [end:fit_map]
 
 # NOTE: MAPOptimizer.fit(...) optimizes a *point estimate* (MAP), not a sampled
 # posterior. The returned object is a MAPPosterior (delta distribution at theta_MAP).
@@ -327,6 +342,7 @@ map_posterior = map_optimizer.fit(
 
 
 # 5) Visualize ellipsoid field: overlay ground truth, prior, and fit at each grid point
+# --8<-- [start:plot_ellipses]
 print("[4/5] Plotting covariance field ellipses ...")
 
 # Visualization-only stabilization: if a covariance is numerically slightly
@@ -451,7 +467,10 @@ fig.savefig(
     bbox_inches="tight",
 )
 
+# --8<-- [end:plot_ellipses]
+
 # Learning curve
+# --8<-- [start:plot_learning_curve]
 print("[5/5] Plotting learning curve...")
 steps_hist, loss_hist = map_optimizer.get_history()
 print(f"num steps: {len(steps_hist)}, num losses: {len(loss_hist)}")
@@ -475,3 +494,5 @@ if steps_hist and loss_hist:
     )
 else:
     print("No history recorded — set track_history=True in MAPOptimizer to enable.")
+
+# --8<-- [end:plot_learning_curve]

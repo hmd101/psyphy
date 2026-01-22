@@ -1,0 +1,16 @@
+# Examples
+
+This section collects end-to-end, runnable examples.
+
+## WPPM
+
+- [Full WPPM fit (end-to-end)](wppm/full_wppm_fit_example.md)
+
+## Optimization
+
+- [Build your own optimizer with optax](optim/map.md)
+
+## Covariance field
+
+- [Covariance Field Visualization](covariance_field.md)
+- [Covariance Field (full page)](covariance_field/covariance_field.md)
