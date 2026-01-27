@@ -1,12 +1,15 @@
 # Full WPPM fit (end-to-end) — simulated 2D data
 
-This note explains what the example script [`full_wppm_fit_example.py`](full_wppm_fit_example.py) is doing, and where the key functions live in the `psyphy` codebase.
+This tutorial explains what the example script [`full_wppm_fit_example.py`](full_wppm_fit_example.py) is doing, and where the key functions live in the `psyphy` codebase.
 
 - **Goal:** Fit a *spatially varying covariance field* \(\Sigma(x)\) over a 2D stimulus space \(x \in [-1,1]^2\) using the **Wishart Process Psychophysical Model (WPPM)**.
 - **Data:** synthetic oddity-task responses simulated from a “ground-truth” WPPM.
 - **Inference:** MAP (maximum a posteriori) optimization of the WPPM parameters.
 
 > You can treat this as a “recipe” for using WPPM in your own project: build a model, initialize parameters, get predicted response probabilities, and fit parameters.
+
+NOTE: Running this script takes about 3 min on a A100 40GB.
+If you want to accelarate it to for example run it on a CPU, decrease the number of MC-Samples _significantly_ (e.g., 5) and the number of steps the optimizer is running for.
 
 ---
 
@@ -29,50 +32,22 @@ A psychophysical task model (here: `OddityTask`) uses \(\Sigma\) to compute prob
 For more details on how the Wishart Psychophysical Model (WPPM) works, please checkout this [tutorial](`docs/examples/wppm/wppm_tutorial.md`).
 ---
 
-## Files to know (where to look in the repo)
-
-<!--
-Note on links:
-MkDocs warns when a Markdown link points outside the `docs/` tree.
-For source files under `src/`, we therefore link to the repository (GitHub)
-instead of using relative filesystem paths.
--->
-
-- Example script: [`docs/examples/wppm/full_wppm_fit_example.py`](full_wppm_fit_example.py)
-- Prior (how weights are initialized / regularized): [`src/psyphy/model/prior.py`](https://github.com/flatironinstitute/psyphy/blob/main/src/psyphy/model/prior.py)
-- Model definition: [`src/psyphy/model/wppm.py`](https://github.com/flatironinstitute/psyphy/blob/main/src/psyphy/model/wppm.py) (see `WPPM`)
-- Covariance field wrapper: [`src/psyphy/model/covariance_field.py`](https://github.com/flatironinstitute/psyphy/blob/main/src/psyphy/model/covariance_field.py) (see `WPPMCovarianceField`)
-- Task / likelihood: [`src/psyphy/model/task.py`](https://github.com/flatironinstitute/psyphy/blob/main/src/psyphy/model/task.py) (see `OddityTask`)
-- Noise model: [`src/psyphy/model/noise.py`](https://github.com/flatironinstitute/psyphy/blob/main/src/psyphy/model/noise.py) (see `GaussianNoise`)
-- MAP fitting: [`src/psyphy/inference/map_optimizer.py`](https://github.com/flatironinstitute/psyphy/blob/main/src/psyphy/inference/map_optimizer.py) (see `MAPOptimizer`)
-- Data container: [`src/psyphy/data/dataset.py`](https://github.com/flatironinstitute/psyphy/blob/main/src/psyphy/data/dataset.py) (see `ResponseData`)
-
-If you want to “follow the call graph”:
-
-1. `WPPM.init_params(...)` (defined in [`src/psyphy/model/wppm.py`](https://github.com/flatironinstitute/psyphy/blob/main/src/psyphy/model/wppm.py)) → delegates to the prior’s `Prior.sample_params(...)` (defined in [`src/psyphy/model/prior.py`](https://github.com/flatironinstitute/psyphy/blob/main/src/psyphy/model/prior.py)).
-2. `OddityTask.predict_with_kwargs(...)` / `OddityTask.loglik(...)` (defined in [`src/psyphy/model/task.py`](https://github.com/flatironinstitute/psyphy/blob/main/src/psyphy/model/task.py)) → calls into the model to get \(\Sigma(x)\) and then runs the task’s decision rule (Monte Carlo in the full model).
-3. `WPPMCovarianceField(model, params)` (defined in [`src/psyphy/model/covariance_field.py`](https://github.com/flatironinstitute/psyphy/blob/main/src/psyphy/model/covariance_field.py)) → provides a callable `field(x)` that returns \(\Sigma(x)\) for single points or batches.
-4. `MAPOptimizer.fit(...)` (defined in [`src/psyphy/inference/map_optimizer.py`](https://github.com/flatironinstitute/psyphy/blob/main/src/psyphy/inference/map_optimizer.py)) → runs gradient-based optimization of the negative log posterior.
-
 ---
 
 ## Step 0 — Imports and setup
 
-In `full_wppm_fit_example.py`, the important imports are:
+The following imports are important to set the model up and fit to date:
 
-- `ResponseData` (trial container)
-- `MAPOptimizer` (fitter)
-- `WPPMCovarianceField` (fast batched \(\Sigma\) evaluation)
-- `GaussianNoise`, `Prior`, `OddityTask`, `WPPM`
-
-
+```python title="Ground-truth model + prior sample"
+--8<-- "docs/examples/wppm/full_wppm_fit_example.py:imports"
+```
 
 
 ---
 
 ## Step 1 — Define the prior (how weights are distributed initially)
 
-The WPPM parameters are basis weights stored as a dict, typically
+The WPPM parameters are basis weights stored as a dict:
 
 - `params = {"W": W}`
 
@@ -131,6 +106,14 @@ and where it draws initial parameters:
 --8<-- "docs/examples/wppm/full_wppm_fit_example.py:truth_model"
 ```
 
+
+<div align="center">
+    <picture>
+    <img align="center" src="plots/prior_sample.png" width="600"/>
+    </picture>
+    <p><em>A sample from the prior</em></p>
+</div>
+
 ---
 
 ## Step 2 — Build the model (WPPM + task + noise)
@@ -158,6 +141,13 @@ The example uses a convenience wrapper:
 ```python title="Covariance field evaluation (Σ(x))"
 --8<-- "docs/examples/wppm/full_wppm_fit_example.py:simulate_data"
 ```
+<div align="center">
+    <picture>
+    <img align="center" src="plots/prior_sample.png" width="600"/>
+    </picture>
+    <p><em>A sample from the prior</em></p>
+</div>
+
 
 ### What `field(x)` does
 
@@ -276,7 +266,20 @@ The result in this example is a `MAPPosterior` object that contains a point esti
 ---
 
 ## Step 6 — Visualize fit vs. truth vs. prior sample
+<div align="center">
+    <picture>
+    <img align="center" src="plots/ellipses.png" width="600"/>
+    </picture>
+    <p><em>Fitted ellipsoids overlayed with ground truth and initial sample from model prior.</em></p>
+</div>
 
+
+<div align="center">
+    <picture>
+    <img align="center" src="plots/learning_curve.png" width="600"/>
+    </picture>
+    <p><em>Learning curve.</em></p>
+</div>
 The final part overlays ellipses from three covariance fields evaluated at reference points:
 
 - “Ground Truth” (truth model + truth params)
@@ -340,3 +343,30 @@ To use WPPM on your own data, these are the essential calls:
 - Read the API docs in `docs/reference/` (especially model + inference sections).
 - Inspect `src/psyphy/model/prior.py` if you want to change smoothness/regularization.
 - Inspect `src/psyphy/model/covariance_field.py` if you want faster / vmapped field evaluation patterns.
+
+
+
+## Files to know (where to look in the repo)
+
+<!--
+Note on links:
+MkDocs warns when a Markdown link points outside the `docs/` tree.
+For source files under `src/`, we therefore link to the repository (GitHub)
+instead of using relative filesystem paths.
+-->
+
+- Example script: [`docs/examples/wppm/full_wppm_fit_example.py`](full_wppm_fit_example.py)
+- Prior (how weights are initialized / regularized): [`src/psyphy/model/prior.py`](https://github.com/flatironinstitute/psyphy/blob/main/src/psyphy/model/prior.py)
+- Model definition: [`src/psyphy/model/wppm.py`](https://github.com/flatironinstitute/psyphy/blob/main/src/psyphy/model/wppm.py) (see `WPPM`)
+- Covariance field wrapper: [`src/psyphy/model/covariance_field.py`](https://github.com/flatironinstitute/psyphy/blob/main/src/psyphy/model/covariance_field.py) (see `WPPMCovarianceField`)
+- Task / likelihood: [`src/psyphy/model/task.py`](https://github.com/flatironinstitute/psyphy/blob/main/src/psyphy/model/task.py) (see `OddityTask`)
+- Noise model: [`src/psyphy/model/noise.py`](https://github.com/flatironinstitute/psyphy/blob/main/src/psyphy/model/noise.py) (see `GaussianNoise`)
+- MAP fitting: [`src/psyphy/inference/map_optimizer.py`](https://github.com/flatironinstitute/psyphy/blob/main/src/psyphy/inference/map_optimizer.py) (see `MAPOptimizer`)
+- Data container: [`src/psyphy/data/dataset.py`](https://github.com/flatironinstitute/psyphy/blob/main/src/psyphy/data/dataset.py) (see `ResponseData`)
+
+If you want to “follow the call graph”:
+
+1. `WPPM.init_params(...)` (defined in [`src/psyphy/model/wppm.py`](https://github.com/flatironinstitute/psyphy/blob/main/src/psyphy/model/wppm.py)) → delegates to the prior’s `Prior.sample_params(...)` (defined in [`src/psyphy/model/prior.py`](https://github.com/flatironinstitute/psyphy/blob/main/src/psyphy/model/prior.py)).
+2. `OddityTask.predict_with_kwargs(...)` / `OddityTask.loglik(...)` (defined in [`src/psyphy/model/task.py`](https://github.com/flatironinstitute/psyphy/blob/main/src/psyphy/model/task.py)) → calls into the model to get \(\Sigma(x)\) and then runs the task’s decision rule (Monte Carlo in the full model).
+3. `WPPMCovarianceField(model, params)` (defined in [`src/psyphy/model/covariance_field.py`](https://github.com/flatironinstitute/psyphy/blob/main/src/psyphy/model/covariance_field.py)) → provides a callable `field(x)` that returns \(\Sigma(x)\) for single points or batches.
+4. `MAPOptimizer.fit(...)` (defined in [`src/psyphy/inference/map_optimizer.py`](https://github.com/flatironinstitute/psyphy/blob/main/src/psyphy/inference/map_optimizer.py)) → runs gradient-based optimization of the negative log posterior.

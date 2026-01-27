@@ -30,14 +30,15 @@ sys.path.insert(
 )
 import jax.random as jr
 
-from psyphy.data.dataset import ResponseData
-from psyphy.inference.map_optimizer import MAPOptimizer
-from psyphy.model.covariance_field import WPPMCovarianceField
-from psyphy.model.noise import GaussianNoise
+# --8<-- [start:imports]
+from psyphy.data.dataset import ResponseData # (trial container)
+from psyphy.inference.map_optimizer import MAPOptimizer # fitter
+from psyphy.model.covariance_field import WPPMCovarianceField #(fast (\Sigma) evaluation)
+from psyphy.model.noise import GaussianNoise # for model
 from psyphy.model.prior import Prior
 from psyphy.model.task import OddityTask
 from psyphy.model.wppm import WPPM
-
+# --8<-- [end:imports]
 PLOTS_DIR = os.path.join(os.path.dirname(__file__), "plots")
 
 
@@ -148,7 +149,7 @@ def _ellipse_segments_from_covs(
 #
 # # python simulate_2d.py --optimizer sgd --learning_rate 5e-5 --momentum 0.9 --mc_samples 500 --bandwidth 1e-2 --total_steps 1000
 
-# --8<-- [start:truth_model]
+
 NUM_GRID_PTS = 10  # Number of reference points over stimulus space.
 MC_SAMPLES = 500  # Number of simulated trials to compute likelihood. # 500
 NUM_TRIALS = 4000  # Number of trials in simulated dataset.
@@ -175,26 +176,31 @@ noise = GaussianNoise(sigma=0.1)
 #   2) use to generate responses (data)
 # Later we fit a *separate* WPPM instance to that data and compare fields.
 #
+
+# --8<-- [start:truth_model]
 # Set all Wishart process hyperparameters in Prior
 truth_prior = Prior(
-    input_dim=input_dim,
-    basis_degree=basis_degree,
-    extra_embedding_dims=extra_dims,
-    decay_rate=decay_rate,
-    variance_scale=variance_scale,
+    input_dim=input_dim,  # (2D)
+    basis_degree=basis_degree,  # (5)
+    extra_embedding_dims=extra_dims,  # (1)
+    decay_rate=decay_rate,  # for basis functions
+    variance_scale=variance_scale,  # how big covariance matrices
+    # are before fitting
 )
 truth_model = WPPM(
     input_dim=input_dim,
     extra_dims=extra_dims,
     prior=truth_prior,
-    task=task,
-    noise=noise,
+    task=task, # oddity task ("pick the odd-one out among 3 stimuli")
+    noise=noise, # (Gaussian noise)
     diag_term=diag_term,  # ensure positive-definite covariances
 )
 
 # Sample ground-truth Wishart process weights
 truth_params = truth_model.init_params(jax.random.PRNGKey(123))
 # --8<-- [end:truth_model]
+
+
 
 
 # 2) Simulate synthetic data from the ground-truth field
@@ -284,11 +290,12 @@ for ref, comp, y in zip(
 # --8<-- [start:build_model]
 print("[2/5] Building model and optimizer...")
 prior = Prior(
-    input_dim=input_dim,
-    basis_degree=basis_degree,
-    extra_embedding_dims=extra_dims,
-    decay_rate=decay_rate,
-    variance_scale=variance_scale,
+    input_dim=input_dim, # (2D)
+    basis_degree=basis_degree, # 5
+    extra_embedding_dims=extra_dims, # 1
+    decay_rate=decay_rate, # for basis functions
+    variance_scale=variance_scale, # how big covariance matrices
+    # are before fitting
 )
 model = WPPM(
     input_dim=input_dim,
@@ -326,7 +333,7 @@ map_posterior = map_optimizer.fit(
     data,
     init_params=init_params,
     num_samples=MC_SAMPLES,
-    bandwidth=bandwidth,
+    bandwidth=bandwidth, # psychometric smoothing param
     key=jr.PRNGKey(seed),
 )
 # --8<-- [end:fit_map]
@@ -395,7 +402,7 @@ avg_scale = float(jnp.mean(gt_scales))
 # We keep this constant across all ellipses so only *shape/orientation* varies.
 # If you want ellipses sized proportionally to local variance, you could multiply by
 # something like jnp.sqrt(jnp.mean(eigvals)) per point instead.
-ellipse_scale = 0.3  # 0.3 * avg_scale  # match simulate_3d.py style, scale is .3 in
+ellipse_scale = 0.4 # 0.3 * avg_scale   # 0.3
 
 fig, ax = plt.subplots(figsize=(7, 7))
 non_pd_counts = [0, 0, 0]
@@ -463,6 +470,59 @@ plt.tight_layout()
 os.makedirs(PLOTS_DIR, exist_ok=True)
 fig.savefig(
     os.path.join(PLOTS_DIR, "ellipses.png"),
+    dpi=200,
+    bbox_inches="tight",
+)
+
+
+# --- Prior-only ellipsoid plot (fresh prior draw) ---
+# This is a convenience plot to show what the *Prior hyperparameters* imply for
+# the covariance field before seeing any data.
+print("[4b/5] Plotting prior-only covariance field (fresh prior draw) ...")
+prior_only_params = model.init_params(jax.random.PRNGKey(7))
+prior_only_field = WPPMCovarianceField(model, prior_only_params)
+
+prior_covs = prior_only_field(ref_points)  # (n_ref_points, 2, 2)
+prior_segments, prior_valid = _ellipse_segments_from_covs(
+    ref_points,
+    prior_covs,
+    scale=ellipse_scale,
+    plot_jitter=_PLOT_JITTER_DEFAULT,
+    unit_circle=_UNIT_CIRCLE,
+)
+
+fig_prior, ax_prior = plt.subplots(figsize=(7, 7))
+lc_prior = LineCollection(
+    jax.device_get(prior_segments),
+    colors="b",
+    linewidths=0.8,
+    alpha=0.5,
+)
+ax_prior.add_collection(lc_prior)  # type: ignore[arg-type]
+ax_prior.scatter(
+    ref_points[:, 0],
+    ref_points[:, 1],
+    c="g",
+    s=3,
+    zorder=5,
+    label="Reference Points",
+)
+
+prior_non_pd = int((~prior_valid).sum())
+ax_prior.set_aspect("equal", adjustable="box")
+ax_prior.set_xlabel("Model space dimension 1")
+ax_prior.set_ylabel("Model space dimension 2")
+ax_prior.grid(True, alpha=0.3)
+ax_prior.legend(loc="upper right")
+ax_prior.set_title(
+    "Prior draw (covariance field)"
+    f"\ninput_dim={input_dim}, basis_degree={basis_degree}, extra_dims={extra_dims}"
+    f"\ndecay_rate={decay_rate:g}, variance_scale={variance_scale:g}, diag_term={model.diag_term:g}"
+    f"\nSkipped non-PD: {prior_non_pd}"
+)
+plt.tight_layout()
+fig_prior.savefig(
+    os.path.join(PLOTS_DIR, "prior_sample.png"),
     dpi=200,
     bbox_inches="tight",
 )
