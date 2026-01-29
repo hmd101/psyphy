@@ -31,5 +31,5 @@ pip install -e .
 - Models: WPPM, priors, noise, task likelihoods
 - Inference: MAP, Langevin, Laplace
 - Posterior: wrappers and diagnostics
-- Trial placement: Placement strategies (acquisition functions) (e.g., grid, staircase, info gain)
+- Trial placement: Placement strategies (acquisition functions) (e.g., grid, info gain)
 - Session: end-to-end orchestration of an experiment
