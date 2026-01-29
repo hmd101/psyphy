@@ -66,8 +66,6 @@ class TestMCLikelihood:
             data=data,
             model=model,
             noise=model.noise,
-            num_samples=100,
-            bandwidth=1e-2,
             key=jr.PRNGKey(0),
         )
 
@@ -102,7 +100,7 @@ class TestMCLikelihood:
             model=model,
             noise=model.noise,
             num_samples=5000,  # High for convergence
-            bandwidth=1e-3,  # Small bandwidth for sharp approximation, 1e-2 used in ellipsoids simulation
+            bandwidth=1e-3,
             key=jr.PRNGKey(42),
         )
 
@@ -173,8 +171,6 @@ class TestMCLikelihood:
             data=data,
             model=model,
             noise=model.noise,
-            num_samples=500,
-            bandwidth=1e-2,
             key=jr.PRNGKey(123),
         )
 
@@ -416,7 +412,6 @@ class TestGradientCompatibility:
 
     @pytest.fixture
     def model(self):
-
         return WPPM(
             input_dim=2,
             prior=Prior(input_dim=2, basis_degree=3),
@@ -759,8 +754,6 @@ class TestNumericalStability:
         assert jnp.isfinite(ll), (
             f"Log-likelihood is {ll} (NaN or inf) with tiny noise! Mahalanobis computation unstable."
         )
-
-
 
     def test_stability_with_wishart_mode(self):
         """
