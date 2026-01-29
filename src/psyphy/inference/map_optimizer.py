@@ -112,7 +112,6 @@ class MAPOptimizer(InferenceEngine):
         data,
         init_params: dict | None = None,
         seed: int | None = None,
-        **task_kwargs,
     ) -> MAPPosterior:
         """
         Fit model parameters with MAP optimization.
@@ -137,9 +136,7 @@ class MAPOptimizer(InferenceEngine):
         """
 
         def loss_fn(params):
-            # Forward any task-specific kwargs (e.g., MC controls for OddityTask)
-            # through the model likelihood.
-            return -model.log_posterior_from_data(params, data, **task_kwargs)
+            return -model.log_posterior_from_data(params, data)
 
         # Initialize parameters
         if init_params is not None:

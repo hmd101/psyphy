@@ -29,6 +29,7 @@ Connections
 from __future__ import annotations
 
 from abc import ABC, abstractmethod
+from dataclasses import dataclass
 from typing import Any
 
 import jax
@@ -36,6 +37,34 @@ import jax.numpy as jnp
 import jax.random as jr
 
 Stimulus = tuple[jnp.ndarray, jnp.ndarray]
+
+
+@dataclass(frozen=True, slots=True)
+class OddityTaskConfig:
+    """Configuration for :class:`OddityTask`.
+
+    This is the single source of truth for MC likelihood controls.
+
+    Attributes
+    ----------
+    num_samples : int
+        Number of Monte Carlo samples per trial.
+    bandwidth : float
+        Logistic CDF smoothing bandwidth.
+    default_key_seed : int
+        Seed used when no key is provided (keeps behavior deterministic by
+        default while allowing reproducibility control upstream).
+    """
+
+    num_samples: int = 1000
+    bandwidth: float = 1e-2
+    default_key_seed: int = 0
+
+    def __post_init__(self) -> None:
+        if int(self.num_samples) <= 0:
+            raise ValueError(f"num_samples must be > 0, got {self.num_samples}")
+        if float(self.bandwidth) <= 0:
+            raise ValueError(f"bandwidth must be > 0, got {self.bandwidth}")
 
 
 class TaskLikelihood(ABC):
@@ -58,8 +87,10 @@ class TaskLikelihood(ABC):
 
         Why ``**kwargs``?
         - Different tasks may need different optional controls.
-        - MC-based tasks (like :class:`OddityTask`) need parameters such as
-            ``num_samples``, ``bandwidth``, and a PRNG ``key``.
+                - MC-based tasks may need parameters such as a PRNG ``key``.
+                    In particular, :class:`OddityTask` takes ``num_samples`` and
+                    ``bandwidth`` from an :class:`OddityTaskConfig` to avoid silent
+                    mismatch bugs.
         - Keeping these as kwargs lets model/inference code forward task-specific
             options while preserving a single polymorphic API.
         """
@@ -113,9 +144,9 @@ class OddityTask(TaskLikelihood):
     >>> print(f"Log-likelihood (MC): {ll_mc:.4f}")
     """
 
-    def __init__(self) -> None:
+    def __init__(self, config: OddityTaskConfig | None = None) -> None:
         # No analytical parameters in MC-only mode.
-        pass
+        self.config = config or OddityTaskConfig()
 
     def predict(
         self, params: Any, stimuli: Stimulus, model: Any, noise: Any
@@ -137,13 +168,9 @@ class OddityTask(TaskLikelihood):
           calling the model APIs that forward these task kwargs.
         """
 
-        # Default MC controls for prediction. We keep them modest so that
-        # prediction-heavy workflows (acquisition, plotting) don't become
-        # prohibitively expensive. Callers that need higher fidelity should
-        # use ``loglik`` with explicit kwargs.
-        num_samples = 512
-        bandwidth = 1e-2
-        key = jr.PRNGKey(0)
+        num_samples = int(self.config.num_samples)
+        bandwidth = float(self.config.bandwidth)
+        key = jr.PRNGKey(int(self.config.default_key_seed))
 
         ref, comparison = stimuli
         return self._simulate_trial_mc(
@@ -157,48 +184,7 @@ class OddityTask(TaskLikelihood):
             key=key,
         )
 
-    # NOTE: We allow optional kwargs on predict as a non-breaking extension.
-    # The base class doesn't expose kwargs here to keep the main API simple, but
-    # model/inference utilities that need control can call this method directly
-    # (or, preferably, go through ``loglik``).
-    def predict_with_kwargs(
-        self,
-        params: Any,
-        stimuli: Stimulus,
-        model: Any,
-        noise: Any,
-        **kwargs: Any,
-    ) -> jnp.ndarray:
-        """Like ``predict`` but with explicit MC controls.
-
-        This exists mainly to support internal callers that want to thread
-        through ``num_samples``, ``bandwidth``, and ``key`` in MC-only mode.
-        """
-        num_samples = int(kwargs.pop("num_samples", 512))
-        bandwidth = float(kwargs.pop("bandwidth", 1e-2))
-        key = kwargs.pop("key", None)
-        if kwargs:
-            unexpected = ", ".join(sorted(kwargs.keys()))
-            raise TypeError(
-                f"Unexpected keyword arguments for OddityTask.predict_with_kwargs: {unexpected}"
-            )
-
-        if num_samples <= 0:
-            raise ValueError(f"num_samples must be > 0, got {num_samples}")
-        if key is None:
-            key = jr.PRNGKey(0)
-
-        ref, comparison = stimuli
-        return self._simulate_trial_mc(
-            params=params,
-            ref=ref,
-            comparison=comparison,
-            model=model,
-            noise=noise,
-            num_samples=num_samples,
-            bandwidth=bandwidth,
-            key=key,
-        )
+    # Intentionally no `predict_with_kwargs`: we want a single source of truth.
 
     def loglik(
         self, params: Any, data: Any, model: Any, noise: Any, **kwargs: Any
@@ -321,12 +307,11 @@ class OddityTask(TaskLikelihood):
 
 
         """
-        # Task-specific controls.
-        # We keep these as kwargs so inference / higher-level model code can tune
-        # MC fidelity (num_samples), smoothing (bandwidth), and randomness (key)
-        # without changing the core TaskLikelihood interface.
-        num_samples = int(kwargs.pop("num_samples", 1000))
-        bandwidth = float(kwargs.pop("bandwidth", 1e-2))
+        # Backwards-compatible kwargs:
+        # - Preferred: configure `num_samples`/`bandwidth` via `OddityTaskConfig`.
+        # - Supported: override via kwargs for existing callers/tests.
+        num_samples = int(kwargs.pop("num_samples", self.config.num_samples))
+        bandwidth = float(kwargs.pop("bandwidth", self.config.bandwidth))
         key = kwargs.pop("key", None)
         if kwargs:
             unexpected = ", ".join(sorted(kwargs.keys()))
@@ -334,13 +319,13 @@ class OddityTask(TaskLikelihood):
                 f"Unexpected keyword arguments for OddityTask.loglik: {unexpected}"
             )
 
-        # Validate inputs
         if num_samples <= 0:
             raise ValueError(f"num_samples must be > 0, got {num_samples}")
+        if bandwidth <= 0:
+            raise ValueError(f"bandwidth must be > 0, got {bandwidth}")
 
-        # Default key for reproducibility
         if key is None:
-            key = jr.PRNGKey(0)
+            key = jr.PRNGKey(int(self.config.default_key_seed))
 
         # Unpack trial data
         refs, comparisons, responses = data.to_numpy()

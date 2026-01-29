@@ -31,13 +31,16 @@ sys.path.insert(
 import jax.random as jr
 
 # --8<-- [start:imports]
-from psyphy.data.dataset import ResponseData # (trial container)
-from psyphy.inference.map_optimizer import MAPOptimizer # fitter
-from psyphy.model.covariance_field import WPPMCovarianceField #(fast (\Sigma) evaluation)
-from psyphy.model.noise import GaussianNoise # for model
+from psyphy.data.dataset import ResponseData  # (trial container)
+from psyphy.inference.map_optimizer import MAPOptimizer  # fitter
+from psyphy.model.covariance_field import (
+    WPPMCovarianceField,  # (fast (\Sigma) evaluation)
+)
+from psyphy.model.noise import GaussianNoise  # for model
 from psyphy.model.prior import Prior
-from psyphy.model.task import OddityTask
+from psyphy.model.task import OddityTask, OddityTaskConfig
 from psyphy.model.wppm import WPPM
+
 # --8<-- [end:imports]
 PLOTS_DIR = os.path.join(os.path.dirname(__file__), "plots")
 
@@ -151,8 +154,8 @@ def _ellipse_segments_from_covs(
 
 
 NUM_GRID_PTS = 10  # Number of reference points over stimulus space.
-MC_SAMPLES = 500  # Number of simulated trials to compute likelihood. # 500
-NUM_TRIALS = 4000  # Number of trials in simulated dataset.
+MC_SAMPLES = 500  # Number of Monte Carlo samples per trial in the likelihood. # 500
+NUM_TRIALS_TOTAL = 4000  # Total number of trials in the simulated dataset.
 # 4000 trials does not work on cpu
 
 
@@ -168,7 +171,9 @@ bandwidth = 1e-2
 learning_rate = 5e-5
 num_steps = 2000
 
-task = OddityTask()
+task = OddityTask(
+    config=OddityTaskConfig(num_samples=int(MC_SAMPLES), bandwidth=float(bandwidth))
+)
 noise = GaussianNoise(sigma=0.1)
 # ---- "Truth" model (ground truth) ----
 # This is the synthetic observer we will:
@@ -191,16 +196,14 @@ truth_model = WPPM(
     input_dim=input_dim,
     extra_dims=extra_dims,
     prior=truth_prior,
-    task=task, # oddity task ("pick the odd-one out among 3 stimuli")
-    noise=noise, # (Gaussian noise)
+    task=task,  # oddity task ("pick the odd-one out among 3 stimuli")
+    noise=noise,  # (Gaussian noise)
     diag_term=diag_term,  # ensure positive-definite covariances
 )
 
 # Sample ground-truth Wishart process weights
 truth_params = truth_model.init_params(jax.random.PRNGKey(123))
 # --8<-- [end:truth_model]
-
-
 
 
 # 2) Simulate synthetic data from the ground-truth field
@@ -217,7 +220,7 @@ truth_params = truth_model.init_params(jax.random.PRNGKey(123))
 
 # --8<-- [start:simulate_data]
 data = ResponseData()
-num_trials_per_ref = NUM_TRIALS  # 4000
+num_trials_per_ref = NUM_TRIALS_TOTAL  # (trials per reference point)
 n_ref_grid = 5  # NUM_GRID_PTS
 ref_grid = jnp.linspace(-1, 1, n_ref_grid)  # [-1,1] space
 ref_points = jnp.stack(jnp.meshgrid(ref_grid, ref_grid), axis=-1).reshape(-1, 2)
@@ -234,7 +237,7 @@ key = jr.PRNGKey(seed)
 # Build a batched reference list by repeating each grid point.
 n_ref = ref_points.shape[0]
 refs = jnp.repeat(ref_points, repeats=num_trials_per_ref, axis=0)  # (N, 2)
-num_trials = int(refs.shape[0])
+num_trials_total = int(refs.shape[0])
 
 # Evaluate Σ(ref) in batch using the psyphy covariance-field wrapper.
 truth_field = WPPMCovarianceField(truth_model, truth_params)
@@ -242,7 +245,7 @@ Sigmas_ref = truth_field(refs)  # (N, 2, 2)
 
 # Sample unit directions on the circle.
 k_dir, k_pred, k_y = jr.split(key, 3)
-angles = jr.uniform(k_dir, shape=(num_trials,), minval=0.0, maxval=2.0 * jnp.pi)
+angles = jr.uniform(k_dir, shape=(num_trials_total,), minval=0.0, maxval=2.0 * jnp.pi)
 unit_dirs = jnp.stack([jnp.cos(angles), jnp.sin(angles)], axis=1)  # (N, 2)
 
 
@@ -258,17 +261,20 @@ deltas = MAHAL_RADIUS * jnp.einsum("nij,nj->ni", L, unit_dirs)  # (N, 2)
 comparisons = jnp.clip(refs + deltas, -1.0, 1.0)
 
 # Compute p(correct) in batch. We vmap the single-trial predictor.
-trial_pred_keys = jr.split(k_pred, num_trials)
+trial_pred_keys = jr.split(k_pred, num_trials_total)
 
 
 def _p_correct_one(ref: jnp.ndarray, comp: jnp.ndarray, kk: jnp.ndarray) -> jnp.ndarray:
-    return task.predict_with_kwargs(
-        truth_params,
-        (ref, comp),
-        truth_model,
-        truth_model.noise,
-        num_samples=MC_SAMPLES,
-        bandwidth=bandwidth,
+    # Task MC settings (num_samples/bandwidth) come from OddityTaskConfig.
+    # Only the randomness is threaded dynamically.
+    return task._simulate_trial_mc(
+        params=truth_params,
+        ref=ref,
+        comparison=comp,
+        model=truth_model,
+        noise=truth_model.noise,
+        num_samples=int(task.config.num_samples),
+        bandwidth=float(task.config.bandwidth),
         key=kk,
     )
 
@@ -276,7 +282,7 @@ def _p_correct_one(ref: jnp.ndarray, comp: jnp.ndarray, kk: jnp.ndarray) -> jnp.
 p_correct = jax.vmap(_p_correct_one)(refs, comparisons, trial_pred_keys)
 
 # Sample observed y ~ Bernoulli(p_correct) in batch.
-ys = jr.bernoulli(k_y, p_correct, shape=(num_trials,)).astype(jnp.int32)
+ys = jr.bernoulli(k_y, p_correct, shape=(num_trials_total,)).astype(jnp.int32)
 
 # Populate ResponseData (kept as Python loop since ResponseData is a Python container).
 for ref, comp, y in zip(
@@ -290,11 +296,11 @@ for ref, comp, y in zip(
 # --8<-- [start:build_model]
 print("[2/5] Building model and optimizer...")
 prior = Prior(
-    input_dim=input_dim, # (2D)
-    basis_degree=basis_degree, # 5
-    extra_embedding_dims=extra_dims, # 1
-    decay_rate=decay_rate, # for basis functions
-    variance_scale=variance_scale, # how big covariance matrices
+    input_dim=input_dim,  # (2D)
+    basis_degree=basis_degree,  # 5
+    extra_embedding_dims=extra_dims,  # 1
+    decay_rate=decay_rate,  # for basis functions
+    variance_scale=variance_scale,  # how big covariance matrices
     # are before fitting
 )
 model = WPPM(
@@ -326,15 +332,10 @@ print(
     f"log_every={map_optimizer.log_every}",
 )
 
-# Match simulation MC settings during fitting.
-# NOTE: this makes gradients noisier when MC_SAMPLES is small.
 map_posterior = map_optimizer.fit(
     model,
     data,
     init_params=init_params,
-    num_samples=MC_SAMPLES,
-    bandwidth=bandwidth, # psychometric smoothing param
-    key=jr.PRNGKey(seed),
 )
 # --8<-- [end:fit_map]
 
@@ -402,7 +403,7 @@ avg_scale = float(jnp.mean(gt_scales))
 # We keep this constant across all ellipses so only *shape/orientation* varies.
 # If you want ellipses sized proportionally to local variance, you could multiply by
 # something like jnp.sqrt(jnp.mean(eigvals)) per point instead.
-ellipse_scale = 0.4 # 0.3 * avg_scale   # 0.3
+ellipse_scale = 0.4  # 0.3 * avg_scale   # 0.3
 
 fig, ax = plt.subplots(figsize=(7, 7))
 non_pd_counts = [0, 0, 0]
@@ -458,7 +459,7 @@ ref_scatter = ax.scatter(
 legend_handles.append(ref_scatter)
 ax.set_title(
     f"Covariance field  \nSkipped non-PD: GT={non_pd_counts[0]}, Prior={non_pd_counts[1]}, Fit={non_pd_counts[2]}"
-    f"\n lr={lr}, steps={steps} - MC-samples={MC_SAMPLES}, num-trials={num_trials_per_ref}"
+    f"\n lr={lr}, steps={steps} - MC-samples={MC_SAMPLES}, num-trials={num_trials_total}"
 )
 ax.set_aspect("equal", adjustable="box")
 ax.set_xlabel("Model space dimension 1")
@@ -541,7 +542,7 @@ if steps_hist and loss_hist:
     ax2.set_xlim(steps_hist[0], steps_hist[-1])
     ax2.plot(steps_hist, loss_hist, color="#4444aa")
     ax2.set_title(
-        f"Learning curve — lr={lr}, steps={steps} - MC-samples={MC_SAMPLES}, num-trials={num_trials_per_ref}"
+        f"Learning curve — lr={lr}, steps={steps} - MC-samples={MC_SAMPLES}, num-trials={num_trials_total}"
     )
     ax2.set_xlabel("Step")
     ax2.set_ylabel("Neg log likelihood")
