@@ -23,7 +23,7 @@ import pytest
 from psyphy.data.dataset import ResponseData
 from psyphy.model import WPPM, Prior
 from psyphy.model.noise import GaussianNoise
-from psyphy.model.task import OddityTask
+from psyphy.model.task import OddityTask, OddityTaskConfig
 
 
 class TestMCLikelihood:
@@ -93,14 +93,20 @@ class TestMCLikelihood:
             params=simple_params, data=data, model=model, noise=model.noise
         )
 
-        # MC likelihood with many samples
-        ll_mc = model.task.loglik(
-            params=simple_params,
+        # MC likelihood with many samples: create a separate model instance
+        # whose task config sets MC fidelity and smoothing.
+        mc_model = WPPM(
+            input_dim=2,
+            prior=Prior(input_dim=2, basis_degree=3),
+            task=OddityTask(config=OddityTaskConfig(num_samples=5000, bandwidth=1e-3)),
+            noise=GaussianNoise(sigma=0.03),
+        )
+        mc_params = mc_model.init_params(jr.PRNGKey(42))
+        ll_mc = mc_model.task.loglik(
+            params=mc_params,
             data=data,
-            model=model,
-            noise=model.noise,
-            num_samples=5000,  # High for convergence
-            bandwidth=1e-3,
+            model=mc_model,
+            noise=mc_model.noise,
             key=jr.PRNGKey(42),
         )
 
@@ -118,6 +124,12 @@ class TestMCLikelihood:
 
     def test_mc_likelihood_increases_num_samples(self, model, simple_params):
         """Increasing num_samples should reduce MC variance."""
+        model = WPPM(
+            input_dim=model.input_dim,
+            prior=model.prior,
+            task=OddityTask(config=OddityTaskConfig(num_samples=100, bandwidth=1e-2)),
+            noise=model.noise,
+        )
         data = ResponseData()
         data.add_trial(
             ref=jnp.array([0.0, 0.0]), comparison=jnp.array([0.2, 0.1]), resp=1
@@ -129,18 +141,20 @@ class TestMCLikelihood:
             data=data,
             model=model,
             noise=model.noise,
-            num_samples=100,
-            bandwidth=1e-2,
             key=jr.PRNGKey(0),
         )
 
-        ll_1000 = model.task.loglik(
+        model_1000 = WPPM(
+            input_dim=model.input_dim,
+            prior=model.prior,
+            task=OddityTask(config=OddityTaskConfig(num_samples=1000, bandwidth=1e-2)),
+            noise=model.noise,
+        )
+        ll_1000 = model_1000.task.loglik(
             params=simple_params,
             data=data,
-            model=model,
-            noise=model.noise,
-            num_samples=1000,
-            bandwidth=1e-2,
+            model=model_1000,
+            noise=model_1000.noise,
             key=jr.PRNGKey(0),
         )
 
@@ -191,13 +205,19 @@ class TestMCLikelihood:
             ref=jnp.array([0.0, 0.0]), comparison=jnp.array([0.1, 0.1]), resp=1
         )
 
+        model = WPPM(
+            input_dim=model.input_dim,
+            prior=model.prior,
+            task=OddityTask(
+                config=OddityTaskConfig(num_samples=1000, bandwidth=bandwidth)
+            ),
+            noise=model.noise,
+        )
         ll_mc = model.task.loglik(
             params=simple_params,
             data=data,
             model=model,
             noise=model.noise,
-            num_samples=1000,
-            bandwidth=bandwidth,
             key=jr.PRNGKey(0),
         )
 
@@ -206,6 +226,12 @@ class TestMCLikelihood:
 
     def test_mc_likelihood_reproducibility(self, model, simple_params):
         """Same seed should give same MC likelihood."""
+        model = WPPM(
+            input_dim=model.input_dim,
+            prior=model.prior,
+            task=OddityTask(config=OddityTaskConfig(num_samples=500, bandwidth=1e-2)),
+            noise=model.noise,
+        )
         data = ResponseData()
         data.add_trial(
             ref=jnp.array([0.0, 0.0]), comparison=jnp.array([0.1, 0.1]), resp=1
@@ -216,8 +242,6 @@ class TestMCLikelihood:
             data=data,
             model=model,
             noise=model.noise,
-            num_samples=500,
-            bandwidth=1e-2,
             key=jr.PRNGKey(42),
         )
 
@@ -226,8 +250,6 @@ class TestMCLikelihood:
             data=data,
             model=model,
             noise=model.noise,
-            num_samples=500,
-            bandwidth=1e-2,
             key=jr.PRNGKey(42),
         )
 
@@ -235,6 +257,12 @@ class TestMCLikelihood:
 
     def test_mc_likelihood_different_seeds_vary(self, model, simple_params):
         """Different seeds should give slightly different MC estimates."""
+        model = WPPM(
+            input_dim=model.input_dim,
+            prior=model.prior,
+            task=OddityTask(config=OddityTaskConfig(num_samples=100, bandwidth=1e-2)),
+            noise=model.noise,
+        )
         data = ResponseData()
         data.add_trial(
             ref=jnp.array([0.0, 0.0]), comparison=jnp.array([0.1, 0.1]), resp=1
@@ -245,8 +273,6 @@ class TestMCLikelihood:
             data=data,
             model=model,
             noise=model.noise,
-            num_samples=100,  # Small sample -> more variance
-            bandwidth=1e-2,
             key=jr.PRNGKey(0),
         )
 
@@ -255,8 +281,6 @@ class TestMCLikelihood:
             data=data,
             model=model,
             noise=model.noise,
-            num_samples=100,
-            bandwidth=1e-2,
             key=jr.PRNGKey(999),
         )
 
@@ -284,7 +308,7 @@ class TestMCLikelihoodEdgeCases:
         model = WPPM(
             input_dim=2,
             prior=Prior(input_dim=2, basis_degree=3, extra_embedding_dims=0),
-            task=OddityTask(),
+            task=OddityTask(config=OddityTaskConfig(num_samples=500, bandwidth=1e-2)),
             noise=GaussianNoise(sigma=0.03),
         )
 
@@ -311,7 +335,6 @@ class TestMCLikelihoodEdgeCases:
             model=model,
             noise=model.noise,
             key=jr.PRNGKey(123),
-            num_samples=500,
         )
 
         # Basic checks
@@ -332,13 +355,17 @@ class TestMCLikelihoodEdgeCases:
         stim = jnp.array([0.5, 0.5])
         data.add_trial(ref=stim, comparison=stim, resp=1)
 
+        model = WPPM(
+            input_dim=model.input_dim,
+            prior=model.prior,
+            task=OddityTask(config=OddityTaskConfig(num_samples=1000, bandwidth=1e-2)),
+            noise=model.noise,
+        )
         ll_mc = model.task.loglik(
             params=params,
             data=data,
             model=model,
             noise=model.noise,
-            num_samples=1000,
-            bandwidth=1e-2,
             key=jr.PRNGKey(42),
         )
 
@@ -356,13 +383,17 @@ class TestMCLikelihoodEdgeCases:
             ref=jnp.array([-0.9, -0.9]), comparison=jnp.array([0.9, 0.9]), resp=1
         )
 
+        model = WPPM(
+            input_dim=model.input_dim,
+            prior=model.prior,
+            task=OddityTask(config=OddityTaskConfig(num_samples=1000, bandwidth=1e-2)),
+            noise=model.noise,
+        )
         ll_mc = model.task.loglik(
             params=params,
             data=data,
             model=model,
             noise=model.noise,
-            num_samples=1000,
-            bandwidth=1e-2,
             key=jr.PRNGKey(42),
         )
 
@@ -372,23 +403,9 @@ class TestMCLikelihoodEdgeCases:
         assert ll_mc > -20, "High discriminability should give reasonable likelihood"
 
     def test_mc_likelihood_zero_samples_fails(self, model):
-        """Test that num_samples=0 raises an error or returns NaN."""
-        params = model.init_params(jr.PRNGKey(0))
-        data = ResponseData()
-        data.add_trial(
-            ref=jnp.array([0.0, 0.0]), comparison=jnp.array([0.1, 0.1]), resp=1
-        )
-
-        with pytest.raises((ValueError, AssertionError)):
-            model.task.loglik(
-                params=params,
-                data=data,
-                model=model,
-                noise=model.noise,
-                num_samples=0,  # Invalid
-                bandwidth=1e-2,
-                key=jr.PRNGKey(0),
-            )
+        """Test that num_samples=0 is rejected (strict task-owned config)."""
+        with pytest.raises(ValueError, match="num_samples must be > 0"):
+            _ = OddityTask(config=OddityTaskConfig(num_samples=0, bandwidth=1e-2))
 
 
 #########
@@ -415,7 +432,7 @@ class TestGradientCompatibility:
         return WPPM(
             input_dim=2,
             prior=Prior(input_dim=2, basis_degree=3),
-            task=OddityTask(),
+            task=OddityTask(config=OddityTaskConfig(num_samples=500, bandwidth=1e-2)),
             noise=GaussianNoise(sigma=0.03),
         )
 
@@ -441,8 +458,6 @@ class TestGradientCompatibility:
                 data=data,
                 model=model,
                 noise=model.noise,
-                num_samples=100,
-                bandwidth=1e-2,
                 key=jr.PRNGKey(0),
             )
 
@@ -490,8 +505,6 @@ class TestGradientCompatibility:
                 data=data,
                 model=model,
                 noise=model.noise,
-                num_samples=500,
-                bandwidth=1e-2,
                 key=jr.PRNGKey(0),
             )
 
@@ -526,8 +539,6 @@ class TestGradientCompatibility:
                 data=data,
                 model=model,
                 noise=model.noise,
-                num_samples=500,
-                bandwidth=1e-2,
                 key=jr.PRNGKey(0),
             )
 
@@ -548,6 +559,12 @@ class TestGradientCompatibility:
         This can cause numerical issues because the sigmoid becomes very steep.
         We need to verify gradients stay finite even with bandwidth = 1e-4.
         """
+        model = WPPM(
+            input_dim=model.input_dim,
+            prior=model.prior,
+            task=OddityTask(config=OddityTaskConfig(num_samples=500, bandwidth=1e-4)),
+            noise=model.noise,
+        )
         params = model.init_params(jr.PRNGKey(0))
 
         data = ResponseData()
@@ -561,8 +578,6 @@ class TestGradientCompatibility:
                 data=data,
                 model=model,
                 noise=model.noise,
-                num_samples=500,
-                bandwidth=1e-4,  # Very sharp decision boundary
                 key=jr.PRNGKey(0),
             )
 
@@ -590,7 +605,7 @@ class TestProbabilityClipping:
         return WPPM(
             input_dim=2,
             prior=Prior(input_dim=2, basis_degree=3),
-            task=OddityTask(),
+            task=OddityTask(config=OddityTaskConfig(num_samples=1000, bandwidth=1e-3)),
             noise=GaussianNoise(sigma=0.001),  # Very low noise -> sharper decisions
         )
 
@@ -615,8 +630,6 @@ class TestProbabilityClipping:
             data=data,
             model=model,
             noise=model.noise,
-            num_samples=1000,
-            bandwidth=1e-2,
             key=jr.PRNGKey(0),
         )
 
@@ -651,8 +664,6 @@ class TestProbabilityClipping:
             data=data,
             model=model,
             noise=model.noise,
-            num_samples=1000,
-            bandwidth=1e-3,  # Sharp decision
             key=jr.PRNGKey(0),
         )
 
@@ -692,8 +703,6 @@ class TestProbabilityClipping:
                 data=data,
                 model=model,
                 noise=model.noise,
-                num_samples=1000,
-                bandwidth=1e-3,
                 key=jr.PRNGKey(0),
             )
 
@@ -727,7 +736,7 @@ class TestNumericalStability:
         model = WPPM(
             input_dim=3,
             prior=Prior(input_dim=3, basis_degree=3),
-            task=OddityTask(),
+            task=OddityTask(config=OddityTaskConfig(num_samples=500, bandwidth=1e-2)),
             noise=GaussianNoise(sigma=1e-6),  # Tiny noise -> nearly singular Σ
         )
 
@@ -746,8 +755,6 @@ class TestNumericalStability:
             data=data,
             model=model,
             noise=model.noise,
-            num_samples=500,
-            bandwidth=1e-2,
             key=jr.PRNGKey(0),
         )
 
@@ -766,7 +773,7 @@ class TestNumericalStability:
         model = WPPM(
             input_dim=3,
             prior=Prior(input_dim=3, extra_embedding_dims=2, basis_degree=3),
-            task=OddityTask(),
+            task=OddityTask(config=OddityTaskConfig(num_samples=500, bandwidth=1e-2)),
             noise=GaussianNoise(sigma=0.001),  # Small noise
         )
 
@@ -784,8 +791,6 @@ class TestNumericalStability:
             data=data,
             model=model,
             noise=model.noise,
-            num_samples=500,
-            bandwidth=1e-2,
             key=jr.PRNGKey(0),
         )
 
@@ -809,7 +814,7 @@ class TestConvergenceRate:
         return WPPM(
             input_dim=2,
             prior=Prior(input_dim=2, basis_degree=3),
-            task=OddityTask(),
+            task=OddityTask(config=OddityTaskConfig(num_samples=100, bandwidth=1e-2)),
             noise=GaussianNoise(sigma=0.03),
         )
 
@@ -834,16 +839,24 @@ class TestConvergenceRate:
         variances = []
 
         for n_samples in sample_sizes:
+            # Configure MC fidelity via task config (strict API).
+            model_n = WPPM(
+                input_dim=model.input_dim,
+                prior=model.prior,
+                task=OddityTask(
+                    config=OddityTaskConfig(num_samples=n_samples, bandwidth=1e-2)
+                ),
+                noise=model.noise,
+            )
+
             # Compute MC likelihood multiple times with different seeds
             lls = []
             for seed in range(30):  # 30 independent estimates
-                ll = model.task.loglik(
+                ll = model_n.task.loglik(
                     params=params,
                     data=data,
-                    model=model,
-                    noise=model.noise,
-                    num_samples=n_samples,
-                    bandwidth=1e-2,
+                    model=model_n,
+                    noise=model_n.noise,
                     key=jr.PRNGKey(seed),
                 )
                 lls.append(ll)

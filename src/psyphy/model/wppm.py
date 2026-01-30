@@ -467,30 +467,14 @@ class WPPM(Model):
         -------
         p_correct : jnp.ndarray
         """
-        # Some tasks (like OddityTask in MC-only mode) benefit from receiving
-        # MC controls (num_samples/bandwidth/key). The base TaskLikelihood API
-        # keeps predict() minimal, so we pass kwargs only when callers provide
-        # them and the task exposes an extended entry point.
-        predict_with_kwargs = getattr(self.task, "predict_with_kwargs", None)
-        if task_kwargs and callable(predict_with_kwargs):
-            from typing import Callable, cast
-
-            fn = cast(
-                Callable[..., jnp.ndarray],
-                predict_with_kwargs,
-            )
-            return fn(
-                params=params,
-                stimuli=stimulus,
-                model=self,
-                noise=self.noise,
-                **task_kwargs,
-            )
-
+        # Strict task-owned configuration:
+        # - MC control knobs (e.g. num_samples/bandwidth) live in the task config.
+        # - WPPM.predict_prob therefore does not accept task-specific kwargs.
         if task_kwargs:
             unexpected = ", ".join(sorted(task_kwargs.keys()))
             raise TypeError(
-                "This task does not accept task-specific prediction kwargs. "
+                "WPPM.predict_prob does not accept task-specific kwargs. "
+                "Configure task behavior via the task instance (e.g. OddityTaskConfig). "
                 f"Unexpected: {unexpected}"
             )
 
@@ -505,7 +489,6 @@ class WPPM(Model):
         refs: jnp.ndarray,
         probes: jnp.ndarray,
         responses: jnp.ndarray,
-        **task_kwargs: Any,
     ) -> jnp.ndarray:
         """
         Compute the log-likelihood for arrays of trials.
@@ -527,6 +510,16 @@ class WPPM(Model):
         -------
         loglik : jnp.ndarray
             Scalar log-likelihood (task-only; add prior outside if needed)
+
+                Notes
+                -----
+                This method is intentionally strict and does not accept task-specific
+                runtime kwargs.
+
+                - Configure task behavior (e.g. MC fidelity/smoothing for ``OddityTask``)
+                    via the task instance passed to the model.
+                - If you need reproducible randomness, pass a ``key`` when calling the
+                    task directly.
         """
         # We need a ResponseData-like object. To keep this method usable from
         # array inputs, we construct one on the fly. If you already have a
@@ -537,11 +530,9 @@ class WPPM(Model):
         # ResponseData.add_trial(ref, probe, resp)
         for r, p, y in zip(refs, probes, responses):
             data.add_trial(r, p, int(y))
-        return self.task.loglik(params, data, self, self.noise, **task_kwargs)
+        return self.task.loglik(params, data, self, self.noise)
 
-    def log_likelihood_from_data(
-        self, params: Params, data: Any, **task_kwargs: Any
-    ) -> jnp.ndarray:
+    def log_likelihood_from_data(self, params: Params, data: Any) -> jnp.ndarray:
         """Compute log-likelihood directly from a ResponseData object.
 
         Why delegate to the task?
@@ -561,26 +552,23 @@ class WPPM(Model):
         loglik : jnp.ndarray
             Scalar log-likelihood (task-only; add prior outside if needed).
         """
-        return self.task.loglik(params, data, self, self.noise, **task_kwargs)
+        return self.task.loglik(params, data, self, self.noise)
 
     # ----------------------------------------------------------------------
     # POSTERIOR-STYLE CONVENIENCE (OPTIONAL)
     # ----------------------------------------------------------------------
-    def log_posterior_from_data(
-        self, params: Params, data: Any, **task_kwargs: Any
-    ) -> jnp.ndarray:
-        """
+    def log_posterior_from_data(self, params: Params, data: Any) -> jnp.ndarray:
+        """Compute log posterior from data.
 
         This simply adds the prior log-probability to the task log-likelihood.
         Inference engines (e.g., MAP optimizer) typically optimize this quantity.
 
         Returns
         -------
-        jnp.ndarray : scalar log posterior = loglik(params | data) + log_prior(params)
+        jnp.ndarray
+            Scalar log posterior = loglik(params | data) + log_prior(params).
         """
-        return self.log_likelihood_from_data(
-            params, data, **task_kwargs
-        ) + self.prior.log_prob(params)
+        return self.log_likelihood_from_data(params, data) + self.prior.log_prob(params)
 
     # ----------------------------------------------------------------------
     # MODEL FORWARD PASS (for predict_with_params)
