@@ -1,0 +1,34 @@
+"""Tests for WPPM constructor guards around base-model kwargs.
+
+These tests protect the "single source of truth" policy:
+- task behavior knobs (e.g. MC controls) live in task configs, not in WPPM ctor kwargs.
+- base model lifecycle knobs (online learning) are explicitly named (online_config).
+
+"""
+
+import pytest
+
+from psyphy.model import Prior, WPPM
+from psyphy.model.task import OddityTask
+
+
+def _make_minimal_wppm():
+    input_dim = 2
+    prior = Prior(input_dim=2, basis_degree=3)
+    task = OddityTask()
+    return input_dim, prior, task
+
+
+@pytest.mark.parametrize("bad_kw", ["num_samples", "bandwidth"])
+def test_wppm_constructor_rejects_task_knobs_via_model_kwargs(bad_kw: str):
+    input_dim, prior, task = _make_minimal_wppm()
+    bad_value = 123  # misuse: these belong to OddityTaskConfig
+
+    with pytest.raises(TypeError, match=r"Do not pass task-specific kwargs"):
+        bad_kwargs = {bad_kw: bad_value}
+        WPPM(
+            input_dim=input_dim,
+            prior=prior,
+            task=task,
+            **bad_kwargs,
+        )

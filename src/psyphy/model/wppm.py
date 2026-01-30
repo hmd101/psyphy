@@ -24,11 +24,10 @@ from typing import Any
 
 import jax
 import jax.numpy as jnp
-import jax.random as jr
 
 from psyphy.utils.math import chebyshev_basis
 
-from .base import Model
+from .base import Model, OnlineConfig
 from .prior import Prior
 from .task import TaskLikelihood
 
@@ -63,14 +62,20 @@ class WPPM(Model):
     -----------------------------------
     extra_dims : int, default=0
         Additional embedding dimensions for basis expansions (beyond input_dim).
-        In Wishart mode, embedding_dim = input_dim + extra_dims.
+        embedding_dim = input_dim + extra_dims.
     variance_scale : float, default=1.0
         Global scaling factor for covariance magnitude
     decay_rate : float, default=1.0
         Smoothness/length-scale for spatial covariance variation
-        (formerly "decay_rate")
     diag_term : float, default=1e-6
         Small positive value added to the covariance diagonal for numerical stability.
+    online_config : OnlineConfig | None, optional (keyword-only)
+        Base-model lifecycle / online-learning policy. This is the supported way
+        to configure buffering and refit scheduling via `Model.condition_on_observations`.
+
+    **model_kwargs : Any
+        Reserved for *future* keyword arguments accepted by the base `Model.__init__`.
+        Do not pass WPPM math knobs or task/likelihood knobs here.
     """
 
     def __init__(
@@ -80,14 +85,31 @@ class WPPM(Model):
         task: TaskLikelihood,
         noise: Any | None = None,
         *,  # everything after here is keyword-only
+        online_config: OnlineConfig | None = None,
         extra_dims: int = 0,
         variance_scale: float = 1.0,
         decay_rate: float = 1.0,
         diag_term: float = 1e-6,
-        **kwargs,  # Accept online_config from model base
+        **model_kwargs: Any,
     ) -> None:
-        # Initialize Model base class
-        super().__init__(**kwargs)
+        # Base-model configuration (lifecycle / online learning).
+        #
+        # `online_config` is the explicit, user-facing knob for online learning
+        # and data retention (see `psyphy.model.base.OnlineConfig`).
+        #
+        # `model_kwargs` is reserved for *future* base `Model.__init__` kwargs.
+        # It should NOT be used for WPPM-specific math (e.g. alternative covariance
+        # parameterizations) or for task-specific likelihood knobs.
+        if model_kwargs:
+            known_misuses = {"num_samples", "bandwidth"}
+            bad = sorted(known_misuses.intersection(model_kwargs.keys()))
+            if bad:
+                raise TypeError(
+                    "Do not pass task-specific kwargs via WPPM(..., **model_kwargs). "
+                    f"Move {bad} into the task config (e.g. OddityTaskConfig)."
+                )
+
+        super().__init__(online_config=online_config, **model_kwargs)
 
         # --- core components ---
         self.input_dim = int(input_dim)  # stimulus-space dimensionality
@@ -220,9 +242,8 @@ class WPPM(Model):
     # ----------------------------------------------------------------------
     # PARAMETERS
     # ----------------------------------------------------------------------
-    def init_params(self, key: jr.KeyArray) -> Params:
-        """
-        Sample initial parameters from the prior.
+    def init_params(self, key: jax.Array) -> Params:
+        """Sample initial parameters from the prior.
 
         Returns
         -------

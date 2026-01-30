@@ -270,7 +270,7 @@ The result in this example is a `MAPPosterior` object that contains a point esti
     <picture>
     <img align="center" src="plots/ellipses.png" width="600"/>
     </picture>
-    <p><em>Fitted ellipsoids overlayed with ground truth and initial sample from model prior.</em></p>
+    <p><em>Fitted ellipsoids overlayed with ground truth and model initialization, a sample from the prior.</em></p>
 </div>
 
 
