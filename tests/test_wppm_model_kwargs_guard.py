@@ -2,13 +2,13 @@
 
 These tests protect the "single source of truth" policy:
 - task behavior knobs (e.g. MC controls) live in task configs, not in WPPM ctor kwargs.
-- base model lifecycle knobs (online learning) are explicitly named (online_config).
+- Base model lifecycle knobs (online learning) are explicitly named (online_config).
 
 """
 
 import pytest
 
-from psyphy.model import Prior, WPPM
+from psyphy.model import WPPM, Prior
 from psyphy.model.task import OddityTask
 
 
