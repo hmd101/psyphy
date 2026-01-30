@@ -86,13 +86,16 @@ class TaskLikelihood(ABC):
         """Compute log-likelihood of observed responses under this task.
 
         Why ``**kwargs``?
-        - Different tasks may need different optional controls.
-                - MC-based tasks may need parameters such as a PRNG ``key``.
-                    In particular, :class:`OddityTask` takes ``num_samples`` and
-                    ``bandwidth`` from an :class:`OddityTaskConfig` to avoid silent
-                    mismatch bugs.
-        - Keeping these as kwargs lets model/inference code forward task-specific
-            options while preserving a single polymorphic API.
+        - Different tasks may need different optional runtime controls.
+        - MC-based tasks may need parameters such as a PRNG ``key``.
+            In particular, :class:`OddityTask` takes Monte Carlo controls
+            (``num_samples`` and ``bandwidth``) exclusively from
+            :class:`OddityTaskConfig` to avoid silent mismatch bugs.
+
+        Notes
+        -----
+        - Task implementations should document which kwargs they accept.
+        - Callers should not assume arbitrary kwargs are supported.
         """
         ...
 
@@ -122,13 +125,14 @@ class OddityTask(TaskLikelihood):
     Examples
     --------
     >>> from psyphy.model.task import OddityTask
+    >>> from psyphy.model.task import OddityTaskConfig
     >>> from psyphy.model import WPPM, Prior
     >>> from psyphy.model.noise import GaussianNoise
     >>> import jax.numpy as jnp
     >>> import jax.random as jr
     >>>
-    >>> # Create task and model
-    >>> task = OddityTask()
+    >>> # Create task and model (task-owned MC controls)
+    >>> task = OddityTask(config=OddityTaskConfig(num_samples=1000, bandwidth=1e-2))
     >>> model = WPPM(
     ...     input_dim=2, prior=Prior(input_dim=2), task=task, noise=GaussianNoise()
     ... )
@@ -138,9 +142,7 @@ class OddityTask(TaskLikelihood):
     >>> from psyphy.data.dataset import ResponseData
     >>> data = ResponseData()
     >>> data.add_trial(ref, comparison, resp=1)
-    >>> ll_mc = task.loglik(
-    ...     params, data, model, model.noise, num_samples=1000, key=jr.PRNGKey(42)
-    ... )
+    >>> ll_mc = task.loglik(params, data, model, model.noise, key=jr.PRNGKey(42))
     >>> print(f"Log-likelihood (MC): {ll_mc:.4f}")
     """
 
@@ -163,9 +165,10 @@ class OddityTask(TaskLikelihood):
         -----
         - This method is intentionally lightweight: it performs the same
           single-trial Monte Carlo simulation used by ``loglik``.
-        - If you need to control MC fidelity/smoothing/reproducibility, prefer
-          calling ``loglik(..., num_samples=..., bandwidth=..., key=...)`` or
-          calling the model APIs that forward these task kwargs.
+                - If you need to control MC fidelity/smoothing, set
+                    ``OddityTaskConfig(num_samples=..., bandwidth=...)`` when you
+                    construct the task.
+                - If you need reproducible randomness, pass ``key=...`` to ``loglik``.
         """
 
         num_samples = int(self.config.num_samples)
@@ -212,18 +215,9 @@ class OddityTask(TaskLikelihood):
                 Model instance providing ``_compute_sqrt`` for covariance computation.
             noise : NoiseModel
                 Observer noise model (provides ``sample_standard``).
-            num_samples : int, default=1000
-                Number of Monte Carlo samples per trial.
-                - Use 1000-5000 for accurate likelihood estimation
-                - Larger values reduce MC variance but increase compute time
-            bandwidth : float, default=1e-2
-                Smoothing parameter for logistic CDF approximation.
-                - Smaller values -> sharper transition (closer to step function)
-                - Larger values -> smoother approximation
-                - Typical range: [1e-3, 5e-2]
             key : jax.random.PRNGKey, optional
                 Random key for reproducible sampling.
-                If None, uses PRNGKey(0) (deterministic but not recommended for production)
+                If None, uses ``OddityTaskConfig.default_key_seed``.
 
             Returns
             -------
@@ -233,8 +227,19 @@ class OddityTask(TaskLikelihood):
 
             Raises
             ------
+            TypeError
+                If ``num_samples`` or ``bandwidth`` are provided as kwargs.
             ValueError
-                If num_samples <= 0
+                If the task configuration is invalid (e.g. ``num_samples <= 0``).
+
+            Notes
+            -----
+            Monte Carlo controls (``num_samples``, ``bandwidth``) are owned by the
+            task configuration:
+
+            - Create the task with ``OddityTask(config=OddityTaskConfig(...))``.
+            - Pass only the PRNG ``key`` at call time when you want to control
+              randomness.
 
             Notes
             -----
@@ -307,12 +312,17 @@ class OddityTask(TaskLikelihood):
 
 
         """
-        # Backwards-compatible kwargs:
-        # - Preferred: configure `num_samples`/`bandwidth` via `OddityTaskConfig`.
-        # - Supported: override via kwargs for existing callers/tests.
-        num_samples = int(kwargs.pop("num_samples", self.config.num_samples))
-        bandwidth = float(kwargs.pop("bandwidth", self.config.bandwidth))
+        # Task is the single source of truth for MC controls.
+        num_samples = int(self.config.num_samples)
+        bandwidth = float(self.config.bandwidth)
+
+        # Only PRNG key is accepted dynamically.
         key = kwargs.pop("key", None)
+        if "num_samples" in kwargs or "bandwidth" in kwargs:
+            raise TypeError(
+                "OddityTask.loglik does not accept 'num_samples'/'bandwidth' overrides. "
+                "Configure them via OddityTaskConfig when constructing the task."
+            )
         if kwargs:
             unexpected = ", ".join(sorted(kwargs.keys()))
             raise TypeError(
