@@ -234,7 +234,7 @@ def bootstrap_statistic(
         Examples:
         - lambda m: m.estimate_threshold(criterion=0.75)
         - lambda m: m.posterior(X_test).mean
-        - lambda m: jnp.linalg.norm(m._posterior.params["lengthscales"])
+        - lambda m: jnp.linalg.norm(m._posterior.params["decay_rates"])
     n_bootstrap : int, default=100
         Number of bootstrap samples
     confidence_level : float, default=0.95
@@ -278,14 +278,14 @@ def bootstrap_statistic(
     >>> print(f"Threshold: {threshold:.3f} [{lower:.3f}, {upper:.3f}]")
 
     >>> # Bootstrap CI for model parameter
-    >>> def get_lengthscale(fitted_model):
-    ...     return fitted_model._posterior.params["lengthscales"][0]
+    >>> def get_decay_rate(fitted_model):
+    ...     return fitted_model._posterior.params["decay_rates"][0]
     >>>
     >>> ls, ls_lower, ls_upper = bootstrap_statistic(
     ...     model,
     ...     X,
     ...     y,
-    ...     statistic_fn=get_lengthscale,
+    ...     statistic_fn=get_decay_rate,
     ...     n_bootstrap=100,
     ...     key=jr.PRNGKey(42),
     ... )

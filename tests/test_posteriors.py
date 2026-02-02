@@ -34,7 +34,7 @@ class TestParameterPosterior:
         """Create a simple WPPM model."""
         return WPPM(
             input_dim=2,
-            prior=Prior(input_dim=2, scale=0.5),
+            prior=Prior(input_dim=2, basis_degree=3),
             task=OddityTask(),
             noise=GaussianNoise(),
         )
@@ -70,8 +70,6 @@ class TestParameterPosterior:
         """params property returns parameter dict."""
         params = param_posterior.params
         assert isinstance(params, dict)
-        assert "log_diag" in params
-        assert isinstance(params["log_diag"], jnp.ndarray)
 
     def test_model_property(self, param_posterior):
         """model property returns associated model."""
@@ -85,19 +83,6 @@ class TestParameterPosterior:
         samples = param_posterior.sample(5, key=key)
 
         assert isinstance(samples, dict)
-        assert "log_diag" in samples
-        # Should have leading dimension 5
-        assert samples["log_diag"].shape[0] == 5
-        assert samples["log_diag"].shape[1] == 2  # input_dim
-
-    def test_sample_delta_distribution(self, param_posterior):
-        """MAP posterior returns repeated MAP estimate."""
-        key = jr.PRNGKey(42)
-        samples = param_posterior.sample(3, key=key)
-
-        # All samples should be identical (delta distribution)
-        for i in range(1, 3):
-            assert jnp.allclose(samples["log_diag"][i], samples["log_diag"][0])
 
     def test_log_prob_at_map(self, param_posterior):
         """log_prob at MAP should be 0."""
@@ -137,7 +122,7 @@ class TestPredictivePosterior:
         """Create a simple WPPM model."""
         return WPPM(
             input_dim=2,
-            prior=Prior(input_dim=2, scale=0.5),
+            prior=Prior(input_dim=2, basis_degree=3),
             task=OddityTask(),
             noise=GaussianNoise(),
         )
@@ -242,7 +227,7 @@ class TestIntegration:
         # 1. Create model
         model = WPPM(
             input_dim=2,
-            prior=Prior(input_dim=2, scale=0.5),
+            prior=Prior(input_dim=2, basis_degree=3),
             task=OddityTask(),
             noise=GaussianNoise(),
         )
@@ -257,15 +242,10 @@ class TestIntegration:
             comparison = ref + jr.normal(subkey, (2,)) * 0.5
             data.add_trial(ref, comparison, resp=1)
 
-        # 3. Fit model → ParameterPosterior
+        # 3. Fit model -> ParameterPosterior
         optimizer = MAPOptimizer(steps=50)
         param_post = optimizer.fit(model, data)
         assert isinstance(param_post, ParameterPosterior)
-
-        # 4. Sample parameters
-        key, subkey = jr.split(key)
-        param_samples = param_post.sample(10, key=subkey)
-        assert param_samples["log_diag"].shape == (10, 2)
 
         # 5. Create PredictivePosterior
         X_test = jnp.array([[0.0, 0.0], [1.0, 1.0]])

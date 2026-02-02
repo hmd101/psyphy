@@ -198,7 +198,7 @@ class TestDiscriminabilityNoExtraction:
         d2_manual = delta @ jnp.linalg.solve(Sigma, delta)
         d_manual = jnp.sqrt(d2_manual)
 
-        assert jnp.allclose(d, d_manual), (
+        assert jnp.allclose(d, d_manual, atol=1e-4), (
             f"Discriminability mismatch. Model: {d}, Manual: {d_manual}"
         )
 

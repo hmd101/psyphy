@@ -35,7 +35,7 @@ def trained_model():
     # Create and fit model
     model = WPPM(
         input_dim=2,
-        prior=Prior(input_dim=2, scale=0.5),
+        prior=Prior(input_dim=2, basis_degree=3, variance_scale=1.0, decay_rate=0.7),
         task=OddityTask(),
         noise=GaussianNoise(),
     )
@@ -51,8 +51,7 @@ def test_parameter_summary(trained_model):
     summary = parameter_summary(param_post, n_samples=50, key=jr.PRNGKey(0))
 
     # Should have entries for model parameters
-    assert "log_diag" in summary
-    # MAP posterior has only one parameter (log_diag) - noise is fixed
+
     assert len(summary) >= 1
 
     # Each parameter should have mean, std, quantiles
@@ -92,7 +91,6 @@ def test_print_parameter_summary(trained_model, capsys):
 
     captured = capsys.readouterr()
     assert "Parameter Summary (50 samples)" in captured.out
-    assert "log_diag" in captured.out or "noise_scale" in captured.out
 
 
 def test_estimate_threshold_uncertainty_1d_line(trained_model):

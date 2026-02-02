@@ -2,23 +2,16 @@
 wppm.py
 -------
 
-Wishart Process Psychophysical Model (WPPM) — MVP-style implementation with
-forward-compatible hooks for the full WPPM model.
+Wishart Process Psychophysical Model (WPPM)
 
 Goals
 -----
-1) MVP that runs today:
-   - Local covariance Σ(x) is diagonal and *constant* across the space.
-   - Discriminability is Mahalanobis distance under Σ(reference).
-   - Task mapping (e.g., Oddity, 2AFC) converts discriminability -> p(correct).
-   - Likelihood is delegated to the TaskLikelihood (no Bernoulli code here).
-
-2) Forward compatibility with full WPPM model:
+Wishart Process Psychophysical Model (WPPM):
    - Expose hyperparameters needed to for example use Model config used in Hong et al.:
-       * extra_dims: embedding size for basis expansions (unused in MVP)
-       * variance_scale: global covariance scale (unused in MVP)
-       * lengthscale: smoothness/length-scale for covariance field (unused in MVP)
-       * diag_term: numerical stabilizer added to covariance diagonals (used in MVP)
+       * extra_dims: embedding size for basis expansions
+       * variance_scale: global covariance scale
+       * decay_rate: smoothness/length-scale for covariance field
+       * diag_term: numerical stabilizer added to covariance diagonals
    - Later, replace `local_covariance` with a basis-expansion Wishart process
      and swap discriminability/likelihood with MC observer simulation.
 
@@ -31,9 +24,10 @@ from typing import Any
 
 import jax
 import jax.numpy as jnp
-import jax.random as jr
 
-from .base import Model
+from psyphy.utils.math import chebyshev_basis
+
+from .base import Model, OnlineConfig
 from .prior import Prior
 from .task import TaskLikelihood
 
@@ -53,31 +47,35 @@ class WPPM(Model):
         Dimensionality of the *input stimulus space* (e.g., 2 for isoluminant plane,
         3 for RGB). Both reference and probe live in R^{input_dim}.
     prior : Prior
-        Prior distribution over model parameters. Controls basis_degree for Wishart
-        mode (basis expansion) vs MVP mode (diagonal covariance). The WPPM delegates
+        Prior distribution over model parameters. Controls basis_degree in WPPM (basis expansion).
+        The WPPM delegates
         to prior.basis_degree to ensure consistency between parameter sampling and
         basis evaluation.
     task : TaskLikelihood
         Psychophysical task mapping that defines how discriminability translates
         to p(correct) and how log-likelihood of responses is computed.
-        (e.g., OddityTask, TwoAFC)
+        (e.g., OddityTask)
     noise : Any, optional
         Noise model describing internal representation noise (e.g., GaussianNoise).
-        Not used in MVP mapping but passed to the task interface for future MC sims.
 
     Forward-compatible hyperparameters
     -----------------------------------
     extra_dims : int, default=0
         Additional embedding dimensions for basis expansions (beyond input_dim).
-        In Wishart mode, embedding_dim = input_dim + extra_dims.
+        embedding_dim = input_dim + extra_dims.
     variance_scale : float, default=1.0
-        Global scaling factor for covariance magnitude (unused in MVP).
-    lengthscale : float, default=1.0
-        Smoothness/length-scale for spatial covariance variation (unused in MVP).
-        (formerly "decay_rate")
+        Global scaling factor for covariance magnitude
+    decay_rate : float, default=1.0
+        Smoothness/length-scale for spatial covariance variation
     diag_term : float, default=1e-6
         Small positive value added to the covariance diagonal for numerical stability.
-        MVP uses this in matrix solves; the research model will also use it.
+    online_config : OnlineConfig | None, optional (keyword-only)
+        Base-model lifecycle / online-learning policy. This is the supported way
+        to configure buffering and refit scheduling via `Model.condition_on_observations`.
+
+    **model_kwargs : Any
+        Reserved for *future* keyword arguments accepted by the base `Model.__init__`.
+        Do not pass WPPM math knobs or task/likelihood knobs here.
     """
 
     def __init__(
@@ -87,14 +85,31 @@ class WPPM(Model):
         task: TaskLikelihood,
         noise: Any | None = None,
         *,  # everything after here is keyword-only
+        online_config: OnlineConfig | None = None,
         extra_dims: int = 0,
         variance_scale: float = 1.0,
-        lengthscale: float = 1.0,
+        decay_rate: float = 1.0,
         diag_term: float = 1e-6,
-        **kwargs,  # Accept online_config from model base
+        **model_kwargs: Any,
     ) -> None:
-        # Initialize Model base class
-        super().__init__(**kwargs)
+        # Base-model configuration (lifecycle / online learning).
+        #
+        # `online_config` is the explicit, user-facing knob for online learning
+        # and data retention (see `psyphy.model.base.OnlineConfig`).
+        #
+        # `model_kwargs` is reserved for *future* base `Model.__init__` kwargs.
+        # It should NOT be used for WPPM-specific math (e.g. alternative covariance
+        # parameterizations) or for task-specific likelihood knobs.
+        if model_kwargs:
+            known_misuses = {"num_samples", "bandwidth"}
+            bad = sorted(known_misuses.intersection(model_kwargs.keys()))
+            if bad:
+                raise TypeError(
+                    "Do not pass task-specific kwargs via WPPM(..., **model_kwargs). "
+                    f"Move {bad} into the task config (e.g. OddityTaskConfig)."
+                )
+
+        super().__init__(online_config=online_config, **model_kwargs)
 
         # --- core components ---
         self.input_dim = int(input_dim)  # stimulus-space dimensionality
@@ -109,10 +124,9 @@ class WPPM(Model):
         self.task = task  # task mapping and likelihood
         self.noise = noise  # noise model
 
-        # --- forward-compatible hyperparameters (stubs in MVP) ---
         self.extra_dims = int(extra_dims)
         self.variance_scale = float(variance_scale)
-        self.lengthscale = float(lengthscale)
+        self.decay_rate = float(decay_rate)
         self.diag_term = float(diag_term)
 
     @property
@@ -127,7 +141,6 @@ class WPPM(Model):
         -------
         int | None
             Degree of Chebyshev polynomial basis (0 = constant, 1 = linear, etc.)
-            None indicates MVP mode (no basis expansion)
 
         Notes
         -----
@@ -148,16 +161,14 @@ class WPPM(Model):
         Returns
         -------
         int
-            input_dim + extra_dims (in Wishart mode)
-            input_dim (in MVP mode, extra_dims ignored)
+            input_dim + extra_dims
 
         Notes
         -----
         This is a computed property, not a constructor parameter.
         """
         if self.basis_degree is None:
-            # MVP mode: no extra dimensions make sense
-            return self.input_dim
+            raise ValueError("Basis degree must be set for embedding.")
         # Wishart mode: full perceptual space
         return self.input_dim + self.extra_dims
 
@@ -199,15 +210,16 @@ class WPPM(Model):
 
         Notes
         -----
-        If basis_degree is None (MVP mode), returns input unchanged.
+        If basis_degree raises ValueError
         Otherwise, applies Chebyshev basis separately to each input dimension
         and concatenates the results.
         """
-        from psyphy.utils.math import chebyshev_basis
 
-        # MVP mode: no embedding
         if self.basis_degree is None:
-            return x
+            raise ValueError(
+                "Cannot embed stimulus: basis_degree is None . "
+                "Set basis_degree to use Wishart process."
+            )
 
         # Normalize to [-1, 1] for numerical stability
         x_norm = self._normalize_stimulus(x)
@@ -230,13 +242,8 @@ class WPPM(Model):
     # ----------------------------------------------------------------------
     # PARAMETERS
     # ----------------------------------------------------------------------
-    def init_params(self, key: jr.KeyArray) -> Params:
-        """
-        Sample initial parameters from the prior.
-
-        MVP parameters:
-            {"log_diag": shape (input_dim,)}
-        which defines a constant diagonal covariance across the space.
+    def init_params(self, key: jax.Array) -> Params:
+        """Sample initial parameters from the prior.
 
         Returns
         -------
@@ -249,6 +256,8 @@ class WPPM(Model):
     # ----------------------------------------------------------------------
     def _evaluate_basis_at_point(self, x: jnp.ndarray) -> jnp.ndarray:
         """
+        TODO: require user to provide input in chebychev range [-1,1] and have this
+        function only check whether valid range
         Evaluate all Chebyshev basis functions at point x, keeping structure for einsum.
 
         For 2D: returns φ_ij(x) = T_i(x_1) * T_j(x_2) with shape (degree+1, degree+1)
@@ -267,16 +276,17 @@ class WPPM(Model):
             Basis function values with structured shape for efficient einsum.
             Shape is (degree+1, degree+1) for 2D or (degree+1, degree+1, degree+1) for 3D.
         """
-        from psyphy.utils.math import chebyshev_basis
 
         if self.basis_degree is None:
             raise ValueError(
-                "Cannot evaluate basis: basis_degree is None (MVP mode). "
-                "Set basis_degree to use Wishart process."
+                "Cannot evaluate basis: basis_degree is None. "
+                "Set basis_degree to a valid integer."
             )
 
+        # TODO: re-implement normalize_stimulus to check valid input range
+        # user is required to provide valid input in [-1, 1] for Chebyshev basis
         # Normalize to [-1, 1]
-        x_norm = self._normalize_stimulus(x)
+        x_norm = x  # self._normalize_stimulus(x)
 
         if self.input_dim == 2:
             # Evaluate basis functions: φ_ij(x) = T_i(x_1) * T_j(x_2)
@@ -339,10 +349,7 @@ class WPPM(Model):
         Σ(x) \in R^(input_dim x input_dim)
         """
         if "W" not in params:
-            raise ValueError(
-                "Cannot compute U(x): params missing 'W'. "
-                "Use Wishart mode (basis_degree set) or call local_covariance() in MVP mode."
-            )
+            raise ValueError("Cannot compute U(x): params missing 'W'. ")
 
         W = params["W"]
         phi = self._evaluate_basis_at_point(x)
@@ -373,9 +380,6 @@ class WPPM(Model):
         """
         Return local covariance Σ(x) at stimulus location x.
 
-        MVP mode (basis_degree=None):
-            Σ(x) = diag(exp(log_diag)), constant across x.
-            - Positive-definite because exp(log_diag) > 0.
 
         Wishart mode (basis_degree set):
             Σ(x) = U(x) @ U(x)^T + diag_term * I
@@ -388,8 +392,7 @@ class WPPM(Model):
         ----------
         params : dict
             Model parameters:
-            - MVP: {"log_diag": (input_dim,)}
-            - Wishart: {"W": (degree+1, ..., input_dim, embedding_dim)}
+            - WPPM: {"W": (degree+1, ..., input_dim, embedding_dim)}
         x : jnp.ndarray, shape (input_dim,)
             Stimulus location
 
@@ -398,13 +401,7 @@ class WPPM(Model):
         Σ : jnp.ndarray, shape (input_dim, input_dim)
             Covariance matrix in stimulus space.
         """
-        # MVP mode: constant diagonal covariance
-        if "log_diag" in params:
-            log_diag = params["log_diag"]
-            diag = jnp.exp(log_diag)
-            return jnp.diag(diag)
-
-        # Wishart mode: spatially-varying covariance
+        # WPPM: spatially-varying covariance
         if "W" in params:
             U = self._compute_sqrt(params, x)  # (input_dim, embedding_dim)
             # Σ(x) = U(x) @ U(x)^T + diag_term * I
@@ -412,7 +409,7 @@ class WPPM(Model):
             Sigma = U @ U.T + self.diag_term * jnp.eye(self.input_dim)
             return Sigma
 
-        raise ValueError("params must contain either 'log_diag' (MVP) or 'W' (Wishart)")
+        raise ValueError("params must contain 'W' (weights of WPPM)")
 
     # ----------------------------------------------------------------------
     # DISCRIMINABILITY (d), later implemented via MC simulation
@@ -421,11 +418,8 @@ class WPPM(Model):
         """
         Compute scalar discriminability d >= 0 for a (reference, probe) pair
 
-        MVP mode:
-            d = sqrt( (probe - ref)^T Σ(ref)^{-1} (probe - ref) )
-            with Σ(ref) the local covariance at the reference in stimulus space.
 
-        Wishart mode (rectangular U design) if extra_dims > 0:
+        WPPM (rectangular U design) if extra_dims > 0:
             d = sqrt( (probe - ref)^T Σ(ref)^{-1} (probe - ref) )
             where Σ(ref) is directly computed in stimulus space (input_dim, input_dim)
             via U(x) @ U(x)^T with U rectangular.
@@ -434,7 +428,7 @@ class WPPM(Model):
         The rectangular U design means local_covariance() already returns
         the stimulus covariance - no block extraction needed.
 
-        Future (full WPPM mode):
+        WPPM:
             d is implicit via Monte Carlo simulation of internal noisy responses
             under the task's decision rule (no closed form). In that case, tasks
             will directly implement predict/loglik with MC, and this method may be
@@ -474,7 +468,9 @@ class WPPM(Model):
     # ----------------------------------------------------------------------
     # PREDICTION (delegates to task)
     # ----------------------------------------------------------------------
-    def predict_prob(self, params: Params, stimulus: Stimulus) -> jnp.ndarray:
+    def predict_prob(
+        self, params: Params, stimulus: Stimulus, **task_kwargs: Any
+    ) -> jnp.ndarray:
         """
         Predict probability of a correct response for a single stimulus.
 
@@ -492,6 +488,17 @@ class WPPM(Model):
         -------
         p_correct : jnp.ndarray
         """
+        # Strict task-owned configuration:
+        # - MC control knobs (e.g. num_samples/bandwidth) live in the task config.
+        # - WPPM.predict_prob therefore does not accept task-specific kwargs.
+        if task_kwargs:
+            unexpected = ", ".join(sorted(task_kwargs.keys()))
+            raise TypeError(
+                "WPPM.predict_prob does not accept task-specific kwargs. "
+                "Configure task behavior via the task instance (e.g. OddityTaskConfig). "
+                f"Unexpected: {unexpected}"
+            )
+
         return self.task.predict(params, stimulus, self, self.noise)
 
     # ----------------------------------------------------------------------
@@ -524,6 +531,16 @@ class WPPM(Model):
         -------
         loglik : jnp.ndarray
             Scalar log-likelihood (task-only; add prior outside if needed)
+
+                Notes
+                -----
+                This method is intentionally strict and does not accept task-specific
+                runtime kwargs.
+
+                - Configure task behavior (e.g. MC fidelity/smoothing for ``OddityTask``)
+                    via the task instance passed to the model.
+                - If you need reproducible randomness, pass a ``key`` when calling the
+                    task directly.
         """
         # We need a ResponseData-like object. To keep this method usable from
         # array inputs, we construct one on the fly. If you already have a
@@ -537,13 +554,12 @@ class WPPM(Model):
         return self.task.loglik(params, data, self, self.noise)
 
     def log_likelihood_from_data(self, params: Params, data: Any) -> jnp.ndarray:
-        """
-        Compute log-likelihood directly from a ResponseData object.
+        """Compute log-likelihood directly from a ResponseData object.
 
         Why delegate to the task?
             - The task knows the decision rule (oddity, 2AFC, ...).
-            - The task can use the model (this WPPM) to fetch discriminabilities
-            - and the task can use the noise model if it needs MC simulation
+            - The task can use the model (this WPPM) to fetch discriminabilities.
+            - The task can use the noise model if it needs MC simulation.
 
         Parameters
         ----------
@@ -555,7 +571,7 @@ class WPPM(Model):
         Returns
         -------
         loglik : jnp.ndarray
-            scalar log-likelihood (task-only; add prior outside if needed)
+            Scalar log-likelihood (task-only; add prior outside if needed).
         """
         return self.task.loglik(params, data, self, self.noise)
 
@@ -563,15 +579,15 @@ class WPPM(Model):
     # POSTERIOR-STYLE CONVENIENCE (OPTIONAL)
     # ----------------------------------------------------------------------
     def log_posterior_from_data(self, params: Params, data: Any) -> jnp.ndarray:
-        """
-        Convenience helper if you want log posterior in one call (MVP).
+        """Compute log posterior from data.
 
         This simply adds the prior log-probability to the task log-likelihood.
         Inference engines (e.g., MAP optimizer) typically optimize this quantity.
 
         Returns
         -------
-        jnp.ndarray : scalar log posterior = loglik(params | data) + log_prior(params)
+        jnp.ndarray
+            Scalar log posterior = loglik(params | data) + log_prior(params).
         """
         return self.log_likelihood_from_data(params, data) + self.prior.log_prob(params)
 
@@ -599,7 +615,7 @@ class WPPM(Model):
         probes : jnp.ndarray | None, shape (n_test, input_dim)
             Probe stimuli (None for detection tasks)
         params : dict[str, jnp.ndarray]
-            Model parameters (e.g., {"log_diag": (input_dim,)})
+            Model parameters (e.g., {"W": (input_dim,)})
 
         Returns
         -------

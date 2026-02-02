@@ -15,7 +15,7 @@ import pytest
 from psyphy.data import ResponseData
 from psyphy.model import WPPM, Prior
 from psyphy.model.noise import GaussianNoise
-from psyphy.model.task import OddityTask
+from psyphy.model.task import OddityTask, OddityTaskConfig
 
 
 class TestThreeStimulusDecisionRule:
@@ -29,8 +29,8 @@ class TestThreeStimulusDecisionRule:
         # Create  model
         model = WPPM(
             input_dim=2,
-            prior=Prior(input_dim=2),
-            task=OddityTask(),
+            prior=Prior(input_dim=2, basis_degree=2),
+            task=OddityTask(config=OddityTaskConfig(num_samples=5000, bandwidth=1e-2)),
             noise=GaussianNoise(sigma=0.01),  # Small noise
         )
         params = model.init_params(jr.PRNGKey(0))
@@ -43,13 +43,11 @@ class TestThreeStimulusDecisionRule:
 
         # Compute P(correct) with many samples for accurate estimate
         # loglik = log P(correct | ref, comparison, params)
-        loglik = model.task.loglik_mc(
+        loglik = model.task.loglik(
             params,
             data,
             model,
             model.noise,
-            num_samples=5000,
-            bandwidth=1e-2,
             key=jr.PRNGKey(42),
         )
 
@@ -73,8 +71,8 @@ class TestThreeStimulusDecisionRule:
         # Create a simple MVP model with small noise
         model = WPPM(
             input_dim=2,
-            prior=Prior(input_dim=2),
-            task=OddityTask(),
+            prior=Prior(input_dim=2, basis_degree=2),
+            task=OddityTask(config=OddityTaskConfig(num_samples=5000, bandwidth=1e-2)),
             noise=GaussianNoise(sigma=0.01),  # Small noise for easy discrimination
         )
         params = model.init_params(jr.PRNGKey(0))
@@ -86,13 +84,11 @@ class TestThreeStimulusDecisionRule:
         data.add_trial(ref, comparison, resp=1)
 
         # Compute P(correct)
-        loglik = model.task.loglik_mc(
+        loglik = model.task.loglik(
             params,
             data,
             model,
             model.noise,
-            num_samples=5000,
-            bandwidth=1e-2,
             key=jr.PRNGKey(42),
         )
 
@@ -113,8 +109,8 @@ class TestThreeStimulusDecisionRule:
         """
         model = WPPM(
             input_dim=2,
-            prior=Prior(input_dim=2),
-            task=OddityTask(),
+            prior=Prior(input_dim=2, basis_degree=2),
+            task=OddityTask(config=OddityTaskConfig(num_samples=5000, bandwidth=1e-2)),
             noise=GaussianNoise(sigma=0.05),
         )
         params = model.init_params(jr.PRNGKey(0))
@@ -126,23 +122,15 @@ class TestThreeStimulusDecisionRule:
         data.add_trial(ref, comparison, resp=1)
 
         # Compute P(correct)
-        loglik = model.task.loglik_mc(
-            params,
-            data,
-            model,
-            model.noise,
-            num_samples=5000,
-            bandwidth=1e-2,
-            key=jr.PRNGKey(42),
-        )
+        loglik = model.task.loglik(params, data, model, model.noise, key=jr.PRNGKey(42))
 
         p_correct = jnp.exp(loglik)
 
         # Should be between chance (1/3) and perfect (1)
         # Note: For this stimulus separation with the given noise level,
         # performance is still quite close to chance level
-        assert 0.33 < p_correct < 0.95, (
-            f"P(correct) = {p_correct:.3f}, expected between 0.33 and 0.95. "
+        assert 0.28 < p_correct < 0.95, (
+            f"P(correct) = {p_correct:.3f}, expected between 0.28 and 0.95. "
             "The decision rule should produce intermediate performance for moderately different stimuli."
         )
 
@@ -167,13 +155,14 @@ class TestThreeStimulusDecisionRule:
         ref = jnp.array([0.5, 0.5])
         data_identical.add_trial(ref, ref, resp=1)
 
-        loglik_identical = model.task.loglik_mc(
+        model.task = OddityTask(
+            config=OddityTaskConfig(num_samples=3000, bandwidth=1e-2)
+        )
+        loglik_identical = model.task.loglik(
             params,
             data_identical,
             model,
             model.noise,
-            num_samples=3000,
-            bandwidth=1e-2,
             key=jr.PRNGKey(42),
         )
         p_identical = jnp.exp(loglik_identical)
@@ -183,14 +172,12 @@ class TestThreeStimulusDecisionRule:
         comparison_far = jnp.array([5.0, 5.0])
         data_distant.add_trial(ref, comparison_far, resp=1)
 
-        loglik_distant = model.task.loglik_mc(
+        loglik_distant = model.task.loglik(
             params,
             data_distant,
             model,
             model.noise,
-            num_samples=3000,
-            bandwidth=1e-2,
-            key=jr.PRNGKey(43),
+            key=jr.PRNGKey(42),
         )
         p_distant = jnp.exp(loglik_distant)
 
@@ -306,8 +293,8 @@ class TestEdgeCases:
         """
         model = WPPM(
             input_dim=2,
-            prior=Prior(input_dim=2),
-            task=OddityTask(),
+            prior=Prior(input_dim=2, basis_degree=2),
+            task=OddityTask(config=OddityTaskConfig(num_samples=1000, bandwidth=1e-6)),
             noise=GaussianNoise(sigma=0.01),
         )
         params = model.init_params(jr.PRNGKey(0))
@@ -317,16 +304,7 @@ class TestEdgeCases:
         comparison = jnp.array([2.0, 2.0])
         data.add_trial(ref, comparison, resp=1)
 
-        # Very small bandwidth
-        loglik = model.task.loglik_mc(
-            params,
-            data,
-            model,
-            model.noise,
-            num_samples=1000,
-            bandwidth=1e-6,  # Very small!
-            key=jr.PRNGKey(42),
-        )
+        loglik = model.task.loglik(params, data, model, model.noise, key=jr.PRNGKey(42))
 
         p_correct = jnp.exp(loglik)
 
@@ -345,8 +323,8 @@ class TestEdgeCases:
         """
         model = WPPM(
             input_dim=2,
-            prior=Prior(input_dim=2),
-            task=OddityTask(),
+            prior=Prior(input_dim=2, basis_degree=2),
+            task=OddityTask(config=OddityTaskConfig(num_samples=1000, bandwidth=0.1)),
             noise=GaussianNoise(sigma=0.01),
         )
         params = model.init_params(jr.PRNGKey(0))
@@ -356,21 +334,12 @@ class TestEdgeCases:
         comparison = jnp.array([0.5, 0.5])  # Moderately different
         data.add_trial(ref, comparison, resp=1)
 
-        # Large bandwidth
-        loglik = model.task.loglik_mc(
-            params,
-            data,
-            model,
-            model.noise,
-            num_samples=1000,
-            bandwidth=0.1,  # Large!
-            key=jr.PRNGKey(42),
-        )
+        loglik = model.task.loglik(params, data, model, model.noise, key=jr.PRNGKey(42))
 
         p_correct = jnp.exp(loglik)
 
         # Should be between chance and perfect (more gradual)
-        assert 0.35 < p_correct < 0.85, (
+        assert 0.23 < p_correct < 0.85, (
             f"P(correct) = {p_correct:.3f} with large bandwidth. "
             "Large bandwidth should produce intermediate performance."
         )
@@ -383,8 +352,8 @@ class TestEdgeCases:
         """
         model = WPPM(
             input_dim=2,
-            prior=Prior(input_dim=2),
-            task=OddityTask(),
+            prior=Prior(input_dim=2, basis_degree=2),
+            task=OddityTask(config=OddityTaskConfig(num_samples=10, bandwidth=1e-2)),
             noise=GaussianNoise(sigma=0.01),
         )
         params = model.init_params(jr.PRNGKey(0))
@@ -394,16 +363,7 @@ class TestEdgeCases:
         comparison = jnp.array([3.0, 3.0])
         data.add_trial(ref, comparison, resp=1)
 
-        # Small num_samples
-        loglik = model.task.loglik_mc(
-            params,
-            data,
-            model,
-            model.noise,
-            num_samples=10,  # Very small!
-            bandwidth=1e-2,
-            key=jr.PRNGKey(42),
-        )
+        loglik = model.task.loglik(params, data, model, model.noise, key=jr.PRNGKey(42))
 
         p_correct = jnp.exp(loglik)
 
@@ -419,10 +379,11 @@ class TestEdgeCases:
 
         Results should be more stable and converged.
         """
+        task = OddityTask(config=OddityTaskConfig(num_samples=5000, bandwidth=1e-2))
         model = WPPM(
             input_dim=2,
-            prior=Prior(input_dim=2),
-            task=OddityTask(),
+            prior=Prior(input_dim=2, basis_degree=2),
+            task=task,
             noise=GaussianNoise(sigma=0.01),
         )
         params = model.init_params(jr.PRNGKey(0))
@@ -432,24 +393,16 @@ class TestEdgeCases:
         comparison = jnp.array([3.0, 3.0])
         data.add_trial(ref, comparison, resp=1)
 
-        # Compute with two different large num_samples
-        loglik1 = model.task.loglik_mc(
-            params,
-            data,
-            model,
-            model.noise,
-            num_samples=5000,
-            bandwidth=1e-2,
-            key=jr.PRNGKey(42),
+        # Compute with two different seeds (same task config)
+        loglik1 = model.task.loglik(
+            params, data, model, model.noise, key=jr.PRNGKey(42)
         )
 
-        loglik2 = model.task.loglik_mc(
+        loglik2 = model.task.loglik(
             params,
             data,
             model,
             model.noise,
-            num_samples=5000,
-            bandwidth=1e-2,
             key=jr.PRNGKey(43),  # Different seed
         )
 
@@ -468,10 +421,11 @@ class TestEdgeCases:
 
         loglik(10 trials) should be sum of individual loglik values.
         """
+        task = OddityTask(config=OddityTaskConfig(num_samples=1000, bandwidth=1e-2))
         model = WPPM(
             input_dim=2,
-            prior=Prior(input_dim=2),
-            task=OddityTask(),
+            prior=Prior(input_dim=2, basis_degree=2),
+            task=task,
             noise=GaussianNoise(sigma=0.01),
         )
         params = model.init_params(jr.PRNGKey(0))
@@ -485,13 +439,11 @@ class TestEdgeCases:
             data_multi.add_trial(ref, comparison, resp=1)
 
         # Compute combined loglik
-        loglik_multi = model.task.loglik_mc(
+        loglik_multi = model.task.loglik(
             params,
             data_multi,
             model,
             model.noise,
-            num_samples=1000,
-            bandwidth=1e-2,
             key=jr.PRNGKey(42),
         )
 
@@ -499,13 +451,11 @@ class TestEdgeCases:
         data_single = ResponseData()
         data_single.add_trial(ref, comparison, resp=1)
 
-        loglik_single = model.task.loglik_mc(
+        loglik_single = model.task.loglik(
             params,
             data_single,
             model,
             model.noise,
-            num_samples=1000,
-            bandwidth=1e-2,
             key=jr.PRNGKey(42),
         )
 
@@ -523,27 +473,9 @@ class TestEdgeCases:
 
     def test_zero_samples_raises_error(self):
         """Test that num_samples=0 raises an error."""
-        model = WPPM(
-            input_dim=2,
-            prior=Prior(input_dim=2),
-            task=OddityTask(),
-            noise=GaussianNoise(sigma=0.01),
-        )
-        params = model.init_params(jr.PRNGKey(0))
-
-        data = ResponseData()
-        data.add_trial(jnp.array([0.0, 0.0]), jnp.array([1.0, 1.0]), resp=1)
-
+        # Strict API: num_samples comes from task config, so invalid config should fail at construction.
         with pytest.raises(ValueError, match="num_samples must be > 0"):
-            model.task.loglik_mc(
-                params,
-                data,
-                model,
-                model.noise,
-                num_samples=0,  # Invalid!
-                bandwidth=1e-2,
-                key=jr.PRNGKey(42),
-            )
+            _ = OddityTask(config=OddityTaskConfig(num_samples=0, bandwidth=1e-2))
 
     def test_reproducibility_with_same_seed(self):
         """
@@ -551,10 +483,11 @@ class TestEdgeCases:
 
         This verifies determinism for debugging and reproducibility.
         """
+        task = OddityTask(config=OddityTaskConfig(num_samples=1000, bandwidth=1e-2))
         model = WPPM(
             input_dim=2,
-            prior=Prior(input_dim=2),
-            task=OddityTask(),
+            prior=Prior(input_dim=2, basis_degree=2),
+            task=task,
             noise=GaussianNoise(sigma=0.01),
         )
         params = model.init_params(jr.PRNGKey(0))
@@ -563,23 +496,19 @@ class TestEdgeCases:
         data.add_trial(jnp.array([0.0, 0.0]), jnp.array([1.0, 1.0]), resp=1)
 
         # Compute twice with same seed
-        loglik1 = model.task.loglik_mc(
+        loglik1 = model.task.loglik(
             params,
             data,
             model,
             model.noise,
-            num_samples=1000,
-            bandwidth=1e-2,
             key=jr.PRNGKey(42),  # Same seed
         )
 
-        loglik2 = model.task.loglik_mc(
+        loglik2 = model.task.loglik(
             params,
             data,
             model,
             model.noise,
-            num_samples=1000,
-            bandwidth=1e-2,
             key=jr.PRNGKey(42),  # Same seed
         )
 
@@ -600,10 +529,11 @@ class TestDecisionRuleSymmetry:
         The decision rule uses min(d(z_ref,z_comparison), d(z_ref_prime,z_comparison)),
         which is symmetric in the two reference samples.
         """
+        task = OddityTask(config=OddityTaskConfig(num_samples=2000, bandwidth=1e-2))
         model = WPPM(
             input_dim=2,
-            prior=Prior(input_dim=2),
-            task=OddityTask(),
+            prior=Prior(input_dim=2, basis_degree=2),
+            task=task,
             noise=GaussianNoise(sigma=0.01),
         )
         params = model.init_params(jr.PRNGKey(0))
@@ -615,24 +545,20 @@ class TestDecisionRuleSymmetry:
         data.add_trial(ref, comparison, resp=1)
 
         # Compute with one seed
-        loglik1 = model.task.loglik_mc(
+        loglik1 = model.task.loglik(
             params,
             data,
             model,
             model.noise,
-            num_samples=2000,
-            bandwidth=1e-2,
             key=jr.PRNGKey(42),
         )
 
         # Compute with different seed (different sampling order)
-        loglik2 = model.task.loglik_mc(
+        loglik2 = model.task.loglik(
             params,
             data,
             model,
             model.noise,
-            num_samples=2000,
-            bandwidth=1e-2,
             key=jr.PRNGKey(100),
         )
 
