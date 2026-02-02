@@ -300,7 +300,7 @@ prior = Prior(
     input_dim=input_dim,  # (2D)
     basis_degree=basis_degree,  # 5
     extra_embedding_dims=extra_dims,  # 1
-    decay_rate=decay_rate,  # for basis functions
+    decay_rate=decay_rate,  # for basis functions (how quickly they vary)
     variance_scale=variance_scale,  # how big covariance matrices
     # are before fitting
 )
