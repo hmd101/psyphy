@@ -24,11 +24,10 @@ from typing import Any
 
 import jax
 import jax.numpy as jnp
-import jax.random as jr
 
 from psyphy.utils.math import chebyshev_basis
 
-from .base import Model
+from .base import Model, OnlineConfig
 from .prior import Prior
 from .task import TaskLikelihood
 
@@ -63,14 +62,20 @@ class WPPM(Model):
     -----------------------------------
     extra_dims : int, default=0
         Additional embedding dimensions for basis expansions (beyond input_dim).
-        In Wishart mode, embedding_dim = input_dim + extra_dims.
+        embedding_dim = input_dim + extra_dims.
     variance_scale : float, default=1.0
         Global scaling factor for covariance magnitude
     decay_rate : float, default=1.0
         Smoothness/length-scale for spatial covariance variation
-        (formerly "decay_rate")
     diag_term : float, default=1e-6
         Small positive value added to the covariance diagonal for numerical stability.
+    online_config : OnlineConfig | None, optional (keyword-only)
+        Base-model lifecycle / online-learning policy. This is the supported way
+        to configure buffering and refit scheduling via `Model.condition_on_observations`.
+
+    **model_kwargs : Any
+        Reserved for *future* keyword arguments accepted by the base `Model.__init__`.
+        Do not pass WPPM math knobs or task/likelihood knobs here.
     """
 
     def __init__(
@@ -80,14 +85,31 @@ class WPPM(Model):
         task: TaskLikelihood,
         noise: Any | None = None,
         *,  # everything after here is keyword-only
+        online_config: OnlineConfig | None = None,
         extra_dims: int = 0,
         variance_scale: float = 1.0,
         decay_rate: float = 1.0,
         diag_term: float = 1e-6,
-        **kwargs,  # Accept online_config from model base
+        **model_kwargs: Any,
     ) -> None:
-        # Initialize Model base class
-        super().__init__(**kwargs)
+        # Base-model configuration (lifecycle / online learning).
+        #
+        # `online_config` is the explicit, user-facing knob for online learning
+        # and data retention (see `psyphy.model.base.OnlineConfig`).
+        #
+        # `model_kwargs` is reserved for *future* base `Model.__init__` kwargs.
+        # It should NOT be used for WPPM-specific math (e.g. alternative covariance
+        # parameterizations) or for task-specific likelihood knobs.
+        if model_kwargs:
+            known_misuses = {"num_samples", "bandwidth"}
+            bad = sorted(known_misuses.intersection(model_kwargs.keys()))
+            if bad:
+                raise TypeError(
+                    "Do not pass task-specific kwargs via WPPM(..., **model_kwargs). "
+                    f"Move {bad} into the task config (e.g. OddityTaskConfig)."
+                )
+
+        super().__init__(online_config=online_config, **model_kwargs)
 
         # --- core components ---
         self.input_dim = int(input_dim)  # stimulus-space dimensionality
@@ -220,9 +242,8 @@ class WPPM(Model):
     # ----------------------------------------------------------------------
     # PARAMETERS
     # ----------------------------------------------------------------------
-    def init_params(self, key: jr.KeyArray) -> Params:
-        """
-        Sample initial parameters from the prior.
+    def init_params(self, key: jax.Array) -> Params:
+        """Sample initial parameters from the prior.
 
         Returns
         -------
@@ -467,30 +488,14 @@ class WPPM(Model):
         -------
         p_correct : jnp.ndarray
         """
-        # Some tasks (like OddityTask in MC-only mode) benefit from receiving
-        # MC controls (num_samples/bandwidth/key). The base TaskLikelihood API
-        # keeps predict() minimal, so we pass kwargs only when callers provide
-        # them and the task exposes an extended entry point.
-        predict_with_kwargs = getattr(self.task, "predict_with_kwargs", None)
-        if task_kwargs and callable(predict_with_kwargs):
-            from typing import Callable, cast
-
-            fn = cast(
-                Callable[..., jnp.ndarray],
-                predict_with_kwargs,
-            )
-            return fn(
-                params=params,
-                stimuli=stimulus,
-                model=self,
-                noise=self.noise,
-                **task_kwargs,
-            )
-
+        # Strict task-owned configuration:
+        # - MC control knobs (e.g. num_samples/bandwidth) live in the task config.
+        # - WPPM.predict_prob therefore does not accept task-specific kwargs.
         if task_kwargs:
             unexpected = ", ".join(sorted(task_kwargs.keys()))
             raise TypeError(
-                "This task does not accept task-specific prediction kwargs. "
+                "WPPM.predict_prob does not accept task-specific kwargs. "
+                "Configure task behavior via the task instance (e.g. OddityTaskConfig). "
                 f"Unexpected: {unexpected}"
             )
 
@@ -505,7 +510,6 @@ class WPPM(Model):
         refs: jnp.ndarray,
         probes: jnp.ndarray,
         responses: jnp.ndarray,
-        **task_kwargs: Any,
     ) -> jnp.ndarray:
         """
         Compute the log-likelihood for arrays of trials.
@@ -527,6 +531,16 @@ class WPPM(Model):
         -------
         loglik : jnp.ndarray
             Scalar log-likelihood (task-only; add prior outside if needed)
+
+                Notes
+                -----
+                This method is intentionally strict and does not accept task-specific
+                runtime kwargs.
+
+                - Configure task behavior (e.g. MC fidelity/smoothing for ``OddityTask``)
+                    via the task instance passed to the model.
+                - If you need reproducible randomness, pass a ``key`` when calling the
+                    task directly.
         """
         # We need a ResponseData-like object. To keep this method usable from
         # array inputs, we construct one on the fly. If you already have a
@@ -537,11 +551,9 @@ class WPPM(Model):
         # ResponseData.add_trial(ref, probe, resp)
         for r, p, y in zip(refs, probes, responses):
             data.add_trial(r, p, int(y))
-        return self.task.loglik(params, data, self, self.noise, **task_kwargs)
+        return self.task.loglik(params, data, self, self.noise)
 
-    def log_likelihood_from_data(
-        self, params: Params, data: Any, **task_kwargs: Any
-    ) -> jnp.ndarray:
+    def log_likelihood_from_data(self, params: Params, data: Any) -> jnp.ndarray:
         """Compute log-likelihood directly from a ResponseData object.
 
         Why delegate to the task?
@@ -561,20 +573,21 @@ class WPPM(Model):
         loglik : jnp.ndarray
             Scalar log-likelihood (task-only; add prior outside if needed).
         """
-        return self.task.loglik(params, data, self, self.noise, **task_kwargs)
+        return self.task.loglik(params, data, self, self.noise)
 
     # ----------------------------------------------------------------------
     # POSTERIOR-STYLE CONVENIENCE (OPTIONAL)
     # ----------------------------------------------------------------------
     def log_posterior_from_data(self, params: Params, data: Any) -> jnp.ndarray:
-        """
+        """Compute log posterior from data.
 
         This simply adds the prior log-probability to the task log-likelihood.
         Inference engines (e.g., MAP optimizer) typically optimize this quantity.
 
         Returns
         -------
-        jnp.ndarray : scalar log posterior = loglik(params | data) + log_prior(params)
+        jnp.ndarray
+            Scalar log posterior = loglik(params | data) + log_prior(params).
         """
         return self.log_likelihood_from_data(params, data) + self.prior.log_prob(params)
 

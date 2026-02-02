@@ -343,7 +343,6 @@ class TestIntegrationWorkflow:
         assert var.shape == (2,)
         assert jnp.all((mean >= 0) & (mean <= 1))
 
-
     def test_online_learning_workflow(self):
         """Test online learning with bounded memory."""
         # 1. Create model with online config

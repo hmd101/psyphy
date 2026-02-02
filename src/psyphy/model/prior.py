@@ -143,7 +143,7 @@ class Prior:
                 "`Prior.basis_degree` to an integer >0."
             )
 
-        # basis function coefficients W
+        # Basis function coefficients W
         variances = self._compute_W_prior_variances()
         embedding_dim = self.input_dim + self.extra_embedding_dims
 

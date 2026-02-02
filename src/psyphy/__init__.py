@@ -49,7 +49,7 @@ Subpackages:
   from psyphy.posterior import Posterior, effective_sample_size, rhat
   from psyphy.acquisition import expected_improvement, upper_confidence_bound, mutual_information
   from psyphy.acquisition import optimize_acqf, optimize_acqf_discrete, optimize_acqf_random
-  from psyphy.trial_placement import GridPlacement, SobolPlacement, StaircasePlacement
+  from psyphy.trial_placement import GridPlacement, SobolPlacement
   from psyphy.utils import grid_candidates, sobol_candidates, custom_candidates, chebyshev_basis
   from psyphy.utils import bootstrap_predictions, bootstrap_statistic, bootstrap_compare_models
 
