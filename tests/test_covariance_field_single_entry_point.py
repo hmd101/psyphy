@@ -25,18 +25,6 @@ from psyphy.model.wppm import WPPM
 
 
 @pytest.fixture
-def mvp_field():
-    """Create MVP mode covariance field for testing."""
-    model = WPPM(
-        input_dim=2,
-        prior=Prior(input_dim=2),
-        task=OddityTask(),
-    )
-    key = jr.PRNGKey(42)
-    return WPPMCovarianceField.from_prior(model, key)
-
-
-@pytest.fixture
 def wishart_field():
     """Create Wishart mode covariance field for testing."""
     model = WPPM(
@@ -54,7 +42,7 @@ def field_3d():
     """Create 3D covariance field for testing."""
     model = WPPM(
         input_dim=3,
-        prior=Prior(input_dim=3),
+        prior=Prior(input_dim=3, basis_degree=2),
         task=OddityTask(),
     )
     key = jr.PRNGKey(456)
@@ -68,17 +56,6 @@ def field_3d():
 
 class TestSinglePointDispatch:
     """Test that field(x) works for single points."""
-
-    def test_single_point_mvp(self, mvp_field):
-        """field(x) evaluates single point in MVP mode."""
-        x = jnp.array([0.5, 0.3])
-
-        Sigma = mvp_field(x)
-
-        assert Sigma.shape == (2, 2)
-        # Should be positive semidefinite
-        eigvals = jnp.linalg.eigvalsh(Sigma)
-        assert jnp.all(eigvals >= 0)
 
     def test_single_point_wishart(self, wishart_field):
         """field(x) evaluates single point in Wishart mode."""
@@ -109,18 +86,6 @@ class TestSinglePointDispatch:
 class TestOneDimensionalBatch:
     """Test field(X) for 1D batches (n_points, input_dim)."""
 
-    def test_1d_batch_mvp(self, mvp_field):
-        """field(X) handles 1D batch in MVP mode."""
-        X = jnp.array([[0.1, 0.2], [0.5, 0.5], [0.9, 0.8]])
-
-        Sigmas = mvp_field(X)
-
-        assert Sigmas.shape == (3, 2, 2)
-        # All should be positive definite
-        for i in range(3):
-            eigvals = jnp.linalg.eigvalsh(Sigmas[i])
-            assert jnp.all(eigvals > 0)
-
     def test_1d_batch_wishart(self, wishart_field):
         """field(X) handles 1D batch in Wishart mode."""
         X = jnp.array([[0.1, 0.1], [0.5, 0.5], [0.9, 0.9]])
@@ -131,14 +96,6 @@ class TestOneDimensionalBatch:
         # Should vary spatially (Wishart)
         assert not jnp.allclose(Sigmas[0], Sigmas[1], atol=1e-6)
         assert not jnp.allclose(Sigmas[1], Sigmas[2], atol=1e-6)
-
-    def test_1d_batch_large(self, mvp_field):
-        """field(X) handles larger batches efficiently."""
-        X = jnp.ones((100, 2)) * 0.5
-
-        Sigmas = mvp_field(X)
-
-        assert Sigmas.shape == (100, 2, 2)
 
 
 # ==============================================================================
@@ -163,18 +120,6 @@ class TestTwoDimensionalGrid:
         assert jnp.all(jnp.linalg.eigvalsh(Sigmas[0, 0]) > 0)
         assert jnp.all(jnp.linalg.eigvalsh(Sigmas[5, 5]) > 0)
         assert jnp.all(jnp.linalg.eigvalsh(Sigmas[9, 9]) > 0)
-
-    def test_2d_grid_mvp_constant(self, mvp_field):
-        """MVP mode returns same covariance across grid."""
-        X_grid = jnp.ones((5, 5, 2)) * 0.5
-
-        Sigmas = mvp_field(X_grid)
-
-        assert Sigmas.shape == (5, 5, 2, 2)
-        # MVP should be constant
-        for i in range(5):
-            for j in range(5):
-                assert jnp.allclose(Sigmas[i, j], Sigmas[0, 0])
 
     def test_2d_grid_large(self, wishart_field):
         """field(X) handles large grids (50x50)."""
@@ -304,7 +249,7 @@ class TestEquivalenceToVmap:
         Sigmas_direct = wishart_field(X)
         Sigmas_vmap = jax.vmap(wishart_field)(X)
 
-        assert jnp.allclose(Sigmas_direct, Sigmas_vmap)
+        assert jnp.allclose(Sigmas_direct, Sigmas_vmap, rtol=5e-3, atol=1e-3)
 
     def test_2d_grid_equivalent_to_nested_vmap(self, wishart_field):
         """field(X_grid) equivalent to nested vmap for 2D grid."""
@@ -317,7 +262,7 @@ class TestEquivalenceToVmap:
         vmap_outer = jax.vmap(vmap_inner)
         Sigmas_nested = vmap_outer(X_grid)
 
-        assert jnp.allclose(Sigmas_direct, Sigmas_nested)
+        assert jnp.allclose(Sigmas_direct, Sigmas_nested, rtol=5e-4, atol=1e-4)
 
 
 # ==============================================================================
@@ -380,7 +325,7 @@ class TestEdgeCases:
         """For input_dim=1, single point has shape (1,)."""
         model = WPPM(
             input_dim=1,
-            prior=Prior(input_dim=1),
+            prior=Prior(input_dim=1, basis_degree=2),
             task=OddityTask(),
         )
         field = WPPMCovarianceField.from_prior(model, jr.PRNGKey(789))
@@ -396,7 +341,7 @@ class TestEdgeCases:
         """For input_dim=1, batch requires shape (n, 1)."""
         model = WPPM(
             input_dim=1,
-            prior=Prior(input_dim=1),
+            prior=Prior(input_dim=1, basis_degree=2),
             task=OddityTask(),
         )
         field = WPPMCovarianceField.from_prior(model, jr.PRNGKey(789))

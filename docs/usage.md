@@ -102,7 +102,7 @@ If you already have data and just want to fit and predict without the experiment
 
 ```python
 from psyphy.data.dataset import ResponseData
-from psyphy.model import WPPM, Prior, TwoAFC
+from psyphy.model import WPPM, Prior
 from psyphy.inference.map_optimizer import MAPOptimizer
 import optax
 import jax.numpy as jnp
@@ -121,7 +121,7 @@ data.add_trial(ref=jnp.array([0.0, 0.0]), probe=jnp.array([0.1, 0.0]), resp=1)
 data.add_trial(ref=jnp.array([0.0, 0.0]), probe=jnp.array([0.0, 0.1]), resp=0)
 
 # Model
-model = WPPM(input_dim=2, prior=Prior.default(2), task=TwoAFC())
+model = WPPM(input_dim=2, prior=Prior.default(2), task=OddityTask())
 
 # Optimizer config (SGD + momentum)
 opt = optax.sgd(learning_rate=5e-4, momentum=0.9)

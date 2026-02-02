@@ -22,10 +22,3 @@ Trial placement strategies for adaptive psychophysical experiments.
 ::: psyphy.trial_placement.sobol
 
 ---
-
-## Staircase
----
-
-::: psyphy.trial_placement.staircase
-
----

@@ -56,7 +56,7 @@ def fitted_model():
     """Create and fit a simple WPPM model."""
     model = WPPM(
         input_dim=2,
-        prior=Prior(input_dim=2, scale=0.5),
+        prior=Prior(input_dim=2, basis_degree=2),
         task=OddityTask(),
         noise=GaussianNoise(),
     )
@@ -423,7 +423,7 @@ class TestAcquisitionIntegration:
         # 1. Create and fit model
         model = WPPM(
             input_dim=2,
-            prior=Prior(input_dim=2),
+            prior=Prior(input_dim=2, basis_degree=2),
             task=OddityTask(),
             noise=GaussianNoise(),
         )
@@ -462,7 +462,7 @@ class TestAcquisitionIntegration:
         # 1. Create and fit model
         model = WPPM(
             input_dim=2,
-            prior=Prior(input_dim=2),
+            prior=Prior(input_dim=2, basis_degree=2),
             task=OddityTask(),
             noise=GaussianNoise(),
         )
@@ -505,7 +505,7 @@ class TestAcquisitionIntegration:
         # 1. Create model
         model = WPPM(
             input_dim=2,
-            prior=Prior(input_dim=2),
+            prior=Prior(input_dim=2, basis_degree=2),
             task=OddityTask(),
             noise=GaussianNoise(),
         )

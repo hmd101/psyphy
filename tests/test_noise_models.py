@@ -12,7 +12,7 @@ import pytest
 from psyphy.data.dataset import ResponseData
 from psyphy.model import WPPM, Prior
 from psyphy.model.noise import GaussianNoise, StudentTNoise
-from psyphy.model.task import OddityTask
+from psyphy.model.task import OddityTask, OddityTaskConfig
 
 
 class TestNoiseModels:
@@ -22,8 +22,8 @@ class TestNoiseModels:
     def model_gaussian(self):
         return WPPM(
             input_dim=2,
-            prior=Prior(input_dim=2, scale=0.5),
-            task=OddityTask(slope=1.5),
+            prior=Prior(input_dim=2, basis_degree=3),
+            task=OddityTask(config=OddityTaskConfig(num_samples=2000, bandwidth=1e-2)),
             noise=GaussianNoise(sigma=0.03),
         )
 
@@ -31,8 +31,8 @@ class TestNoiseModels:
     def model_student_t(self):
         return WPPM(
             input_dim=2,
-            prior=Prior(input_dim=2, scale=0.5),
-            task=OddityTask(slope=1.5),
+            prior=Prior(input_dim=2, basis_degree=3),
+            task=OddityTask(config=OddityTaskConfig(num_samples=2000, bandwidth=1e-2)),
             noise=StudentTNoise(df=3.0, scale=0.03),
         )
 
@@ -52,24 +52,20 @@ class TestNoiseModels:
         )
 
         # Compute likelihood with Gaussian noise
-        ll_gaussian = model_gaussian.task.loglik_mc(
+        ll_gaussian = model_gaussian.task.loglik(
             params=params,
             data=data,
             model=model_gaussian,
             noise=model_gaussian.noise,
-            num_samples=2000,
-            bandwidth=1e-2,
             key=jr.PRNGKey(0),
         )
 
         # Compute likelihood with Student-t noise
-        ll_student = model_student_t.task.loglik_mc(
+        ll_student = model_student_t.task.loglik(
             params=params,
             data=data,
             model=model_student_t,
             noise=model_student_t.noise,
-            num_samples=2000,
-            bandwidth=1e-2,
             key=jr.PRNGKey(0),
         )
 
@@ -89,13 +85,18 @@ class TestNoiseModels:
             ref=jnp.array([0.0, 0.0]), comparison=jnp.array([0.5, 0.5]), resp=1
         )
 
-        ll = model_student_t.task.loglik_mc(
+        # Override MC fidelity for this test via task config.
+        model_student_t = WPPM(
+            input_dim=model_student_t.input_dim,
+            prior=model_student_t.prior,
+            task=OddityTask(config=OddityTaskConfig(num_samples=500, bandwidth=1e-2)),
+            noise=model_student_t.noise,
+        )
+        ll = model_student_t.task.loglik(
             params=params,
             data=data,
             model=model_student_t,
             noise=model_student_t.noise,
-            num_samples=500,
-            bandwidth=1e-2,
             key=jr.PRNGKey(0),
         )
 

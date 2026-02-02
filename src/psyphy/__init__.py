@@ -25,20 +25,17 @@ Core design
 
 2. Prior (model/prior.py):
    - Defines the distribution over model parameters.
-   - MVP: Gaussian prior over diagonal log-variances.
-   - Full WPPM mode: structured prior over basis weights and
-     lengthscale-controlled covariance fields.
+   - WPPM: structured prior over basis weights and
+     decay_rate-controlled covariance fields.
 
 3. TaskLikelihood (model/task.py):
    - Encodes the psychophysical decision rule.
-   - MVP: OddityTask (3AFC) and TwoAFC with sigmoid mappings.
-   - Full WPPM mode: loglik and predict implemented via Monte Carlo
+   - WPPM: loglik and predict implemented via Monte Carlo
      observer simulations, using the noise model explicitly.
 
 4. NoiseModel (model/noise.py):
    - Defines the distribution of internal representation noise.
-   - MVP: GaussianNoise (zero mean, isotropic).
-   - Full WPPM mode: add StudentTNoise option and  beyond.
+   - WPPM: GaussianNoise or StudentTNoise option.
 
 Unified import style
 --------------------
@@ -47,12 +44,12 @@ Top-level (core models + session):
   from psyphy import ExperimentSession, ResponseData, TrialBatch
 
 Subpackages:
-  from psyphy.model import WPPM, Prior, OddityTask, TwoAFC, GaussianNoise, StudentTNoise
+  from psyphy.model import WPPM, Prior, OddityTask, GaussianNoise, StudentTNoise
   from psyphy.inference import MAPOptimizer, LangevinSampler, LaplaceApproximation
   from psyphy.posterior import Posterior, effective_sample_size, rhat
   from psyphy.acquisition import expected_improvement, upper_confidence_bound, mutual_information
   from psyphy.acquisition import optimize_acqf, optimize_acqf_discrete, optimize_acqf_random
-  from psyphy.trial_placement import GridPlacement, SobolPlacement, StaircasePlacement
+  from psyphy.trial_placement import GridPlacement, SobolPlacement
   from psyphy.utils import grid_candidates, sobol_candidates, custom_candidates, chebyshev_basis
   from psyphy.utils import bootstrap_predictions, bootstrap_statistic, bootstrap_compare_models
 
@@ -70,16 +67,7 @@ Extensibility
 -------------
 - To add a new task: subclass TaskLikelihood, implement predict/loglik.
 - To add a new noise model: subclass NoiseModel, implement logpdf/sample.
-- To upgrade from MVP -> Full WPPM mode: replace local_covariance and
-  discriminability with basis-expansion Wishart process + MC simulation.
 
-MVP vs Full WPPM mode
----------------------
-- MVP is a diagonal-covariance, closed-form scaffold that runs out of the box.
-- Full WPPM mode matches the published research model:
-  - Smooth covariance fields (Wishart process priors).
-  - Monte Carlo likelihood evaluation.
-  - Explicit noise model in predictions.
 
 
 ----------------------------------------------------------------------
@@ -103,7 +91,7 @@ from .inference.laplace import LaplaceApproximation
 from .inference.map_optimizer import MAPOptimizer
 from .model.noise import GaussianNoise, StudentTNoise
 from .model.prior import Prior
-from .model.task import OddityTask, TwoAFC
+from .model.task import OddityTask
 from .model.wppm import WPPM
 
 # Posterior
@@ -117,7 +105,6 @@ __all__ = [
     "WPPM",  # needs task for likelihood and noise model
     "Prior",
     "OddityTask",
-    "TwoAFC",
     "GaussianNoise",  # default noise model
     "StudentTNoise",
     # Inference

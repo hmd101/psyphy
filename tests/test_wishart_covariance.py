@@ -95,22 +95,6 @@ class TestWishartParameters:
         # Higher degree → lower variance
         assert var_00 > var_11 > var_22
 
-    def test_mvp_mode_still_works(self):
-        """MVP mode (basis_degree=None) should use old log_diag params."""
-        model = WPPM(
-            input_dim=2,
-            prior=Prior(input_dim=2),  # No basis_degree
-            task=OddityTask(),
-            noise=GaussianNoise(),
-        )
-
-        params = model.init_params(jr.PRNGKey(0))
-
-        # Should have log_diag, not W
-        assert "log_diag" in params
-        assert "W" not in params
-        assert params["log_diag"].shape == (2,)
-
 
 class TestSpatiallyVaryingCovariance:
     """Tests for Σ(x) that varies with stimulus location."""
@@ -218,26 +202,6 @@ class TestSpatiallyVaryingCovariance:
         min_eigenvalue = jnp.min(jnp.linalg.eigvalsh(Sigma))
         assert min_eigenvalue >= diag_term * 0.99  # Allow small numerical error
 
-    def test_mvp_constant_covariance(self):
-        """MVP mode should still have constant covariance."""
-        model = WPPM(
-            input_dim=2,
-            prior=Prior(input_dim=2),
-            task=OddityTask(),
-            noise=GaussianNoise(),
-        )
-
-        params = model.init_params(jr.PRNGKey(0))
-
-        x1 = jnp.array([0.2, 0.3])
-        x2 = jnp.array([0.7, 0.8])
-
-        Sigma1 = model.local_covariance(params, x1)
-        Sigma2 = model.local_covariance(params, x2)
-
-        # Should be the same (constant in MVP mode)
-        assert jnp.allclose(Sigma1, Sigma2, atol=1e-10)
-
 
 class TestWishartIntegration:
     """Integration tests with full model pipeline."""
@@ -307,16 +271,7 @@ class TestWishartIntegration:
         pred_post = model.posterior(refs[:5], probes=probes[:5])
         assert pred_post.mean.shape == (5,)
 
-    def test_wishart_vs_mvp_predictions_differ(self):
-        """Wishart and MVP should give different predictions (spatial variation)."""
-        # MVP model
-        mvp = WPPM(
-            input_dim=2,
-            prior=Prior(input_dim=2),
-            task=OddityTask(),
-            noise=GaussianNoise(),
-        )
-
+    def test_wishart_predictions(self):
         # Wishart model
         wishart = WPPM(
             input_dim=2,
@@ -326,17 +281,13 @@ class TestWishartIntegration:
         )
 
         # Use same random seed for W initialization
-        params_mvp = mvp.init_params(jr.PRNGKey(0))
+
         params_wishart = wishart.init_params(jr.PRNGKey(0))
 
         # Test at different locations
         ref1 = jnp.array([0.2, 0.3])
         ref2 = jnp.array([0.7, 0.8])
         probe_offset = jnp.array([0.1, 0.1])
-
-        # MVP: predictions should have same relative pattern everywhere
-        d_mvp_1 = mvp.discriminability(params_mvp, (ref1, ref1 + probe_offset))
-        d_mvp_2 = mvp.discriminability(params_mvp, (ref2, ref2 + probe_offset))
 
         # Wishart: discriminability can vary with location
         d_wishart_1 = wishart.discriminability(
@@ -349,7 +300,6 @@ class TestWishartIntegration:
         # Not a strict assertion - just demonstrating that spatial variation is possible
         # In practice, with good W coefficients, discriminability typically varies with location
         # For now, we just verify the computation doesn't crash and both models work
-        assert d_mvp_1 > 0 and d_mvp_2 > 0  # MVP computed successfully
         assert d_wishart_1 > 0 and d_wishart_2 > 0  # Wishart computed successfully
 
 

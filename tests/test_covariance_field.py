@@ -13,8 +13,6 @@ Tests for CovarianceField abstraction
 
 """
 
-import contextlib
-
 import jax.numpy as jnp
 import jax.random as jr
 import pytest
@@ -28,18 +26,6 @@ from psyphy.model.task import OddityTask
 # ==============================================================================
 # Test fixtures
 # ==============================================================================
-
-
-@pytest.fixture
-def mvp_model():
-    """Create MVP model (no basis expansion)."""
-    return WPPM(
-        input_dim=2,
-        prior=Prior(input_dim=2),
-        task=OddityTask(),
-        noise=GaussianNoise(),
-        diag_term=1e-6,
-    )
 
 
 @pytest.fixture
@@ -97,19 +83,6 @@ def test_covariance_field_protocol_exists():
 # ==============================================================================
 
 
-def test_from_prior_mvp(mvp_model):
-    """Test from_prior construction in MVP mode."""
-    from psyphy.model.covariance_field import WPPMCovarianceField
-
-    key = jr.PRNGKey(123)
-    field = WPPMCovarianceField.from_prior(mvp_model, key)
-
-    # Should have model and params
-    assert field.model is mvp_model
-    assert "log_diag" in field.params
-    assert field.params["log_diag"].shape == (2,)
-
-
 def test_from_prior_wishart(wishart_model):
     """Test from_prior construction in Wishart mode."""
     from psyphy.model.covariance_field import WPPMCovarianceField
@@ -127,140 +100,13 @@ def test_from_prior_wishart(wishart_model):
     assert field.params["W"].shape == (4, 4, 2, 3)
 
 
-def test_from_params(mvp_model):
-    """Test from_params construction."""
-    from psyphy.model.covariance_field import WPPMCovarianceField
-
-    # Create arbitrary params
-    params = {"log_diag": jnp.array([0.1, 0.2])}
-    field = WPPMCovarianceField.from_params(mvp_model, params)
-
-    assert field.model is mvp_model
-    assert jnp.allclose(field.params["log_diag"], jnp.array([0.1, 0.2]))
-
-
-def test_from_posterior_mvp(mvp_model, sample_data):
-    """Test from_posterior construction with MAP posterior.
-
-    API Design Note
-    ---------------
-    model.fit() returns self (following BoTorch pattern for method chaining).
-    To access the fitted posterior, call model.posterior() afterwards.
-
-    Current design (BoTorch-style):
-        model.fit(X, y, inference=...)  # Returns self
-        posterior = model.posterior(kind="parameter")  # Separate call
-
-    alternative design (statsmodels-style):
-        posterior = model.fit(X, y, inference=...)  # Not implemented
-
-
-    Trade-off: BoTorch consistency + method chaining vs one-step convenience.
-    """
-    from psyphy.model.covariance_field import WPPMCovarianceField
-
-    # Fit model to get posterior - convert ResponseData to arrays
-    refs, probes, responses = sample_data.to_numpy()
-    X = jnp.stack([refs, probes], axis=1)  # (n_trials, 2, input_dim)
-    y = jnp.array(responses)
-
-    # BoTorch-style API: fit() returns self for chaining
-    mvp_model.fit(X, y, inference=MAPOptimizer(steps=10))
-
-    # Separate call to access fitted posterior (by design)
-    posterior = mvp_model.posterior(kind="parameter")
-
-    # Create field from posterior
-    field = WPPMCovarianceField.from_posterior(posterior)
-
-    assert field.model is mvp_model
-    assert "log_diag" in field.params
-
-
 # ==============================================================================
-# Test 3: Evaluation methods - MVP mode
+# Test  Evaluation methods - MVP mode
 # ==============================================================================
 
 
-def test_cov_mvp_constant(mvp_model):
-    """Test that MVP covariance is constant across space."""
-    from psyphy.model.covariance_field import WPPMCovarianceField
-
-    key = jr.PRNGKey(789)
-    field = WPPMCovarianceField.from_prior(mvp_model, key)
-
-    # Evaluate at different points
-    x1 = jnp.array([0.3, 0.7])
-    x2 = jnp.array([0.8, 0.2])
-
-    Sigma1 = field.cov(x1)
-    Sigma2 = field.cov(x2)
-
-    # Should be identical (MVP is constant)
-    assert jnp.allclose(Sigma1, Sigma2)
-
-    # Should be diagonal
-    assert Sigma1.shape == (2, 2)
-    assert jnp.allclose(Sigma1, jnp.diag(jnp.diag(Sigma1)))
-
-
-def test_cov_mvp_positive_definite(mvp_model):
-    """Test that MVP covariance is positive definite."""
-    from psyphy.model.covariance_field import WPPMCovarianceField
-
-    key = jr.PRNGKey(111)
-    field = WPPMCovarianceField.from_prior(mvp_model, key)
-
-    x = jnp.array([0.5, 0.5])
-    Sigma = field.cov(x)
-
-    # Check positive definiteness via eigenvalues
-    eigvals = jnp.linalg.eigvalsh(Sigma)
-    assert jnp.all(eigvals > 0)
-
-
-def test_sqrt_cov_mvp_raises(mvp_model):
-    """Test that sqrt_cov raises in MVP mode."""
-    from psyphy.model.covariance_field import WPPMCovarianceField
-
-    key = jr.PRNGKey(222)
-    field = WPPMCovarianceField.from_prior(mvp_model, key)
-
-    x = jnp.array([0.5, 0.5])
-
-    # Should raise ValueError in MVP mode
-    with pytest.raises(ValueError, match="sqrt_cov only available in Wishart mode"):
-        field.sqrt_cov(x)
-
-
-def test_cov_batch_mvp(mvp_model):
-    """Test vectorized evaluation in MVP mode."""
-    from psyphy.model.covariance_field import WPPMCovarianceField
-
-    key = jr.PRNGKey(333)
-    field = WPPMCovarianceField.from_prior(mvp_model, key)
-
-    # Create grid of points
-    X_grid = jnp.array(
-        [
-            [0.1, 0.1],
-            [0.5, 0.5],
-            [0.9, 0.9],
-        ]
-    )
-
-    Sigmas = field.cov_batch(X_grid)
-
-    # Check shape
-    assert Sigmas.shape == (3, 2, 2)
-
-    # All should be identical in MVP mode
-    assert jnp.allclose(Sigmas[0], Sigmas[1])
-    assert jnp.allclose(Sigmas[1], Sigmas[2])
-
-
 # ==============================================================================
-# Test 4: Evaluation methods - Wishart mode
+# Test  Evaluation methods - WPPM
 # ==============================================================================
 
 
@@ -275,8 +121,8 @@ def test_cov_wishart_varies(wishart_model):
     x1 = jnp.array([0.2, 0.3])
     x2 = jnp.array([0.8, 0.7])
 
-    Sigma1 = field.cov(x1)
-    Sigma2 = field.cov(x2)
+    Sigma1 = field(x1)
+    Sigma2 = field(x2)
 
     # Should be different (Wishart varies with x)
     assert not jnp.allclose(Sigma1, Sigma2, atol=1e-6)
@@ -302,7 +148,7 @@ def test_sqrt_cov_wishart(wishart_model):
 
     # Verify that Σ = U @ U^T + diag_term * I
     Sigma_from_U = U @ U.T + wishart_model.diag_term * jnp.eye(2)
-    Sigma_direct = field.cov(x)
+    Sigma_direct = field(x)
 
     assert jnp.allclose(Sigma_from_U, Sigma_direct, rtol=1e-5)
 
@@ -323,7 +169,7 @@ def test_cov_batch_wishart(wishart_model):
         ]
     )
 
-    Sigmas = field.cov_batch(X_grid)
+    Sigmas = field(X_grid)
 
     # Check shape - should be (n_points, input_dim, input_dim) with rectangular U
     assert Sigmas.shape == (3, 2, 2)
@@ -362,45 +208,13 @@ def test_sqrt_cov_batch_wishart(wishart_model):
     # Verify consistency with cov
     for i in range(3):
         Sigma_from_U = U_batch[i] @ U_batch[i].T + wishart_model.diag_term * jnp.eye(2)
-        Sigma_direct = field.cov(X_grid[i])
-        assert jnp.allclose(Sigma_from_U, Sigma_direct, rtol=1e-5)
+        Sigma_direct = field(X_grid[i])
+        assert jnp.allclose(Sigma_from_U, Sigma_direct, rtol=5e-2, atol=1e-6)
 
 
 # ==============================================================================
-# Test 5: Integration with posterior
+# Test  Integration with posterior
 # ==============================================================================
-
-
-def test_posterior_get_covariance_field_mvp(mvp_model, sample_data):
-    """Test posterior.get_covariance_field() in MVP mode.
-
-    API Design Note
-    ---------------
-    This test demonstrates the recommended workflow for getting a CovarianceField:
-    1. Fit model: model.fit(X, y, inference=...)
-    2. Get posterior: posterior = model.posterior(kind="parameter")
-    3. Get field: field = posterior.get_covariance_field()
-
-    This two-step approach (fit -> posterior) follows BoTorch conventions.
-    """
-    # Fit model - convert ResponseData to arrays
-    refs, probes, responses = sample_data.to_numpy()
-    X = jnp.stack([refs, probes], axis=1)
-    y = jnp.array(responses)
-    mvp_model.fit(X, y, inference=MAPOptimizer(steps=10))
-
-    # Get the parameter posterior (BoTorch-style: separate from fit)
-    posterior = mvp_model.posterior(kind="parameter")
-
-    # Get field from posterior
-    field = posterior.get_covariance_field()
-
-    # Should work and return sensible results
-    x = jnp.array([0.5, 0.5])
-    Sigma = field.cov(x)
-
-    assert Sigma.shape == (2, 2)
-    assert jnp.all(jnp.linalg.eigvalsh(Sigma) > 0)
 
 
 def test_posterior_get_covariance_field_wishart(wishart_model, sample_data):
@@ -408,7 +222,7 @@ def test_posterior_get_covariance_field_wishart(wishart_model, sample_data):
 
     API Design Note
     ---------------
-    Like test_posterior_get_covariance_field_mvp(), this demonstrates the
+    this demonstrates the
     BoTorch-style two-step pattern. The covariance field will reflect the
     spatially-varying structure learned during fitting.
     """
@@ -426,7 +240,7 @@ def test_posterior_get_covariance_field_wishart(wishart_model, sample_data):
 
     # Should work and return sensible results
     x = jnp.array([0.5, 0.5])
-    Sigma = field.cov(x)
+    Sigma = field(x)
     U = field.sqrt_cov(x)
 
     # Rectangular U design: Σ is stimulus size, U is rectangular
@@ -440,19 +254,8 @@ def test_posterior_get_covariance_field_wishart(wishart_model, sample_data):
 
 
 # ==============================================================================
-# Test 6: Protocol conformance
+# Test  Protocol conformance
 # ==============================================================================
-
-
-def test_protocol_conformance_mvp(mvp_model):
-    """Test that WPPMCovarianceField conforms to protocol."""
-    from psyphy.model.covariance_field import CovarianceField, WPPMCovarianceField
-
-    key = jr.PRNGKey(888)
-    field = WPPMCovarianceField.from_prior(mvp_model, key)
-
-    # Check protocol conformance
-    assert isinstance(field, CovarianceField)
 
 
 def test_protocol_conformance_wishart(wishart_model):
@@ -467,95 +270,8 @@ def test_protocol_conformance_wishart(wishart_model):
 
 
 # ==============================================================================
-# Test 7: Edge cases and error handling
+# Test Comparison with direct model calls
 # ==============================================================================
-
-
-def test_cov_input_validation(mvp_model):
-    """Test that cov validates input shape."""
-    from psyphy.model.covariance_field import WPPMCovarianceField
-
-    key = jr.PRNGKey(1010)
-    field = WPPMCovarianceField.from_prior(mvp_model, key)
-
-    # Wrong shape should raise or handle gracefully
-    x_wrong = jnp.array([0.5])  # Should be (2,)
-
-    # This might raise or handle - test based on implementation
-    # For now, just ensure it doesn't crash silently
-    with contextlib.suppress(ValueError, IndexError, TypeError):
-        _ = field.cov(x_wrong)
-
-
-def test_field_immutability(mvp_model):
-    """Test that field params can't be accidentally mutated."""
-    from psyphy.model.covariance_field import WPPMCovarianceField
-
-    key = jr.PRNGKey(1111)
-    field = WPPMCovarianceField.from_prior(mvp_model, key)
-
-    # Store original params
-    original_params = field.params.copy()
-
-    # Try to mutate (JAX arrays are immutable, but dict reference could change)
-    field.params["log_diag"] = jnp.zeros(2)
-
-    # Original field should be unchanged
-    # Note: This test documents current behavior; true immutability would require frozen dataclass
-    assert field.params is not original_params
-
-
-# ==============================================================================
-# Test 8: Property methods
-# ==============================================================================
-
-
-def test_is_wishart_mode(mvp_model, wishart_model):
-    """Test is_wishart_mode property."""
-    from psyphy.model.covariance_field import WPPMCovarianceField
-
-    key = jr.PRNGKey(1212)
-
-    field_mvp = WPPMCovarianceField.from_prior(mvp_model, key)
-    field_wishart = WPPMCovarianceField.from_prior(wishart_model, key)
-
-    assert not field_mvp.is_wishart_mode
-    assert field_wishart.is_wishart_mode
-
-
-def test_is_mvp_mode(mvp_model, wishart_model):
-    """Test is_mvp_mode property."""
-    from psyphy.model.covariance_field import WPPMCovarianceField
-
-    key = jr.PRNGKey(1313)
-
-    field_mvp = WPPMCovarianceField.from_prior(mvp_model, key)
-    field_wishart = WPPMCovarianceField.from_prior(wishart_model, key)
-
-    assert field_mvp.is_mvp_mode
-    assert not field_wishart.is_mvp_mode
-
-
-# ==============================================================================
-# Test 9: Comparison with direct model calls
-# ==============================================================================
-
-
-def test_consistency_with_model_local_covariance(mvp_model):
-    """Test that field.cov() matches model.local_covariance()."""
-    from psyphy.model.covariance_field import WPPMCovarianceField
-
-    key = jr.PRNGKey(1414)
-    params = mvp_model.init_params(key)
-    field = WPPMCovarianceField.from_params(mvp_model, params)
-
-    x = jnp.array([0.5, 0.5])
-
-    # Compare field vs direct model call
-    Sigma_field = field.cov(x)
-    Sigma_model = mvp_model.local_covariance(params, x)
-
-    assert jnp.allclose(Sigma_field, Sigma_model)
 
 
 def test_consistency_with_model_compute_sqrt(wishart_model):

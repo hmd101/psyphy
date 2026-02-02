@@ -28,7 +28,7 @@ class TestModelFit:
         """Create a WPPM model."""
         return WPPM(
             input_dim=2,
-            prior=Prior(input_dim=2, scale=0.5),
+            prior=Prior(input_dim=2, basis_degree=3),
             task=OddityTask(),
             noise=GaussianNoise(),
         )
@@ -103,7 +103,7 @@ class TestModelPosterior:
         """Create and fit a model."""
         model = WPPM(
             input_dim=2,
-            prior=Prior(input_dim=2, scale=0.5),
+            prior=Prior(input_dim=2, basis_degree=3),
             task=OddityTask(),
             noise=GaussianNoise(),
         )
@@ -125,7 +125,7 @@ class TestModelPosterior:
         """Calling posterior() before fit() raises RuntimeError."""
         model = WPPM(
             input_dim=2,
-            prior=Prior(input_dim=2),
+            prior=Prior(input_dim=2, basis_degree=3),
             task=OddityTask(),
             noise=GaussianNoise(),
         )
@@ -170,7 +170,7 @@ class TestConditionOnObservations:
         """Create a model with online config."""
         return WPPM(
             input_dim=2,
-            prior=Prior(input_dim=2, scale=0.5),
+            prior=Prior(input_dim=2, basis_degree=3),
             task=OddityTask(),
             noise=GaussianNoise(),
             online_config=OnlineConfig(strategy="full", refit_interval=1),
@@ -272,7 +272,7 @@ class TestSlidingWindowStrategy:
         """Sliding window keeps only last N trials."""
         model = WPPM(
             input_dim=2,
-            prior=Prior(input_dim=2),
+            prior=Prior(input_dim=2, basis_degree=3),
             task=OddityTask(),
             noise=GaussianNoise(),
             online_config=OnlineConfig(
@@ -312,7 +312,7 @@ class TestIntegrationWorkflow:
         # 1. Create model
         model = WPPM(
             input_dim=2,
-            prior=Prior(input_dim=2),
+            prior=Prior(input_dim=2, basis_degree=3),
             task=OddityTask(),
             noise=GaussianNoise(),
         )
@@ -343,17 +343,13 @@ class TestIntegrationWorkflow:
         assert var.shape == (2,)
         assert jnp.all((mean >= 0) & (mean <= 1))
 
-        # 6. Get parameter posterior for diagnostics
-        param_post = model.posterior(kind="parameter")
-        samples = param_post.sample(10, key=jr.PRNGKey(42))
-        assert samples["log_diag"].shape == (10, 2)
 
     def test_online_learning_workflow(self):
         """Test online learning with bounded memory."""
         # 1. Create model with online config
         model = WPPM(
             input_dim=2,
-            prior=Prior(input_dim=2),
+            prior=Prior(input_dim=2, basis_degree=3),
             task=OddityTask(),
             noise=GaussianNoise(),
             online_config=OnlineConfig(

@@ -134,7 +134,7 @@ def mahalanobis_distance(
 
 
 def rbf_kernel(
-    x1: jnp.ndarray, x2: jnp.ndarray, lengthscale: float = 1.0
+    x1: jnp.ndarray, x2: jnp.ndarray, length_scale: float = 1.0
 ) -> jnp.ndarray:
     """
     Radial Basis Function (RBF) kernel between two sets of points.
@@ -146,7 +146,7 @@ def rbf_kernel(
         First set of points, shape (N, D).
     x2 : jnp.ndarray
         Second set of points, shape (M, D).
-    lengthscale : float, default=1.0
+    length_scale : float, default=1.0
         Length-scale parameter controlling smoothness.
 
     Returns
@@ -156,8 +156,8 @@ def rbf_kernel(
 
     Notes
     -----
-    - RBF kernel: k(x, x') = exp(-||x - x'||^2 / (2 * lengthscale^2))
+    - RBF kernel: k(x, x') = exp(-||x - x'||^2 / (2 * length_scale^2))
     - Default used for Gaussian processes for smooth covariance priors in Full WPPM mode.
     """
     sqdist = jnp.sum((x1[:, None, :] - x2[None, :, :]) ** 2, axis=-1)
-    return jnp.exp(-0.5 * sqdist / (lengthscale**2))
+    return jnp.exp(-0.5 * sqdist / (length_scale**2))
