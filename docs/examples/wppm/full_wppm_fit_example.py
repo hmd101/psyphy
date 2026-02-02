@@ -540,7 +540,6 @@ fig_prior.savefig(
 # --8<-- [end:plot_ellipses]
 
 # Learning curve
-
 print("[5/5] Plotting learning curve...")
 # --8<-- [start:plot_learning_curve]
 steps_hist, loss_hist = map_optimizer.get_history()
