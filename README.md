@@ -33,7 +33,7 @@
     - currently supports OddityTask, TwoAFC
 - Inference engines (MAP, Langevin, Laplace)
 - Posterior wrappers and diagnostics
-- Trial placement strategies (grid, staircase, information gain)
+- Trial placement strategies (grid, information gain)
     - supports online and batchwise trial placement
 - Experiment session orchestration
     - reading session data and exporting next batch of trial placments

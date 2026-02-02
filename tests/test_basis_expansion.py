@@ -210,9 +210,6 @@ class TestBasisExpansionIntegration:
 
         Sigma = model.local_covariance(params, x)
 
-
-
-
         assert Sigma.shape == (2, 2)  # input_dim × input_dim
 
         # Should be positive-definite

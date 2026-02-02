@@ -8,7 +8,6 @@ This module provides classical (non-Bayesian-optimization) placement strategies:
 
 - GridPlacement: Fixed grid designs for systematic exploration
 - SobolPlacement: Quasi-random low-discrepancy sequences (space-filling)
-- StaircasePlacement: Adaptive staircase procedures (e.g., 1-up-2-down)
 
 For acquisition-based adaptive designs (Bayesian optimization), use:
 - psyphy.acquisition: Expected Improvement, UCB, Mutual Information
@@ -32,10 +31,8 @@ Examples
 
 from psyphy.trial_placement.grid import GridPlacement
 from psyphy.trial_placement.sobol import SobolPlacement
-from psyphy.trial_placement.staircase import StaircasePlacement
 
 __all__ = [
     "GridPlacement",
     "SobolPlacement",
-    "StaircasePlacement",
 ]

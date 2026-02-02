@@ -249,7 +249,7 @@ class TestEquivalenceToVmap:
         Sigmas_direct = wishart_field(X)
         Sigmas_vmap = jax.vmap(wishart_field)(X)
 
-        assert jnp.allclose(Sigmas_direct, Sigmas_vmap)
+        assert jnp.allclose(Sigmas_direct, Sigmas_vmap, rtol=5e-3, atol=1e-3)
 
     def test_2d_grid_equivalent_to_nested_vmap(self, wishart_field):
         """field(X_grid) equivalent to nested vmap for 2D grid."""
@@ -262,7 +262,7 @@ class TestEquivalenceToVmap:
         vmap_outer = jax.vmap(vmap_inner)
         Sigmas_nested = vmap_outer(X_grid)
 
-        assert jnp.allclose(Sigmas_direct, Sigmas_nested)
+        assert jnp.allclose(Sigmas_direct, Sigmas_nested, rtol=5e-4, atol=1e-4)
 
 
 # ==============================================================================

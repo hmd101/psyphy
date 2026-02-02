@@ -16,6 +16,8 @@ Connections
 
 from __future__ import annotations
 
+import contextlib
+
 import jax
 import optax
 
@@ -47,8 +49,10 @@ class MAPOptimizer(InferenceEngine):
         momentum: float = 0.9,
         optimizer: optax.GradientTransformation | None = None,
         *,
-        track_history: bool = False,
+        track_history: bool = True,
         log_every: int = 1,
+        progress_every: int = 10,
+        show_progress: bool = False,
         max_grad_norm: float | None = 1.0,
     ):
         """Create a MAP optimizer.
@@ -67,6 +71,16 @@ class MAPOptimizer(InferenceEngine):
             When True, record loss history during fitting for plotting.
         log_every : int, optional
             Record every N steps (also records the last step).
+        progress_every : int, optional
+            Update the progress-bar loss display every N steps (and the last step)
+            when show_progress=True.
+            This is kept separate from log_every so you can record loss at high
+            frequency for plotting (e.g. log_every=1) without forcing a device->host
+            sync for the progress UI every step.
+        show_progress : bool, optional
+            When True, display a tqdm progress bar during fitting.
+            This is a UI feature: if tqdm is not installed,
+            fitting proceeds without a progress bar.
         max_grad_norm : float | None, optional
             If set, clip gradients by global norm to this value before applying
             optimizer updates. This stabilizes optimization when gradients blow up.
@@ -82,15 +96,22 @@ class MAPOptimizer(InferenceEngine):
                 optax.clip_by_global_norm(float(max_grad_norm)),
                 base_optimizer,
             )
+
         self.track_history = track_history
         self.log_every = max(1, int(log_every))
+        self.progress_every = max(1, int(progress_every))
+        self.show_progress = bool(show_progress)
         self.max_grad_norm = max_grad_norm
         # Exposed after fit() when tracking is enabled
         self.loss_steps: list[int] = []
         self.loss_history: list[float] = []
 
     def fit(
-        self, model, data, init_params: dict | None = None, seed: int | None = None
+        self,
+        model,
+        data,
+        init_params: dict | None = None,
+        seed: int | None = None,
     ) -> MAPPosterior:
         """
         Fit model parameters with MAP optimization.
@@ -141,6 +162,28 @@ class MAPOptimizer(InferenceEngine):
             self.loss_steps.clear()
             self.loss_history.clear()
 
+        # Optional progress bar.
+        #
+        # Why we *manually* advance the bar:
+        # - When JAX runs on GPU, the first `step(...)` call can spend a long time in
+        #   compilation, and tqdm may not visibly advance if the underlying iterator
+        #   doesn't get a chance to redraw.
+        # - By keeping a normal `range(self.steps)` loop and calling `pbar.update(1)`
+        #   ourselves, we ensure the bar advances exactly once per iteration.
+        #
+        # Performance note: *displaying the loss* requires transferring `loss` from
+        # device -> host, which can add sync overhead. We therefore only attach a
+        # loss postfix every `progress_every` steps.
+        pbar = None
+        if self.show_progress:
+            try:
+                from tqdm.auto import tqdm
+
+                pbar = tqdm(total=self.steps, desc="MAP fit", leave=False)
+            except Exception:
+                # Soft dependency: tqdm not available (or terminal unsuitable).
+                pbar = None
+
         for i in range(self.steps):
             params, opt_state, loss = step(params, opt_state)
 
@@ -157,6 +200,9 @@ class MAPOptimizer(InferenceEngine):
                     f"[MAPOptimizer] Non-finite loss at step {i}: {loss}. "
                     "Stopping early."
                 )
+                if pbar is not None:
+                    with contextlib.suppress(Exception):
+                        pbar.update(1)
                 break
 
             if self.track_history and (
@@ -167,8 +213,27 @@ class MAPOptimizer(InferenceEngine):
                     self.loss_steps.append(i)
                     self.loss_history.append(float(loss))
                 except Exception:
-                    # Best-effort; do not break fitting if logging fails
+                    #  do not break fitting if logging fails
                     pass
+
+            #  progress bar loss display (avoid host sync every step)
+            if pbar is not None and (
+                (i % self.progress_every == 0) or (i == self.steps - 1)
+            ):
+                with contextlib.suppress(Exception):
+                    pbar.set_postfix(loss=float(loss))
+
+            if pbar is not None:
+                with contextlib.suppress(Exception):
+                    pbar.update(1)
+                    # Encourage a redraw occasionally in environments with buffered/stale
+                    # TTY updates.
+                    if (i % self.progress_every == 0) or (i == self.steps - 1):
+                        pbar.refresh()
+
+        if pbar is not None:
+            with contextlib.suppress(Exception):
+                pbar.close()
 
         return MAPPosterior(params=params, model=model)
 
