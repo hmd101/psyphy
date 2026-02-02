@@ -3,25 +3,27 @@
 This tutorial explains what the example script [`full_wppm_fit_example.py`](full_wppm_fit_example.py) is doing, and where the key functions live in the `psyphy` codebase.
 
 - **Goal:** Fit a *spatially varying covariance field* \(\Sigma(x)\) over a 2D stimulus space \(x \in [-1,1]^2\) using the **Wishart Process Psychophysical Model (WPPM)**.
-- **Data:** synthetic oddity-task responses simulated from a “ground-truth” WPPM.
+- **Data:** synthetic oddity-task responses simulated from a ``ground-truth'' WPPM.
 - **Inference:** MAP (maximum a posteriori) optimization of the WPPM parameters.
 
-> You can treat this as a “recipe” for using WPPM in your own project: build a model, initialize parameters, get predicted response probabilities, and fit parameters.
+> You can treat this as a ``recipe'' for using the Wishart Psychophysical Process Model (WPPM) in your own project: build a model, initialize parameters, fit the model, and visualize fitted predicted thresholds.
 
 NOTE: Running this script takes about 3 min on a A100 40GB.
 If you want to accelarate it to for example run it on a CPU, decrease the number of MC-Samples _significantly_ (e.g., 5) and the number of steps the optimizer is running for.
 
 ---
 
-## What the WPPM is in a nutshell
+## What the Wishart Psychophysical Process Model (WPPM) is in a nutshell
 
-WPPM defines a *covariance matrix field* \(\Sigma(x)\) over stimulus space. Intuitively, \(\Sigma(x)\) describes the local noise/uncertainty ellipse around stimulus \(x\). The model represents \(\Sigma(x)\) as
+WPPM defines a *covariance matrix field* \(\Sigma(x)\) over stimulus space (e.g. color represented in RGB). Intuitively, \(\Sigma(x)\) describes the local noise/uncertainty ellipse around stimulus \(x\) where stimulus within that ellipse will be perceived as identical to the human observer.
+
+The model represents \(\Sigma(x)\) as
 
 \[
 \Sigma(x) = U(x)U(x)^\top + \varepsilon I,
 \]
 
-where \(U(x)\) is a smooth, basis-expanded matrix-valued function and \(\varepsilon\) is a small diagonal “jitter” (`diag_term`) to avoid numerical issues.
+where \(U(x)\) is a smooth, basis-expanded matrix-valued function and \(\varepsilon\) is a small diagonal “jitter” (`diag_term`) to avoid numerical issues. Alternatively, in Gaussian Process (GP) terms, you can think of \(U(x)\) defining a GP in weight space, i.e., a "Bayesian linear model".
 
 A psychophysical task model (here: `OddityTask`) uses \(\Sigma\) to compute probability of a correct response on each trial, and `MAPOptimizer` fits WPPM parameters by maximizing
 
@@ -29,8 +31,10 @@ A psychophysical task model (here: `OddityTask`) uses \(\Sigma\) to compute prob
 \log p(\theta \mid \mathcal{D}) = \log p(\mathcal{D} \mid \theta) + \log p(\theta).
 \]
 
-For more details on how the Wishart Psychophysical Model (WPPM) works, please checkout this [tutorial](`docs/examples/wppm/wppm_tutorial.md`).
----
+
+
+For more details on how the Wishart Psychophysical Model (WPPM) works, and the psychophysical task used in this example,  please checkout the paper by [Hong et al (2025)](https://elifesciences.org/reviewed-preprints/108943) and this [tutorial](`docs/examples/wppm/wppm_tutorial.md`).
+
 
 ---
 
@@ -86,21 +90,8 @@ The prior variance decays with basis “total degree”. In code:
 W_{ijde} \sim \mathcal{N}(0, \sigma^2_{ij}).
 \]
 
-This is the “mathematical start” of WPPM: **before any data**, WPPM draws smooth random fields because high-frequency coefficients are shrunk by the decay.
+This is the  state of the  WPPM: **before any data**, WPPM draws smooth random fields because high-frequency coefficients are shrunk by the decay.
 
-### Corresponding code block in the example
-
-Look for the section where the script constructs a prior:
-
-- Ground-truth prior:
-  - `truth_prior = Prior(...)`
-- Fit model prior:
-  - `prior = Prior(...)`
-
-and where it draws initial parameters:
-
-- `truth_params = truth_model.init_params(jax.random.PRNGKey(...))`
-- `init_params = model.init_params(jax.random.PRNGKey(...))`
 
 ```python title="Ground-truth model + prior sample"
 --8<-- "docs/examples/wppm/full_wppm_fit_example.py:truth_model"
@@ -118,19 +109,17 @@ and where it draws initial parameters:
 
 ## Step 2 — Build the model (WPPM + task + noise)
 
-In the example script, the model is created like:
+We create a model by combining its prior and likelihood.
+Note that the task inherently defines the likelihood. Hence, think of them interchangebly.
+In `psyphy`, think of model as simply a container of the prior and the likelihood.
+- All prior specific hyerparameters are owned by the Prior.
+- Likewise, all likelihood specific hyerparameters are owned by the task.
+- besides being the container for prior and likelihood, the model also takes some compute specific arguments, such as `diag_term`, which ensures numeric stability by ensuring positive-definite matrices.
 
-- `task = OddityTask()`
-- `noise = GaussianNoise(sigma=0.1)`
-- `model = WPPM(input_dim=..., prior=prior, task=task, noise=noise, diag_term=...)`
 
-### What the constructor arguments mean
-
-- **`input_dim`**: dimensionality of the stimulus space.
-- **`prior`**: controls initialization *and* the regularization term \(\log p(\theta)\).
-- **`task`**: defines likelihood \(p(y\mid x,\theta)\). Here it is an oddity decision rule.
-- **`noise`**: defines additional noise assumptions used by the task.
-- **`diag_term`**: adds \(\varepsilon I\) to keep \(\Sigma\) positive definite.
+```python title="Model definition"
+--8<-- "docs/examples/wppm/full_wppm_fit_example.py:build_model"
+```
 
 ---
 
@@ -187,59 +176,13 @@ In the code, the name “sqrt” is often used for \(U(x)\): it is a *square-roo
 - Batched evaluation:
   - `gt_covs = truth_field(ref_points)`
 
----
-
-## Step 4 — Simulate oddity-task data from a ground-truth WPPM
-
-The script creates synthetic trials \((x_\text{ref}, x_\text{comp}, y)\):
-
-1. Choose reference points `refs` on a grid.
-2. Compute ground-truth covariances \(\Sigma_\text{truth}(x_\text{ref})\).
-3. Sample probe directions on the unit circle.
-4. Create a displacement using a Cholesky factor \(L\) so that probes have roughly constant **Mahalanobis radius**.
-
-The key part is:
-
-\[
-\Delta = r\, L(x_\text{ref})\, u, \quad u \sim \text{Uniform on the unit circle},
-\]
-
-and
-
-\[
-x_\text{comp} = x_\text{ref} + \Delta.
-\]
-
-Then the oddity task uses Monte Carlo simulation to compute \(p(y=1)\), and responses are drawn
-
-\[
-y \sim \text{Bernoulli}(p_\theta(\text{correct} \mid x_\text{ref}, x_\text{comp})).
-\]
-
-### Corresponding code block in the example
-
-Look for:
-
-- `Sigmas_ref = truth_field(refs)`
-- `L = jnp.linalg.cholesky(Sigmas_ref)`
-- `deltas = MAHAL_RADIUS * einsum(...)`
-- `p_correct = jax.vmap(_p_correct_one)(...)`
-- `ys = jr.bernoulli(..., p_correct, ...)`
-- `data.add_trial(...)`
-
-```python title="Simulating trials (refs, comparisons, responses)"
---8<-- "docs/examples/wppm/full_wppm_fit_example.py:simulate_data"
-```
 
 ---
 
 ## Step 5 — Fit with MAP optimization
 
-The example fits parameters with:
+We fut parameters with SGD + momentum:
 
-```python title="Model definition"
---8<-- "docs/examples/wppm/full_wppm_fit_example.py:build_model"
-```
 
 ```python title="Fitting with psyphy (MAPOptimizer)"
 --8<-- "docs/examples/wppm/full_wppm_fit_example.py:fit_map"
@@ -258,10 +201,6 @@ MAP fitting finds
 
 The result in this example is a `MAPPosterior` object that contains a point estimate `map_posterior.params`.
 
-### Corresponding code block in the example
-
-- `map_optimizer = MAPOptimizer(...)`
-- `map_posterior = map_optimizer.fit(...)`
 
 ---
 
@@ -272,34 +211,17 @@ The result in this example is a `MAPPosterior` object that contains a point esti
     </picture>
     <p><em>Fitted ellipsoids overlayed with ground truth and model initialization, a sample from the prior.</em></p>
 </div>
+---
 
-
+```python title="Access learning curve"
+--8<-- "docs/examples/wppm/full_wppm_fit_example.py:plot_learning_curve"
+```
 <div align="center">
     <picture>
     <img align="center" src="plots/learning_curve.png" width="600"/>
     </picture>
     <p><em>Learning curve.</em></p>
 </div>
-The final part overlays ellipses from three covariance fields evaluated at reference points:
-
-- “Ground Truth” (truth model + truth params)
-- “Prior Sample (init)” (fit model + init prior draw)
-- “Fitted (MAP)” (fit model + learned params)
-
-The core idea is:
-
-1. Evaluate \(\Sigma(x)\) in batch.
-2. Convert each covariance to an ellipse by applying a matrix square root (for plotting), and transforming unit circle points.
-
-For plotting performance, the script aims to build a `matplotlib.collections.LineCollection` of many ellipses at once instead of calling `ax.plot` 100s of times.
-
-```python title="Plot: ellipses overlay (truth vs init vs MAP)"
---8<-- "docs/examples/wppm/full_wppm_fit_example.py:plot_ellipses"
-```
-
-```python title="Plot: learning curve"
---8<-- "docs/examples/wppm/full_wppm_fit_example.py:plot_learning_curve"
-```
 
 ---
 
@@ -336,8 +258,8 @@ To use WPPM on your own data, these are the essential calls:
 - **Positive definiteness:** `diag_term` is important. If you ever see a non-PD covariance, increase `diag_term` slightly.
 - **MC variance:** optimization stability depends on `MC_SAMPLES`. Too small means noisy gradients.
 
----
 
+---
 ## Next places to explore
 
 - Read the API docs in `docs/reference/` (especially model + inference sections).
@@ -346,7 +268,7 @@ To use WPPM on your own data, these are the essential calls:
 
 
 
-## Files to know (where to look in the repo)
+## If your curious about some of the implementation details, checkout these files:
 
 <!--
 Note on links:
@@ -369,4 +291,4 @@ If you want to “follow the call graph”:
 1. `WPPM.init_params(...)` (defined in [`src/psyphy/model/wppm.py`](https://github.com/flatironinstitute/psyphy/blob/main/src/psyphy/model/wppm.py)) → delegates to the prior’s `Prior.sample_params(...)` (defined in [`src/psyphy/model/prior.py`](https://github.com/flatironinstitute/psyphy/blob/main/src/psyphy/model/prior.py)).
 2. `OddityTask.predict_with_kwargs(...)` / `OddityTask.loglik(...)` (defined in [`src/psyphy/model/task.py`](https://github.com/flatironinstitute/psyphy/blob/main/src/psyphy/model/task.py)) → calls into the model to get \(\Sigma(x)\) and then runs the task’s decision rule (Monte Carlo in the full model).
 3. `WPPMCovarianceField(model, params)` (defined in [`src/psyphy/model/covariance_field.py`](https://github.com/flatironinstitute/psyphy/blob/main/src/psyphy/model/covariance_field.py)) → provides a callable `field(x)` that returns \(\Sigma(x)\) for single points or batches.
-4. `MAPOptimizer.fit(...)` (defined in [`src/psyphy/inference/map_optimizer.py`](https://github.com/flatironinstitute/psyphy/blob/main/src/psyphy/inference/map_optimizer.py)) → runs gradient-based optimization of the negative log posterior.
+4. `MAPOptimizer.fit(...)` (defined in [`src/psyphy/inference/map_optimizer.py`](https://github.com/flatironinstitute/psyphy/blob/main/src/psyphy/inference/map_optimizer.py)) → runs gradient-based optimization of the negative log likelihood.

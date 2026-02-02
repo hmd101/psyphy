@@ -293,8 +293,9 @@ for ref, comp, y in zip(
 # --8<-- [end:simulate_data]
 
 # 3) Model to fit and MAPOptimizer
-# --8<-- [start:build_model]
+
 print("[2/5] Building model and optimizer...")
+# --8<-- [start:build_model]
 prior = Prior(
     input_dim=input_dim,  # (2D)
     basis_degree=basis_degree,  # 5
@@ -314,23 +315,18 @@ model = WPPM(
 
 
 # 4) Fit using optimizer
-# --8<-- [start:fit_map]
+
 print("[3/5] Fitting via MAPOptimizer ...")
+
 steps = num_steps
 lr = learning_rate
 momentum = 0.9
+# --8<-- [start:fit_map]
 map_optimizer = MAPOptimizer(
     steps=steps, learning_rate=lr, momentum=momentum, track_history=True, log_every=1
 )
 # Initialize at prior sample
 init_params = model.init_params(jax.random.PRNGKey(42))
-
-print(
-    "MAPOptimizer settings:",
-    f"steps={map_optimizer.steps}",
-    f"track_history={map_optimizer.track_history}",
-    f"log_every={map_optimizer.log_every}",
-)
 
 map_posterior = map_optimizer.fit(
     model,
@@ -339,6 +335,13 @@ map_posterior = map_optimizer.fit(
 )
 # --8<-- [end:fit_map]
 
+
+print(
+    "MAPOptimizer settings:",
+    f"steps={map_optimizer.steps}",
+    f"track_history={map_optimizer.track_history}",
+    f"log_every={map_optimizer.log_every}",
+)
 # NOTE: MAPOptimizer.fit(...) optimizes a *point estimate* (MAP), not a sampled
 # posterior. The returned object is a MAPPosterior (delta distribution at theta_MAP).
 #
@@ -377,10 +380,16 @@ centers = jnp.stack(jnp.meshgrid(grid_x, grid_y), axis=-1).reshape(-1, 2)
 #     x can be shape (d,) or (..., d).
 #   - It uses a vmapped + jitted batch path internally, which is typically faster
 #     than a Python loop and stays efficient when you evaluate many points.
+
 truth_field = WPPMCovarianceField(truth_model, truth_params)
+# --8<-- [start:cov_fields]
 init_field = WPPMCovarianceField(model, init_params)
 map_field = WPPMCovarianceField(model, map_posterior.params)
-
+# evaluate any covariance field object like this at either a single point
+# or a batch of points
+covs_prior = init_field(ref_points)  # to get the prior over cov fields
+covs_map = map_field(ref_points)  # to get the fitted covariances
+# --8<-- [end:cov_fields]
 
 # ---- Plot scaling (purely for visualization) ----
 # We want ellipses to be visually comparable across the plot, so we choose a
@@ -439,7 +448,7 @@ for i, (field, _params, color, label) in enumerate(
     lc = LineCollection(
         segments_np,
         colors=color,
-        linewidths=0.8,
+        linewidths=1.2,
         alpha=0.5,
     )
     ax.add_collection(lc)  # type: ignore[arg-type]
@@ -496,7 +505,7 @@ fig_prior, ax_prior = plt.subplots(figsize=(7, 7))
 lc_prior = LineCollection(
     jax.device_get(prior_segments),
     colors="b",
-    linewidths=0.8,
+    linewidths=1.2,
     alpha=0.5,
 )
 ax_prior.add_collection(lc_prior)  # type: ignore[arg-type]
@@ -531,10 +540,12 @@ fig_prior.savefig(
 # --8<-- [end:plot_ellipses]
 
 # Learning curve
-# --8<-- [start:plot_learning_curve]
+
 print("[5/5] Plotting learning curve...")
+# --8<-- [start:plot_learning_curve]
 steps_hist, loss_hist = map_optimizer.get_history()
 print(f"num steps: {len(steps_hist)}, num losses: {len(loss_hist)}")
+# --8<-- [start:plot_learning_curve]
 if steps_hist:
     print(f"history step range: [{steps_hist[0]}, {steps_hist[-1]}]")
 if steps_hist and loss_hist:
