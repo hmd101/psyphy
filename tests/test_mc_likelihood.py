@@ -20,7 +20,7 @@ import jax.numpy as jnp
 import jax.random as jr
 import pytest
 
-from psyphy.data.dataset import ResponseData
+from psyphy.data.dataset import ResponseData, TrialData
 from psyphy.model import WPPM, Prior
 from psyphy.model.noise import GaussianNoise
 from psyphy.model.task import OddityTask, OddityTaskConfig
@@ -54,10 +54,10 @@ class TestMCLikelihood:
 
     def test_mc_likelihood_shape_and_dtype(self, model, simple_params):
         """Test MC likelihood returns scalar with correct dtype."""
-        # Create simple trial data
-        data = ResponseData()
-        data.add_trial(
-            ref=jnp.array([0.0, 0.0]), comparison=jnp.array([0.1, 0.1]), resp=1
+        data = TrialData(
+            refs=jnp.array([[0.0, 0.0]]),
+            comparisons=jnp.array([[0.1, 0.1]]),
+            responses=jnp.array([1], dtype=jnp.int32),
         )
 
         # Compute MC likelihood
@@ -86,7 +86,11 @@ class TestMCLikelihood:
         data = ResponseData()
         ref = jnp.array([0.0, 0.0])
         comparison = jnp.array([0.5, 0.5])  # Far enough for clear discrimination
-        data.add_trial(ref=ref, comparison=comparison, resp=1)
+        data = TrialData(
+            refs=jnp.array([ref]),
+            comparisons=jnp.array([comparison]),
+            responses=jnp.array([1], dtype=jnp.int32),
+        )
 
         # Analytical likelihood (current implementation)
         ll_analytical = model.task.loglik(
@@ -131,8 +135,10 @@ class TestMCLikelihood:
             noise=model.noise,
         )
         data = ResponseData()
-        data.add_trial(
-            ref=jnp.array([0.0, 0.0]), comparison=jnp.array([0.2, 0.1]), resp=1
+        data = TrialData(
+            refs=jnp.array([[0.0, 0.0]]),
+            comparisons=jnp.array([[0.2, 0.1]]),
+            responses=jnp.array([1], dtype=jnp.int32),
         )
 
         # Compute with different sample sizes
@@ -168,16 +174,10 @@ class TestMCLikelihood:
 
     def test_mc_likelihood_batch_correctness(self, model, simple_params):
         """MC likelihood should handle multiple trials correctly."""
-        data = ResponseData()
-        # Add multiple trials
-        data.add_trial(
-            ref=jnp.array([0.0, 0.0]), comparison=jnp.array([0.1, 0.1]), resp=1
-        )
-        data.add_trial(
-            ref=jnp.array([0.5, 0.5]), comparison=jnp.array([0.6, 0.4]), resp=0
-        )
-        data.add_trial(
-            ref=jnp.array([-0.3, 0.2]), comparison=jnp.array([-0.2, 0.3]), resp=1
+        data = TrialData(
+            refs=jnp.array([[0.0, 0.0], [0.5, 0.5], [-0.3, 0.2]]),
+            comparisons=jnp.array([[0.1, 0.1], [0.6, 0.4], [-0.2, 0.3]]),
+            responses=jnp.array([1, 0, 1], dtype=jnp.int32),
         )
 
         ll_mc = model.task.loglik(
@@ -201,8 +201,10 @@ class TestMCLikelihood:
         Smaller bandwidth -> sharper transitions (closer to step function).
         """
         data = ResponseData()
-        data.add_trial(
-            ref=jnp.array([0.0, 0.0]), comparison=jnp.array([0.1, 0.1]), resp=1
+        data = TrialData(
+            refs=jnp.array([[0.0, 0.0]]),
+            comparisons=jnp.array([[0.1, 0.1]]),
+            responses=jnp.array([1], dtype=jnp.int32),
         )
 
         model = WPPM(

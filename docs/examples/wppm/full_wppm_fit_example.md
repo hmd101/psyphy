@@ -241,7 +241,7 @@ To use WPPM on your own data, these are the essential calls:
    - `params0 = model.init_params(jax.random.PRNGKey(...))`  (draws from `Prior.sample_params`)
 
 4. **Load/build** a dataset:
-   - `data = ResponseData(); data.add_trial(ref=..., comparison=..., resp=...)`
+      - `data = TrialData(refs=..., comparisons=..., responses=...)`
 
 5. **Fit**:
    - `map = MAPOptimizer(...).fit(model, data, init_params=params0, ...)`
