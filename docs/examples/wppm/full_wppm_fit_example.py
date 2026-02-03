@@ -31,7 +31,7 @@ sys.path.insert(
 import jax.random as jr
 
 # --8<-- [start:imports]
-from psyphy.data.dataset import ResponseData  # (trial container)
+from psyphy.data.dataset import TrialData  # (batched trial container)
 from psyphy.inference.map_optimizer import MAPOptimizer  # fitter
 from psyphy.model.covariance_field import (
     WPPMCovarianceField,  # (fast (\Sigma) evaluation)
@@ -219,7 +219,6 @@ truth_params = truth_model.init_params(jax.random.PRNGKey(123))
 
 
 # --8<-- [start:simulate_data]
-data = ResponseData()
 num_trials_per_ref = NUM_TRIALS_TOTAL  # (trials per reference point)
 n_ref_grid = 5  # NUM_GRID_PTS
 ref_grid = jnp.linspace(-1, 1, n_ref_grid)  # [-1,1] space
@@ -284,11 +283,13 @@ p_correct = jax.vmap(_p_correct_one)(refs, comparisons, trial_pred_keys)
 # Sample observed y ~ Bernoulli(p_correct) in batch.
 ys = jr.bernoulli(k_y, p_correct, shape=(num_trials_total,)).astype(jnp.int32)
 
-# Populate ResponseData (kept as Python loop since ResponseData is a Python container).
-for ref, comp, y in zip(
-    jax.device_get(refs), jax.device_get(comparisons), jax.device_get(ys)
-):
-    data.add_trial(ref=jnp.array(ref), comparison=jnp.array(comp), resp=int(y))
+# Build the canonical batched dataset for compute.
+#
+# Notes:
+# - This is equivalent to storing X with shape (N, 2, d) and y with shape (N,)
+#   where X[:,0,:]=refs and X[:,1,:]=comparisons.
+# - We keep named fields because it's currently native to OddityTask.
+data = TrialData(refs=refs, comparisons=comparisons, responses=ys)
 
 # --8<-- [end:simulate_data]
 

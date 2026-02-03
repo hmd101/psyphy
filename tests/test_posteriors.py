@@ -11,7 +11,7 @@ import jax.numpy as jnp
 import jax.random as jr
 import pytest
 
-from psyphy.data import ResponseData
+from psyphy.data import TrialData
 from psyphy.inference import MAPOptimizer
 from psyphy.model import WPPM
 from psyphy.model.noise import GaussianNoise
@@ -42,18 +42,11 @@ class TestParameterPosterior:
     @pytest.fixture
     def data(self):
         """Create dummy response data."""
-        data = ResponseData()
-        data.add_trial(
-            ref=jnp.array([0.0, 0.0]),
-            comparison=jnp.array([0.5, 0.5]),
-            resp=1,
-        )
-        data.add_trial(
-            ref=jnp.array([1.0, 1.0]),
-            comparison=jnp.array([1.5, 1.0]),
-            resp=0,
-        )
-        return data
+
+        refs = jnp.array([[0.0, 0.0], [1.0, 1.0]])
+        comparisons = jnp.array([[0.5, 0.5], [1.5, 1.0]])
+        responses = jnp.array([1, 0], dtype=jnp.int32)
+        return TrialData(refs=refs, comparisons=comparisons, responses=responses)
 
     @pytest.fixture
     def param_posterior(self, model, data):
@@ -130,12 +123,12 @@ class TestPredictivePosterior:
     @pytest.fixture
     def data(self):
         """Create dummy response data."""
-        data = ResponseData()
-        for _ in range(10):  # More data for better posterior
-            ref = jr.normal(jr.PRNGKey(0), (2,))
-            comparison = ref + jr.normal(jr.PRNGKey(1), (2,)) * 0.3
-            data.add_trial(ref, comparison, resp=1)
-        return data
+        # Build a small batched dataset.
+        # Note: this fixture intentionally reuses fixed keys; it's a test.
+        refs = jr.normal(jr.PRNGKey(0), (10, 2))
+        comparisons = refs + jr.normal(jr.PRNGKey(1), (10, 2)) * 0.3
+        responses = jnp.ones((10,), dtype=jnp.int32)
+        return TrialData(refs=refs, comparisons=comparisons, responses=responses)
 
     @pytest.fixture
     def param_posterior(self, model, data):
@@ -233,14 +226,12 @@ class TestIntegration:
         )
 
         # 2. Create data
-        data = ResponseData()
         key = jr.PRNGKey(123)
-        for _ in range(20):
-            key, subkey = jr.split(key)
-            ref = jr.normal(subkey, (2,))
-            key, subkey = jr.split(key)
-            comparison = ref + jr.normal(subkey, (2,)) * 0.5
-            data.add_trial(ref, comparison, resp=1)
+        key, k_ref, k_eps = jr.split(key, 3)
+        refs = jr.normal(k_ref, (20, 2))
+        comparisons = refs + jr.normal(k_eps, (20, 2)) * 0.5
+        responses = jnp.ones((20,), dtype=jnp.int32)
+        data = TrialData(refs=refs, comparisons=comparisons, responses=responses)
 
         # 3. Fit model -> ParameterPosterior
         optimizer = MAPOptimizer(steps=50)
