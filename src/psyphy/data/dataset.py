@@ -46,7 +46,7 @@ class TrialData:
       inference code can be JIT-compiled without touching Python containers.
     """
 
-    refs: jnp.ndarray
+    refs: jnp.ndarray  # TODO: references
     comparisons: jnp.ndarray
     responses: jnp.ndarray
 
