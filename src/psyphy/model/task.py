@@ -342,9 +342,9 @@ class OddityTask(TaskLikelihood):
         # Compute-efficient contract: `data` should be a batch of arrays.
         # We accept either a TrialData dataclass or any object with
         # `.refs/.comparisons/.responses` array attributes.
-        refs = jnp.asarray(getattr(data, "refs"))
-        comparisons = jnp.asarray(getattr(data, "comparisons"))
-        responses = jnp.asarray(getattr(data, "responses"))
+        refs = jnp.asarray(data.refs)
+        comparisons = jnp.asarray(data.comparisons)
+        responses = jnp.asarray(data.responses)
         n_trials = int(refs.shape[0])
 
         # Split keys for each trial (ensures independent sampling)
