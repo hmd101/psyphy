@@ -18,24 +18,78 @@ Notes
 
 from __future__ import annotations
 
+from dataclasses import dataclass
 from typing import Any
 
 import jax.numpy as jnp
 import numpy as np
 
 
-class ResponseData:
-    """
-    Container for psychophysical trial data.
+@dataclass(frozen=True, slots=True)
+class TrialData:
+    """Batched trial data for compute.
 
-    Attributes
-    ----------
-    refs : List[Any]
-        List of reference stimuli.
-    comparisons : List[Any]
-        List of comparison stimuli.
-    responses : List[int]
-        List of subject responses (e.g., 0/1 or categorical).
+    This is the canonical, compute-efficient representation of observed trials.
+
+    Shapes
+    ------
+    refs : (N, d)
+    comparisons : (N, d)
+    responses : (N,)
+
+    Notes
+    -----
+    - You can also think of this as a more generic ML-style dataset
+      ``X`` with shape (N, 2, d) plus ``y`` with shape (N,). The explicit
+      field names (refs/comparisons) are currently native to :class:`OddityTask`.
+    - This is intended to be JAX-friendly (PyTree of arrays) so likelihood and
+      inference code can be JIT-compiled without touching Python containers.
+    """
+
+    refs: jnp.ndarray  # TODO: references
+    comparisons: jnp.ndarray
+    responses: jnp.ndarray
+
+    def __post_init__(self) -> None:
+        # Basic shape validation (keep lightweight; raise early for common mistakes).
+        if self.refs.ndim != 2:
+            raise ValueError(f"refs must be 2D (N,d), got shape {self.refs.shape}")
+        if self.comparisons.ndim != 2:
+            raise ValueError(
+                f"comparisons must be 2D (N,d), got shape {self.comparisons.shape}"
+            )
+        if self.responses.ndim != 1:
+            raise ValueError(
+                f"responses must be 1D (N,), got shape {self.responses.shape}"
+            )
+        if self.refs.shape[0] != self.comparisons.shape[0]:
+            raise ValueError(
+                "refs and comparisons must have same first dimension; "
+                f"got {self.refs.shape[0]} vs {self.comparisons.shape[0]}"
+            )
+        if self.refs.shape[0] != self.responses.shape[0]:
+            raise ValueError(
+                "refs and responses must have same first dimension; "
+                f"got {self.refs.shape[0]} vs {self.responses.shape[0]}"
+            )
+
+    def __len__(self) -> int:
+        """Number of trials (N)."""
+        return int(self.responses.shape[0])
+
+    @property
+    def num_trials(self) -> int:
+        """Number of trials (N)."""
+        return len(self)
+
+
+class ResponseData:
+    """Python-friendly incremental trial log.
+
+    This container is convenient for adaptive trial placement and I/O (e.g., CSV),
+    but it is not a compute-efficient representation for JAX.
+
+    Use :class:`TrialData` for model fitting and likelihood evaluation.
     """
 
     def __init__(self) -> None:
@@ -75,19 +129,20 @@ class ResponseData:
             self.add_trial(ref, comparison, resp)
 
     def to_numpy(self) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
-        """
-        Return refs, comparisons, responses as numpy arrays.
-
-        Returns
-        -------
-        refs : np.ndarray
-        comparisons : np.ndarray
-        responses : np.ndarray
-        """
+        """Return refs, comparisons, responses as NumPy arrays."""
         return (
-            np.array(self.refs),
-            np.array(self.comparisons),
-            np.array(self.responses),
+            np.asarray(self.refs),
+            np.asarray(self.comparisons),
+            np.asarray(self.responses),
+        )
+
+    def to_trial_data(self) -> TrialData:
+        """Convert this log into the canonical JAX batch (:class:`TrialData`)."""
+        refs, comparisons, responses = self.to_numpy()
+        return TrialData(
+            refs=jnp.asarray(refs),
+            comparisons=jnp.asarray(comparisons),
+            responses=jnp.asarray(responses),
         )
 
     @property
@@ -166,6 +221,17 @@ class ResponseData:
             data.add_trial(ref, comparison, int(response))
 
         return data
+
+    @classmethod
+    def from_trial_data(cls, data: TrialData) -> ResponseData:
+        """Build a ResponseData log from a :class:`TrialData` batch."""
+        refs = np.asarray(data.refs)
+        comps = np.asarray(data.comparisons)
+        ys = np.asarray(data.responses)
+        out = cls()
+        for r, c, y in zip(refs, comps, ys):
+            out.add_trial(r, c, int(y))
+        return out
 
     def merge(self, other: ResponseData) -> None:
         """

@@ -542,19 +542,18 @@ class WPPM(Model):
                 - If you need reproducible randomness, pass a ``key`` when calling the
                     task directly.
         """
-        # We need a ResponseData-like object. To keep this method usable from
-        # array inputs, we construct one on the fly. If you already have a
-        # ResponseData instance, prefer `log_likelihood_from_data`.
-        from psyphy.data.dataset import ResponseData  # local import to avoid cycles
+        # Delegate to the task on a batched, JAX-native dataset.
+        from psyphy.data.dataset import TrialData  # local import to avoid cycles
 
-        data = ResponseData()
-        # ResponseData.add_trial(ref, probe, resp)
-        for r, p, y in zip(refs, probes, responses):
-            data.add_trial(r, p, int(y))
+        data = TrialData(
+            refs=jnp.asarray(refs),
+            comparisons=jnp.asarray(probes),
+            responses=jnp.asarray(responses),
+        )
         return self.task.loglik(params, data, self, self.noise)
 
     def log_likelihood_from_data(self, params: Params, data: Any) -> jnp.ndarray:
-        """Compute log-likelihood directly from a ResponseData object.
+        """Compute log-likelihood directly from a batched data object.
 
         Why delegate to the task?
             - The task knows the decision rule (oddity, 2AFC, ...).
@@ -565,7 +564,7 @@ class WPPM(Model):
         ----------
         params : dict
             Model parameters.
-        data : ResponseData
+        data : TrialData (or any object with refs/comparisons/responses arrays)
             Collected trial data.
 
         Returns

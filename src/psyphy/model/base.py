@@ -263,13 +263,14 @@ class Model(ABC):
                 "Cannot pass inference_config with InferenceEngine instance"
             )
 
-        # Convert data
-        data = ResponseData.from_arrays(X, y)
+        # Convert data to the canonical compute batch.
+        # ResponseData remains a Python-friendly log, but training uses TrialData.
+        data = ResponseData.from_arrays(X, y).to_trial_data()
 
         # Fit
         self._posterior = inference_engine.fit(self, data)
         self._inference_engine = inference_engine
-        self._data_buffer = data  # Initialize buffer
+        self._data_buffer = data  # Initialize buffer (TrialData)
         return self
 
     def posterior(
@@ -449,10 +450,11 @@ class Model(ABC):
         ...     model = model.condition_on_observations(X_new, y_new)
         ...     # Model automatically manages memory and refitting
         """
+
         from psyphy.data import ResponseData
 
         # Convert new data
-        new_data = ResponseData.from_arrays(X, y)
+        new_data = ResponseData.from_arrays(X, y).to_trial_data()
 
         # Update data buffer according to strategy
         if self.online_config.strategy == "none":
@@ -460,35 +462,28 @@ class Model(ABC):
 
         elif self.online_config.strategy == "full":
             if self._data_buffer is None:
-                self._data_buffer = ResponseData()
-            self._data_buffer.merge(new_data)
+                self._data_buffer = new_data
+            else:
+                self._data_buffer = self._concat_trial_data(self._data_buffer, new_data)
             data_to_fit = self._data_buffer
 
         elif self.online_config.strategy == "sliding_window":
             if self._data_buffer is None:
-                self._data_buffer = ResponseData()
-            self._data_buffer.merge(new_data)
+                self._data_buffer = new_data
+            else:
+                self._data_buffer = self._concat_trial_data(self._data_buffer, new_data)
 
             # Keep only last N trials
             window_size = self.online_config.window_size
             assert window_size is not None, "window_size must be set for sliding_window"
-            if len(self._data_buffer) > window_size:
-                self._data_buffer = self._data_buffer.tail(window_size)
+            self._data_buffer = self._tail_trial_data(self._data_buffer, window_size)
             data_to_fit = self._data_buffer
 
         elif self.online_config.strategy == "reservoir":
-            if self._data_buffer is None:
-                self._data_buffer = ResponseData()
-
-            # Reservoir sampling
-            window_size = self.online_config.window_size
-            assert window_size is not None, "window_size must be set for reservoir"
-            self._data_buffer = self._reservoir_update(
-                self._data_buffer,
-                new_data,
-                window_size,
+            raise NotImplementedError(
+                "Reservoir sampling is not yet implemented for TrialData batches. "
+                "Use strategy='full' or 'sliding_window' for now."
             )
-            data_to_fit = self._data_buffer
         else:
             raise ValueError(f"Unknown strategy: {self.online_config.strategy}")
 
@@ -531,58 +526,26 @@ class Model(ABC):
         return new_model
 
     @staticmethod
-    def _reservoir_update(
-        buffer: ResponseData,
-        new_data: ResponseData,
-        capacity: int,
-        *,
-        key: Any = None,  # type: ignore[type-arg]
-    ) -> ResponseData:
-        """
-        Update buffer using reservoir sampling (Vitter 1985).
+    def _concat_trial_data(a: Any, b: Any) -> Any:
+        """Concatenate two TrialData-like batches along the trial axis."""
+        from psyphy.data.dataset import TrialData
 
-        Maintains uniform sample of all seen data with fixed memory.
+        return TrialData(
+            refs=jnp.concatenate([a.refs, b.refs], axis=0),
+            comparisons=jnp.concatenate([a.comparisons, b.comparisons], axis=0),
+            responses=jnp.concatenate([a.responses, b.responses], axis=0),
+        )
 
-        Algorithm:
-        For each new item with index n:
-            If buffer not full: add
-            Else: with probability capacity/n, replace random item
+    @staticmethod
+    def _tail_trial_data(data: Any, n: int) -> Any:
+        """Return last n trials of a TrialData-like batch."""
+        from psyphy.data.dataset import TrialData
 
-        Parameters
-        ----------
-        buffer : ResponseData
-            Current data buffer
-        new_data : ResponseData
-            New trials to incorporate
-        capacity : int
-            Maximum buffer size
-        key : jax.random.KeyArray | None
-            PRNG key for randomness. If None, uses default seed.
-
-        Returns
-        -------
-        ResponseData
-            Updated buffer
-        """
-        if key is None:
-            key = jr.PRNGKey(0)
-
-        combined = buffer.copy()
-        n_existing = len(buffer)
-
-        for i, trial in enumerate(new_data.trials):
-            n_total = n_existing + i + 1
-
-            if len(combined) < capacity:
-                # Buffer not full: just add
-                combined.add_trial(*trial)
-            else:
-                # Accept with probability capacity / n_total
-                key, subkey = jr.split(key)
-                if jr.uniform(subkey) < capacity / n_total:
-                    # Replace random existing trial
-                    key, subkey = jr.split(key)
-                    idx = int(jr.randint(subkey, (), 0, capacity))
-                    combined.trials[idx] = trial
-
-        return combined
+        n = int(n)
+        if n <= 0:
+            raise ValueError(f"n must be > 0, got {n}")
+        return TrialData(
+            refs=data.refs[-n:],
+            comparisons=data.comparisons[-n:],
+            responses=data.responses[-n:],
+        )
