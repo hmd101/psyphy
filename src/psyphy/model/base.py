@@ -28,7 +28,6 @@ from dataclasses import dataclass
 from typing import TYPE_CHECKING, Any, Literal
 
 import jax.numpy as jnp
-import jax.random as jr
 
 if TYPE_CHECKING:
     from psyphy.data import ResponseData
