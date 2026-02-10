@@ -10,6 +10,6 @@ Includes:
 - io: save/load datasets
 """
 
-from .dataset import ResponseData, TrialBatch
+from .dataset import ResponseData, TrialBatch, TrialData
 
-__all__ = ["ResponseData", "TrialBatch"]
+__all__ = ["ResponseData", "TrialBatch", "TrialData"]

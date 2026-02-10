@@ -337,9 +337,15 @@ class OddityTask(TaskLikelihood):
         if key is None:
             key = jr.PRNGKey(int(self.config.default_key_seed))
 
-        # Unpack trial data
-        refs, comparisons, responses = data.to_numpy()
-        n_trials = len(refs)
+        # Unpack trial data.
+        #
+        # Compute-efficient contract: `data` should be a batch of arrays.
+        # We accept either a TrialData dataclass or any object with
+        # `.refs/.comparisons/.responses` array attributes.
+        refs = jnp.asarray(getattr(data, "refs"))
+        comparisons = jnp.asarray(getattr(data, "comparisons"))
+        responses = jnp.asarray(getattr(data, "responses"))
+        n_trials = int(refs.shape[0])
 
         # Split keys for each trial (ensures independent sampling)
         trial_keys = jr.split(key, n_trials)

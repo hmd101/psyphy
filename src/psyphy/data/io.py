@@ -22,12 +22,14 @@ import pickle
 from pathlib import Path
 from typing import Union
 
-from .dataset import ResponseData
+import numpy as np
+
+from .dataset import ResponseData, TrialData
 
 PathLike = Union[str, Path]
 
 
-def save_responses_csv(data: ResponseData, path: PathLike) -> None:
+def save_responses_csv(data: TrialData | ResponseData, path: PathLike) -> None:
     """
     Save ResponseData to a CSV file.
 
@@ -36,7 +38,14 @@ def save_responses_csv(data: ResponseData, path: PathLike) -> None:
     data : ResponseData
     path : str or Path
     """
-    refs, probes, resps = data.to_numpy()
+    if isinstance(data, TrialData):
+        refs, probes, resps = (
+            np.asarray(data.refs),
+            np.asarray(data.comparisons),
+            np.asarray(data.responses),
+        )
+    else:
+        refs, probes, resps = data.to_numpy()
     with open(path, "w", newline="") as f:
         writer = csv.writer(f)
         writer.writerow(["ref", "probe", "response"])
@@ -44,7 +53,7 @@ def save_responses_csv(data: ResponseData, path: PathLike) -> None:
             writer.writerow([r.tolist(), p.tolist(), int(y)])
 
 
-def load_responses_csv(path: PathLike) -> ResponseData:
+def load_responses_csv(path: PathLike) -> TrialData:
     """
     Load ResponseData from a CSV file.
 
@@ -64,7 +73,7 @@ def load_responses_csv(path: PathLike) -> ResponseData:
             probe = ast.literal_eval(row["probe"])
             resp = int(row["response"])
             data.add_trial(ref, probe, resp)
-    return data
+    return data.to_trial_data()
 
 
 def save_posterior(posterior: object, path: PathLike) -> None:
