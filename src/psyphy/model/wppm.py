@@ -151,7 +151,7 @@ class WPPM(Model):
     @property
     def embedding_dim(self) -> int:
         """
-        Dimension of the embedding space (perceptual space).
+        Dimension of the embedding space.
 
         embedding_dim = input_dim + extra_dims.
         this represents the full perceptual space where:
@@ -218,7 +218,8 @@ class WPPM(Model):
             raise ValueError(
                 "Stimulus x is outside the Chebyshev domain [-1, 1]. "
                 f"Observed min={x_min:g}, max={x_max:g}. "
-                "Normalize your data upstream."
+                "Normalize your data to align with domain of basis "
+                "in order to avoid unexpected behavior."
             )
 
     # ----------------------------------------------------------------------
@@ -240,8 +241,8 @@ class WPPM(Model):
         """
         Evaluate all Chebyshev basis functions at point x, keeping structure for einsum.
 
-        For 2D: returns φ_ij(x) = T_i(x_1) * T_j(x_2) with shape (degree+1, degree+1)
-        For 3D: returns φ_ijk(x) = T_i(x_1) * T_j(x_2) * T_k(x_3) with shape (degree+1, degree+1, degree+1)
+        For 2D: returns \phi_ij(x) = T_i(x_1) * T_j(x_2) with shape (degree+1, degree+1)
+        For 3D: returns \phi_ijk(x) = T_i(x_1) * T_j(x_2) * T_k(x_3) with shape (degree+1, degree+1, degree+1)
 
         Note: chebyshev_basis(x, degree=d) returns (degree+1) basis functions [T_0, ..., T_d].
 
@@ -268,7 +269,7 @@ class WPPM(Model):
         x_norm = x
 
         if self.input_dim == 2:
-            # Evaluate basis functions: φ_ij(x) = T_i(x_1) * T_j(x_2)
+            # Evaluate basis functions: \phi_ij(x) = T_i(x_1) * T_j(x_2)
             # chebyshev_basis returns (1, degree+1) for each dimension
             cheb_0 = chebyshev_basis(x_norm[0:1], degree=self.basis_degree)[
                 0, :
@@ -279,7 +280,7 @@ class WPPM(Model):
             phi = cheb_0[:, None] * cheb_1[None, :]  # (degree+1, degree+1)
 
         elif self.input_dim == 3:
-            # 3D case: φ_ijk(x) = T_i(x_1) * T_j(x_2) * T_k(x_3)
+            # 3D case: \phi_ijk(x) = T_i(x_1) * T_j(x_2) * T_k(x_3)
             # phi.shape = (degree+1, degree+1, degree+1)
             cheb_0 = chebyshev_basis(x_norm[0:1], degree=self.basis_degree)[0, :]
             cheb_1 = chebyshev_basis(x_norm[1:2], degree=self.basis_degree)[0, :]
@@ -297,8 +298,8 @@ class WPPM(Model):
         r"""
         Compute "square root" matrix U(x) from basis expansion.
 
-        This is the core of the Wishart process: U(x) = Σ_ij W_ij * φ_ij(x)
-        where W_ij are learned coefficients and φ_ij are Chebyshev basis functions.
+        This is the core of the Wishart process: U(x) = Σ_ij W_ij * \phi_ij(x)
+        where W_ij are learned coefficients and \phi_ij are Chebyshev basis functions.
 
         The covariance is then Σ(x) = U(x) @ U(x)^T + diag_term * I, which is
         guaranteed to be positive definite.
