@@ -241,8 +241,8 @@ class WPPM(Model):
         """
         Evaluate all Chebyshev basis functions at point x, keeping structure for einsum.
 
-        For 2D: returns \phi_ij(x) = T_i(x_1) * T_j(x_2) with shape (degree+1, degree+1)
-        For 3D: returns \phi_ijk(x) = T_i(x_1) * T_j(x_2) * T_k(x_3) with shape (degree+1, degree+1, degree+1)
+        For 2D: returns phi_ij(x) = T_i(x_1) * T_j(x_2) with shape (degree+1, degree+1)
+        For 3D: returns phi_ijk(x) = T_i(x_1) * T_j(x_2) * T_k(x_3) with shape (degree+1, degree+1, degree+1)
 
         Note: chebyshev_basis(x, degree=d) returns (degree+1) basis functions [T_0, ..., T_d].
 
