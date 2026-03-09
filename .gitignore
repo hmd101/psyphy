@@ -7,6 +7,8 @@ build/
 *.egg-info/
 .venv/
 
+*.sh
+
 # MkDocs build output and caches
 site/
 .cache/

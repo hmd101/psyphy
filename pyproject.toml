@@ -14,8 +14,8 @@ classifiers = [
   "Operating System :: OS Independent",
 ]
 dependencies = [
-  "jax==0.4.28",
-  "optax==0.2.4",
+  "jax>=0.4.28",
+  "optax>=0.2.4",
   "numpy>=1.22",
 ]
 
