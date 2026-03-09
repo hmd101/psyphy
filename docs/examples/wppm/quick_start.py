@@ -1,0 +1,362 @@
+"""
+Quick-Start WPPM Example: Fitting a Covariance Ellipse at a Single Point
+------------------------------------------------------------------------
+
+This is a minimal, fast version of the full WPPM example. It demonstrates
+the complete workflow — simulate data, fit a model, visualize results —
+at a **single reference point** with reduced MC samples and fewer optimizer
+steps so it runs in seconds on CPU.
+
+For the full spatially-varying field example (25 reference points, GPU), see
+:doc:`full_wppm_fit_example`.
+
+"""
+
+from __future__ import annotations
+
+import os
+import sys
+
+# --8<-- [start:jax_device_setup]
+# Must be set BEFORE importing JAX, as JAX locks in its backend on first import.
+# Unset any forced CPU override so JAX can auto-detect GPU/TPU if available.
+os.environ.pop("JAX_PLATFORM_NAME", None)
+# --8<-- [end:jax_device_setup]
+
+import jax
+import jax.numpy as jnp
+import jax.random as jr
+import matplotlib.pyplot as plt
+from matplotlib.collections import LineCollection
+
+# Ensure local src is importable when running directly
+sys.path.insert(
+    0, os.path.abspath(os.path.join(os.path.dirname(__file__), "../../../src"))
+)
+
+# --8<-- [start:imports]
+from psyphy.data import TrialData  # batched trial container
+from psyphy.inference import MAPOptimizer  # fitter
+from psyphy.model import (
+    WPPM,
+    GaussianNoise,
+    OddityTask,
+    OddityTaskConfig,
+    Prior,
+    WPPMCovarianceField,  # fast Σ(x) evaluation
+)
+
+# --8<-- [end:imports]
+
+PLOTS_DIR = os.path.join(os.path.dirname(__file__), "plots")
+
+print("DEVICE USED:", jax.devices()[0])
+
+# ---------------------------------------------------------------------------
+# Ellipse-plotting helpers (shared with full example)
+# ---------------------------------------------------------------------------
+
+_THETAS = jnp.linspace(0, 2 * jnp.pi, 100)
+_UNIT_CIRCLE = jnp.vstack([jnp.cos(_THETAS), jnp.sin(_THETAS)])
+
+
+def _ellipse_segments_from_covs(
+    centers_xy: jnp.ndarray,
+    covs: jnp.ndarray,
+    *,
+    scale: float,
+    plot_jitter: float,
+    unit_circle: jnp.ndarray,
+) -> tuple[jnp.ndarray, jnp.ndarray]:
+    """Convert batched covariances into polyline segments for LineCollection."""
+    covs = covs + plot_jitter * jnp.eye(covs.shape[-1])
+    eigvals = jnp.linalg.eigvalsh(covs)
+    valid = jnp.all(eigvals > 0, axis=-1)
+
+    def _cov_to_points(cov: jnp.ndarray, center: jnp.ndarray) -> jnp.ndarray:
+        L = jnp.linalg.cholesky(cov)
+        pts = scale * (L @ unit_circle)  # (2, n_theta)
+        return (center[:, None] + pts).T  # (n_theta, 2)
+
+    all_segments = jax.vmap(_cov_to_points)(covs, centers_xy)  # (n, n_theta, 2)
+    return all_segments[valid], valid
+
+
+# ---------------------------------------------------------------------------
+# Compute settings  — deliberately small for a fast CPU run
+# ---------------------------------------------------------------------------
+
+# --8<-- [start:compute_settings]
+MC_SAMPLES = 50  # MC samples per trial in the likelihood (full example: 500)
+NUM_TRIALS = 50  # total simulated trials (full example: 4000 × 25)
+NUM_STEPS = 200  # optimizer steps (full example: 2000)
+# --8<-- [end:compute_settings]
+
+# ---------------------------------------------------------------------------
+# Model hyperparameters
+# ---------------------------------------------------------------------------
+
+input_dim = 2
+basis_degree = 4  # smoothness / complexity of the basis
+extra_dims = 1  # embedding dim for the Wishart process
+decay_rate = 0.4  # how quickly high-frequency basis coefficients are shrunk
+variance_scale = 4e-3  # prior scale for the covariance matrices
+diag_term = 1e-4  # small diagonal jitter to keep covariances PD
+bandwidth = 1e-2  # logistic-CDF bandwidth in the oddity task
+learning_rate = 5e-3
+momentum = 0.9
+
+# ---------------------------------------------------------------------------
+# Step 1 — Ground-truth model
+# ---------------------------------------------------------------------------
+
+print("[1/5] Setting up ground-truth WPPM and simulating data...")
+
+# --8<-- [start:truth_model]
+task = OddityTask(
+    config=OddityTaskConfig(num_samples=int(MC_SAMPLES), bandwidth=float(bandwidth))
+)
+noise = GaussianNoise(sigma=0.1)
+
+# Set all Wishart process hyperparameters in Prior
+truth_prior = Prior(
+    input_dim=input_dim,
+    basis_degree=basis_degree,
+    extra_embedding_dims=extra_dims,
+    decay_rate=decay_rate,
+    variance_scale=variance_scale,
+)
+truth_model = WPPM(
+    input_dim=input_dim,
+    extra_dims=extra_dims,
+    prior=truth_prior,
+    task=task,
+    noise=noise,
+    diag_term=diag_term,
+)
+
+# Sample ground-truth Wishart process weights
+truth_params = truth_model.init_params(jax.random.PRNGKey(123))
+# --8<-- [end:truth_model]
+
+# ---------------------------------------------------------------------------
+# Step 2 — Simulate data at a *single* reference point
+# ---------------------------------------------------------------------------
+
+# --8<-- [start:simulate_data]
+# Single reference point at the centre of the stimulus space.
+ref_point = jnp.array([[0.0, 0.0]])  # shape (1, 2) — kept as a batch for generality
+
+seed = 3
+key = jr.PRNGKey(seed)
+
+# Repeat the reference point for every trial.
+refs = jnp.repeat(ref_point, repeats=NUM_TRIALS, axis=0)  # (NUM_TRIALS, 2)
+
+# Evaluate Σ at the reference point.
+truth_field = WPPMCovarianceField(truth_model, truth_params)
+Sigmas_ref = truth_field(refs)  # (NUM_TRIALS, 2, 2)
+
+# Sample unit directions and build covariance-scaled probe displacements.
+k_dir, k_pred, k_y = jr.split(key, 3)
+angles = jr.uniform(k_dir, shape=(NUM_TRIALS,), minval=0.0, maxval=2.0 * jnp.pi)
+unit_dirs = jnp.stack([jnp.cos(angles), jnp.sin(angles)], axis=1)  # (N, 2)
+
+# Constant Mahalanobis radius: probe = ref + MAHAL_RADIUS * chol(Σ_ref) @ unit_dir
+MAHAL_RADIUS = 2.8
+L = jnp.linalg.cholesky(Sigmas_ref)  # (N, 2, 2)
+deltas = MAHAL_RADIUS * jnp.einsum("nij,nj->ni", L, unit_dirs)  # (N, 2)
+comparisons = jnp.clip(refs + deltas, -1.0, 1.0)
+
+# Compute p(correct) via MC simulation of the oddity task.
+trial_pred_keys = jr.split(k_pred, NUM_TRIALS)
+
+
+def _p_correct_one(ref: jnp.ndarray, comp: jnp.ndarray, kk: jnp.ndarray) -> jnp.ndarray:
+    return task._simulate_trial_mc(
+        params=truth_params,
+        ref=ref,
+        comparison=comp,
+        model=truth_model,
+        noise=truth_model.noise,
+        num_samples=int(task.config.num_samples),
+        bandwidth=float(task.config.bandwidth),
+        key=kk,
+    )
+
+
+p_correct = jax.vmap(_p_correct_one)(refs, comparisons, trial_pred_keys)
+
+# Sample observed responses y ~ Bernoulli(p_correct).
+ys = jr.bernoulli(k_y, p_correct, shape=(NUM_TRIALS,)).astype(jnp.int32)
+
+# --8<-- [start:data]
+data = TrialData(refs=refs, comparisons=comparisons, responses=ys)
+# --8<-- [end:data]
+# --8<-- [end:simulate_data]
+
+print(
+    f"  Simulated {NUM_TRIALS} trials at ref={ref_point[0].tolist()}, "
+    f"mean p(correct)={float(p_correct.mean()):.3f}"
+)
+
+# ---------------------------------------------------------------------------
+# Step 3 — Build the model to fit
+# ---------------------------------------------------------------------------
+
+print("[2/5] Building model and optimizer...")
+
+# --8<-- [start:build_model]
+prior = Prior(
+    input_dim=input_dim,
+    basis_degree=basis_degree,
+    extra_embedding_dims=extra_dims,
+    decay_rate=decay_rate,
+    variance_scale=variance_scale,
+)
+model = WPPM(
+    input_dim=input_dim,
+    prior=prior,
+    task=task,
+    noise=noise,
+    diag_term=1e-4,
+)
+# --8<-- [end:build_model]
+
+# --8<-- [start:prior]
+# Initialize parameters at a sample from the prior
+init_params = model.init_params(jax.random.PRNGKey(42))
+init_field = WPPMCovarianceField(model, init_params)
+# Evaluate prior covariance at the reference point
+covs_prior = init_field(ref_point)  # (1, 2, 2)
+# --8<-- [end:prior]
+print(f"  shape of covs_prior: {covs_prior.shape}")
+
+# ---------------------------------------------------------------------------
+# Step 4 — MAP optimization
+# ---------------------------------------------------------------------------
+
+print("[3/5] Fitting via MAPOptimizer ...")
+
+# --8<-- [start:fit_map]
+map_optimizer = MAPOptimizer(
+    steps=NUM_STEPS,
+    learning_rate=learning_rate,
+    momentum=momentum,
+    track_history=True,
+    log_every=50,
+)
+
+map_posterior = map_optimizer.fit(
+    model,
+    data,
+    init_params=init_params,
+)
+# --8<-- [end:fit_map]
+
+# ---------------------------------------------------------------------------
+# Step 5 — Visualize covariance ellipses (truth / prior / fit)
+# ---------------------------------------------------------------------------
+
+print("[4/5] Plotting covariance ellipses ...")
+
+# --8<-- [start:plot_ellipses]
+_PLOT_JITTER = 0.0
+
+# Use the single reference point as the visualization centre.
+vis_points = ref_point  # (1, 2)
+
+map_field = WPPMCovarianceField(model, map_posterior.params)
+
+# --8<-- [start:cov_fields]
+# Evaluate any covariance-field object at a single point or a batch of points.
+covs_truth = truth_field(vis_points)  # (1, 2, 2)
+covs_init = init_field(vis_points)  # (1, 2, 2)
+covs_map = map_field(vis_points)  # (1, 2, 2)
+# --8<-- [end:cov_fields]
+
+# Scale ellipses so they are visually readable.
+gt_scale = float(jnp.sqrt(jnp.mean(jnp.linalg.eigvalsh(covs_truth[0]))))
+ellipse_scale = max(0.3, 0.4 * gt_scale / 0.01)  # keep readable on the unit square
+
+fig, ax = plt.subplots(figsize=(6, 6))
+
+labels = ["Ground Truth", "Prior Sample (init)", "Fitted (MAP)"]
+colors = ["k", "b", "r"]
+fields = [truth_field, init_field, map_field]
+non_pd_counts = []
+
+for field, color, label in zip(fields, colors, labels):
+    covs = field(vis_points)
+    segments, valid = _ellipse_segments_from_covs(
+        vis_points,
+        covs,
+        scale=ellipse_scale,
+        plot_jitter=_PLOT_JITTER,
+        unit_circle=_UNIT_CIRCLE,
+    )
+    non_pd_counts.append(int((~valid).sum()))
+    lc = LineCollection(
+        jax.device_get(segments),
+        colors=color,
+        linewidths=2.0,
+        alpha=0.8,
+    )
+    ax.add_collection(lc)
+    ax.plot([], [], color=color, alpha=0.8, linewidth=1.5, label=label)
+
+ax.scatter(
+    vis_points[:, 0], vis_points[:, 1], c="g", s=40, zorder=5, label="Reference Point"
+)
+ax.set_xlim(-0.6, 0.6)
+ax.set_ylim(-0.6, 0.6)
+ax.set_aspect("equal", adjustable="box")
+ax.set_xlabel("Stimulus dimension 1")
+ax.set_ylabel("Stimulus dimension 2")
+ax.set_title(
+    f"Covariance ellipse at ref={ref_point[0].tolist()}\n"
+    f"lr={learning_rate}, steps={NUM_STEPS}, MC-samples={MC_SAMPLES}, trials={NUM_TRIALS}"
+)
+ax.grid(True, alpha=0.3)
+ax.legend(loc="upper right")
+plt.tight_layout()
+
+os.makedirs(PLOTS_DIR, exist_ok=True)
+fig.savefig(
+    os.path.join(PLOTS_DIR, "quick_start_ellipses.png"), dpi=200, bbox_inches="tight"
+)
+print(f"  Saved → {PLOTS_DIR}/quick_start_ellipses.png")
+# --8<-- [end:plot_ellipses]
+
+# ---------------------------------------------------------------------------
+# Step 6 — Learning curve
+# ---------------------------------------------------------------------------
+
+print("[5/5] Plotting learning curve ...")
+
+# --8<-- [start:plot_learning_curve]
+steps_hist, loss_hist = map_optimizer.get_history()
+# --8<-- [end:plot_learning_curve]
+
+if steps_hist and loss_hist:
+    fig2, ax2 = plt.subplots(figsize=(6, 4))
+    ax2.plot(steps_hist, loss_hist, color="#4444aa")
+    ax2.set_xlim(steps_hist[0], steps_hist[-1])
+    ax2.set_title(
+        f"Learning curve\n"
+        f"lr={learning_rate}, steps={NUM_STEPS}, MC-samples={MC_SAMPLES}, trials={NUM_TRIALS}"
+    )
+    ax2.set_xlabel("Step")
+    ax2.set_ylabel("Neg log likelihood")
+    ax2.grid(True, alpha=0.3)
+    plt.tight_layout()
+    fig2.savefig(
+        os.path.join(PLOTS_DIR, "quick_start_learning_curve.png"),
+        dpi=200,
+        bbox_inches="tight",
+    )
+    print(f"  Saved → {PLOTS_DIR}/quick_start_learning_curve.png")
+else:
+    print("  No history recorded — set track_history=True in MAPOptimizer to enable.")
+
+print("Done.")
