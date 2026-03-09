@@ -165,6 +165,7 @@ unit_dirs = jnp.stack([jnp.cos(angles), jnp.sin(angles)], axis=1)  # (N, 2)
 # Constant Mahalanobis radius: probe = ref + MAHAL_RADIUS * chol(Σ_ref) @ unit_dir
 MAHAL_RADIUS = 2.8
 L = jnp.linalg.cholesky(Sigmas_ref)  # (N, 2, 2)
+# location of comparisons = ref+delta
 deltas = MAHAL_RADIUS * jnp.einsum("nij,nj->ni", L, unit_dirs)  # (N, 2)
 comparisons = jnp.clip(refs + deltas, -1.0, 1.0)
 
