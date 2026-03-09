@@ -42,8 +42,14 @@ sys.path.insert(
 )
 
 # --8<-- [start:imports]
-from psyphy.model import WPPM, GaussianNoise, OddityTask, Prior
-from psyphy.model.covariance_field import WPPMCovarianceField
+from psyphy.model import (
+    WPPM,
+    GaussianNoise,
+    OddityTask,
+    OddityTaskConfig,
+    Prior,
+    WPPMCovarianceField,  # (fast (\Sigma) evaluation)
+)
 
 # --8<-- [end:imports]
 

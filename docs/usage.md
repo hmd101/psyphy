@@ -131,3 +131,65 @@ posterior = MAPOptimizer(steps=500, optimizer=opt).fit(model, data)
 p = posterior.predict_prob((jnp.array([0.0, 0.0]), jnp.array([0.05, 0.05])))
 contour = posterior.predict_thresholds(reference=jnp.array([0.0, 0.0]))
 ```
+
+---
+
+## Quick-start walkthrough — fit your first covariance ellipse
+
+The snippet below shows the minimal end-to-end workflow: simulate a handful of
+oddity-task trials at a **single reference point**, fit the WPPM with MAP
+optimization, and visualize the result.  No GPU needed — runs in under 2 min
+on CPU.
+
+> The complete runnable script is
+> [`quick_start.py`](https://github.com/flatironinstitute/psyphy/blob/main/docs/examples/wppm/quick_start.py).
+> A step-by-step explanation lives in the
+> [Quick-start example](examples/wppm/quick_start.md).
+
+### Imports
+
+```python title="Imports"
+--8<-- "docs/examples/wppm/quick_start.py:imports"
+```
+
+### Compute settings
+
+```python title="Compute settings"
+--8<-- "docs/examples/wppm/quick_start.py:compute_settings"
+```
+
+### Ground-truth model + simulate data
+
+```python title="Ground-truth model"
+--8<-- "docs/examples/wppm/quick_start.py:truth_model"
+```
+
+```python title="Simulate data"
+--8<-- "docs/examples/wppm/quick_start.py:simulate_data"
+```
+
+### Build model and fit
+
+```python title="Model definition"
+--8<-- "docs/examples/wppm/quick_start.py:build_model"
+```
+
+```python title="Fit with MAPOptimizer"
+--8<-- "docs/examples/wppm/quick_start.py:fit_map"
+```
+
+### Results
+
+<div align="center">
+  <img src="examples/wppm/plots/quick_start_ellipses.png"
+       alt="Covariance ellipses: ground truth (black), prior (blue), MAP fit (red)"
+       width="460"/>
+  <p><em>Ground truth (black), prior sample (blue), and MAP-fitted (red) covariance ellipses at the single reference point.</em></p>
+</div>
+
+<div align="center">
+  <img src="examples/wppm/plots/quick_start_learning_curve.png"
+       alt="Learning curve"
+       width="460"/>
+  <p><em>Negative log-likelihood over optimizer steps.</em></p>
+</div>

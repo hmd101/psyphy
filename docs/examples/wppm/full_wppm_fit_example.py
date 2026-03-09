@@ -15,6 +15,12 @@ from __future__ import annotations
 import os
 import sys
 
+# --8<-- [start:jax_device_setup]
+# Must be set BEFORE importing JAX, as JAX locks in its backend on first import.
+# Unset any forced CPU override so JAX can auto-detect GPU/TPU if available.
+os.environ.pop("JAX_PLATFORM_NAME", None)
+# --8<-- [end:jax_device_setup]
+
 import jax
 import jax.numpy as jnp
 import matplotlib.pyplot as plt
@@ -34,40 +40,19 @@ import jax.random as jr
 from psyphy.data import TrialData  # (batched trial container)
 from psyphy.inference import MAPOptimizer  # fitter
 from psyphy.model import (
+    WPPM,
     GaussianNoise,
     OddityTask,
     OddityTaskConfig,
     Prior,
     WPPMCovarianceField,  # (fast (\Sigma) evaluation)
-    WPPM,
 )
 
 # --8<-- [end:imports]
 PLOTS_DIR = os.path.join(os.path.dirname(__file__), "plots")
 
-
-# --8<-- [start:jax_device_setup]
-# Prefer GPU/TPU if available; otherwise fall back to CPU.
-try:
-    has_accel = any(
-        getattr(d, "platform", "").lower() in ("gpu", "cuda", "tpu")
-        for d in jax.devices()
-    )
-except Exception:
-    has_accel = False
-
-if not has_accel:
-    # Force CPU backend if no accelerator detected (or JAX not yet initialized).
-    os.environ.setdefault("JAX_PLATFORM_NAME", "cpu")
-else:
-    # Remove any forced setting so JAX can use the accelerator.
-    os.environ.pop("JAX_PLATFORM_NAME", None)
-
-
 # print device used
 print("DEVICE USED:", jax.devices()[0])
-# Helper: invert criterion to d* for Oddity task
-# --8<-- [end:jax_device_setup]
 
 
 # # Robust ellipse plotting utilities
