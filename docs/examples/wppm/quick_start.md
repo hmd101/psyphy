@@ -12,7 +12,7 @@
 | Hardware | Approximate time |
 |---|---|
 | GPU (any modern CUDA device) | < 5 s |
-| CPU (laptop / M-series Mac) | < 2 min |
+| CPU (laptop / M-series Mac) | < 1 min |
 
 The three knobs that control runtime:
 
@@ -103,10 +103,10 @@ initialization (blue), and the MAP fit (red) at the single reference point:
 ```
 
 <div align="center">
-  <img src="../../examples/wppm/plots/quick_start_ellipses.png"
+  <img src="../plots/quick_start_ellipses.png"
        alt="Covariance ellipses: ground truth (black), prior (blue), MAP fit (red)"
        width="480"/>
-  <p><em>Ground truth (black), prior sample (blue), and MAP-fitted (red) covariance ellipses at the single reference point.</em></p>
+  <p><em>Ground truth (black), prior sample (blue), and MAP-fitted (red) covariance ellipses at the single reference point. Note how the red ellipse has moved from the blue (init) closer to the ground truth (black).</em></p>
 </div>
 
 ---
@@ -118,7 +118,7 @@ initialization (blue), and the MAP fit (red) at the single reference point:
 ```
 
 <div align="center">
-  <img src="../../examples/wppm/plots/quick_start_learning_curve.png"
+  <img src="../plots/quick_start_learning_curve.png"
        alt="Learning curve"
        width="480"/>
   <p><em>Negative log-likelihood over optimizer steps.</em></p>
