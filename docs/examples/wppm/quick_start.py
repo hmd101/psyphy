@@ -88,7 +88,7 @@ def _ellipse_segments_from_covs(
 
 # --8<-- [start:compute_settings]
 MC_SAMPLES = 50  # MC samples per trial in the likelihood (full example: 500)
-NUM_TRIALS = 50  # total simulated trials (full example: 4000 × 25)
+NUM_TRIALS = 100  # total simulated trials (full example: 4000 × 25)
 NUM_STEPS = 200  # optimizer steps (full example: 2000)
 # --8<-- [end:compute_settings]
 
@@ -191,7 +191,9 @@ p_correct = jax.vmap(_p_correct_one)(refs, comparisons, trial_pred_keys)
 ys = jr.bernoulli(k_y, p_correct, shape=(NUM_TRIALS,)).astype(jnp.int32)
 
 # --8<-- [start:data]
-data = TrialData(refs=refs, comparisons=comparisons, responses=ys)
+data = TrialData(
+    refs=refs, comparisons=comparisons, responses=ys
+)  # contains 3 JAX arrays
 # --8<-- [end:data]
 # --8<-- [end:simulate_data]
 
