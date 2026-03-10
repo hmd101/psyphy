@@ -93,7 +93,6 @@ NUM_STEPS = 200  # optimizer steps (full example: 2000)
 
 learning_rate = 5e-4  # full example: 5e-5. The smaller the lr, the more steps
 # are required.
-
 # --8<-- [end:compute_settings]
 
 # ---------------------------------------------------------------------------
