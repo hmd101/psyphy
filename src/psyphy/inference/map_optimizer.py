@@ -127,7 +127,8 @@ class MAPOptimizer(InferenceEngine):
             this takes precedence over the seed.
         seed : int | None, optional
             PRNG seed used to draw initial parameters from the model's prior
-            when init_params is not provided. If None, defaults to 0.
+            when init_params is not provided, and as the base key for the MC
+            likelihood random stream during optimization. If None, defaults to 0.
 
         Returns
         -------
@@ -135,26 +136,29 @@ class MAPOptimizer(InferenceEngine):
             Posterior wrapper around MAP params and model.
         """
 
-        def loss_fn(params):
-            return -model.log_posterior_from_data(params, data)
+        rng_seed = 0 if seed is None else int(seed)
+        # Master key: split into init key and optimization key stream.
+        master_key = jax.random.PRNGKey(rng_seed)
+        init_key, opt_key = jax.random.split(master_key)
 
         # Initialize parameters
         if init_params is not None:
             params = init_params
         else:
-            rng_seed = 0 if seed is None else int(seed)
-            params = model.init_params(jax.random.PRNGKey(rng_seed))
+            params = model.init_params(init_key)
         opt_state = self.optimizer.init(params)
 
+        # key is now an explicit argument so each JIT-compiled call receives a
+        # distinct random key — a fresh MC noise realization per gradient step.
         @jax.jit
-        def step(params, opt_state):
-            # Ensure params and opt_state are JAX PyTrees for JIT compatibility
-            loss, grads = jax.value_and_grad(loss_fn)(params)  # auto-diff
+        def step(params, opt_state, key):
+            loss, grads = jax.value_and_grad(
+                lambda p: -model.log_posterior_from_data(p, data, key=key)
+            )(params)
             updates, opt_state = self.optimizer.update(
                 grads, opt_state, params
-            )  # optimizer update
-            params = optax.apply_updates(params, updates)  # apply updates
-            # Only return JAX-compatible types (PyTrees of arrays, scalars)
+            )
+            params = optax.apply_updates(params, updates)
             return params, opt_state, loss
 
         # clear any previous history
@@ -185,7 +189,10 @@ class MAPOptimizer(InferenceEngine):
                 pbar = None
 
         for i in range(self.steps):
-            params, opt_state, loss = step(params, opt_state)
+            # Split a fresh subkey for each step so the MC likelihood sees a
+            # different noise realization on every gradient evaluation.
+            opt_key, subkey = jax.random.split(opt_key)
+            params, opt_state, loss = step(params, opt_state, subkey)
 
             # Non-finite guard: if loss becomes NaN/Inf, optimization has diverged.
             # Stop early so downstream plots don’t look “truncated” due to NaNs.

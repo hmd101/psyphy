@@ -532,7 +532,9 @@ class WPPM(Model):
         )
         return self.task.loglik(params, data, self, self.noise)
 
-    def log_likelihood_from_data(self, params: Params, data: Any) -> jnp.ndarray:
+    def log_likelihood_from_data(
+        self, params: Params, data: Any, *, key: jax.Array | None = None
+    ) -> jnp.ndarray:
         """Compute log-likelihood directly from a batched data object.
 
         Why delegate to the task?
@@ -546,29 +548,51 @@ class WPPM(Model):
             Model parameters.
         data : TrialData (or any object with refs/comparisons/responses arrays)
             Collected trial data.
+        key : jax.Array | None, optional
+            JAX random key for MC likelihood evaluation. When provided, a fresh
+            noise realization is drawn every call — required for correct stochastic
+            gradient estimates during optimization. When None, the task falls back
+            to ``OddityTaskConfig.default_key_seed`` (useful for fixed evaluation
+            and testing, but should not be used during gradient-based optimization).
 
         Returns
         -------
         loglik : jnp.ndarray
             Scalar log-likelihood (task-only; add prior outside if needed).
         """
-        return self.task.loglik(params, data, self, self.noise)
+        return self.task.loglik(params, data, self, self.noise, key=key)
 
     # ----------------------------------------------------------------------
     # POSTERIOR-STYLE CONVENIENCE (OPTIONAL)
     # ----------------------------------------------------------------------
-    def log_posterior_from_data(self, params: Params, data: Any) -> jnp.ndarray:
+    def log_posterior_from_data(
+        self, params: Params, data: Any, *, key: jax.Array | None = None
+    ) -> jnp.ndarray:
         """Compute log posterior from data.
 
         This simply adds the prior log-probability to the task log-likelihood.
         Inference engines (e.g., MAP optimizer) typically optimize this quantity.
+
+        Parameters
+        ----------
+        params : dict
+            Model parameters.
+        data : TrialData
+            Collected trial data.
+        key : jax.Array | None, optional
+            JAX random key for the MC likelihood. Must be provided during
+            optimization so each gradient step uses a fresh noise realization.
+            When None, falls back to ``OddityTaskConfig.default_key_seed``.
 
         Returns
         -------
         jnp.ndarray
             Scalar log posterior = loglik(params | data) + log_prior(params).
         """
-        return self.log_likelihood_from_data(params, data) + self.prior.log_prob(params)
+        return (
+            self.log_likelihood_from_data(params, data, key=key)
+            + self.prior.log_prob(params)
+        )
 
     # ----------------------------------------------------------------------
     # MODEL FORWARD PASS (for predict_with_params)
