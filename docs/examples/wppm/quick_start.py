@@ -88,8 +88,12 @@ def _ellipse_segments_from_covs(
 
 # --8<-- [start:compute_settings]
 MC_SAMPLES = 50  # MC samples per trial in the likelihood (full example: 500)
-NUM_TRIALS = 50  # total simulated trials (full example: 4000 × 25)
+NUM_TRIALS = 100  # total simulated trials (full example: 4000 × 25)
 NUM_STEPS = 200  # optimizer steps (full example: 2000)
+
+learning_rate = 5e-4  # full example: 5e-5. The smaller the lr, the more steps
+# are required.
+
 # --8<-- [end:compute_settings]
 
 # ---------------------------------------------------------------------------
@@ -103,7 +107,6 @@ decay_rate = 0.4  # how quickly high-frequency basis coefficients are shrunk
 variance_scale = 4e-3  # prior scale for the covariance matrices
 diag_term = 1e-4  # small diagonal jitter to keep covariances PD
 bandwidth = 1e-2  # logistic-CDF bandwidth in the oddity task
-learning_rate = 5e-3
 momentum = 0.9
 
 # ---------------------------------------------------------------------------
@@ -165,6 +168,7 @@ unit_dirs = jnp.stack([jnp.cos(angles), jnp.sin(angles)], axis=1)  # (N, 2)
 # Constant Mahalanobis radius: probe = ref + MAHAL_RADIUS * chol(Σ_ref) @ unit_dir
 MAHAL_RADIUS = 2.8
 L = jnp.linalg.cholesky(Sigmas_ref)  # (N, 2, 2)
+# location of comparisons = ref+delta
 deltas = MAHAL_RADIUS * jnp.einsum("nij,nj->ni", L, unit_dirs)  # (N, 2)
 comparisons = jnp.clip(refs + deltas, -1.0, 1.0)
 
@@ -191,7 +195,9 @@ p_correct = jax.vmap(_p_correct_one)(refs, comparisons, trial_pred_keys)
 ys = jr.bernoulli(k_y, p_correct, shape=(NUM_TRIALS,)).astype(jnp.int32)
 
 # --8<-- [start:data]
-data = TrialData(refs=refs, comparisons=comparisons, responses=ys)
+data = TrialData(
+    refs=refs, comparisons=comparisons, responses=ys
+)  # contains 3 JAX arrays
 # --8<-- [end:data]
 # --8<-- [end:simulate_data]
 
@@ -244,14 +250,10 @@ map_optimizer = MAPOptimizer(
     learning_rate=learning_rate,
     momentum=momentum,
     track_history=True,
-    log_every=50,
+    log_every=1,
 )
 
-map_posterior = map_optimizer.fit(
-    model,
-    data,
-    init_params=init_params,
-)
+map_posterior = map_optimizer.fit(model, data, init_params=init_params, seed=4)
 # --8<-- [end:fit_map]
 
 # ---------------------------------------------------------------------------
