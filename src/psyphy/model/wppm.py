@@ -589,10 +589,9 @@ class WPPM(Model):
         jnp.ndarray
             Scalar log posterior = loglik(params | data) + log_prior(params).
         """
-        return (
-            self.log_likelihood_from_data(params, data, key=key)
-            + self.prior.log_prob(params)
-        )
+        return self.log_likelihood_from_data(
+            params, data, key=key
+        ) + self.prior.log_prob(params)
 
     # ----------------------------------------------------------------------
     # MODEL FORWARD PASS (for predict_with_params)

@@ -142,10 +142,7 @@ class MAPOptimizer(InferenceEngine):
         init_key, opt_key = jax.random.split(master_key)
 
         # Initialize parameters
-        if init_params is not None:
-            params = init_params
-        else:
-            params = model.init_params(init_key)
+        params = init_params if init_params is not None else model.init_params(init_key)
         opt_state = self.optimizer.init(params)
 
         # key is now an explicit argument so each JIT-compiled call receives a
@@ -155,9 +152,7 @@ class MAPOptimizer(InferenceEngine):
             loss, grads = jax.value_and_grad(
                 lambda p: -model.log_posterior_from_data(p, data, key=key)
             )(params)
-            updates, opt_state = self.optimizer.update(
-                grads, opt_state, params
-            )
+            updates, opt_state = self.optimizer.update(grads, opt_state, params)
             params = optax.apply_updates(params, updates)
             return params, opt_state, loss
 
