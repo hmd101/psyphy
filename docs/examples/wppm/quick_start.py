@@ -91,7 +91,9 @@ MC_SAMPLES = 50  # MC samples per trial in the likelihood (full example: 500)
 NUM_TRIALS = 100  # total simulated trials (full example: 4000 × 25)
 NUM_STEPS = 200  # optimizer steps (full example: 2000)
 
-learning_rate = 5e-4
+learning_rate = 5e-4  # full example: 5e-5. The smaller the lr, the more steps
+# are required.
+
 # --8<-- [end:compute_settings]
 
 # ---------------------------------------------------------------------------
