@@ -90,6 +90,8 @@ def _ellipse_segments_from_covs(
 MC_SAMPLES = 50  # MC samples per trial in the likelihood (full example: 500)
 NUM_TRIALS = 100  # total simulated trials (full example: 4000 × 25)
 NUM_STEPS = 200  # optimizer steps (full example: 2000)
+
+learning_rate = 5e-4
 # --8<-- [end:compute_settings]
 
 # ---------------------------------------------------------------------------
@@ -103,7 +105,6 @@ decay_rate = 0.4  # how quickly high-frequency basis coefficients are shrunk
 variance_scale = 4e-3  # prior scale for the covariance matrices
 diag_term = 1e-4  # small diagonal jitter to keep covariances PD
 bandwidth = 1e-2  # logistic-CDF bandwidth in the oddity task
-learning_rate = 5e-3
 momentum = 0.9
 
 # ---------------------------------------------------------------------------
@@ -247,14 +248,10 @@ map_optimizer = MAPOptimizer(
     learning_rate=learning_rate,
     momentum=momentum,
     track_history=True,
-    log_every=50,
+    log_every=1,
 )
 
-map_posterior = map_optimizer.fit(
-    model,
-    data,
-    init_params=init_params,
-)
+map_posterior = map_optimizer.fit(model, data, init_params=init_params, seed=4)
 # --8<-- [end:fit_map]
 
 # ---------------------------------------------------------------------------
