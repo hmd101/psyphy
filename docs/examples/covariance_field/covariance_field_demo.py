@@ -46,7 +46,6 @@ from psyphy.model import (
     WPPM,
     GaussianNoise,
     OddityTask,
-    OddityTaskConfig,
     Prior,
     WPPMCovarianceField,  # (fast (\Sigma) evaluation)
 )
