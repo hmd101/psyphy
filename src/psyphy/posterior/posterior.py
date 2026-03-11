@@ -6,11 +6,6 @@ Concrete ParameterPosterior implementations.
 
 This module provides:
 - MAPPosterior: delta distribution at θ_MAP (point estimate)
-- Posterior: backwards compatibility alias (deprecated)
-
-Future additions:
-- LaplacePosterior: Gaussian approximation
-- LangevinPosterior: MCMC samples
 """
 
 from __future__ import annotations
@@ -18,10 +13,8 @@ from __future__ import annotations
 import jax
 import jax.numpy as jnp
 
-from psyphy.posterior.base_posterior import BasePosterior
 
-
-class MAPPosterior(BasePosterior):
+class MAPPosterior:
     """
     MAP (Maximum A Posteriori) posterior - delta distribution at θ_MAP.
 
@@ -37,7 +30,6 @@ class MAPPosterior(BasePosterior):
     Notes
     -----
     This implements the ParameterPosterior protocol.
-    For uncertainty quantification, use LaplacePosterior or LangevinPosterior.
     """
 
     def __init__(self, params, model):
@@ -56,22 +48,6 @@ class MAPPosterior(BasePosterior):
     def model(self):
         """Return the associated model."""
         return self._model
-
-    def MAP_params(self):
-        """
-        Return the MAP parameters.
-
-        Returns
-        -------
-        dict
-            Parameter dictionary.
-
-        Notes
-        -----
-        Kept for backwards compatibility with BasePosterior.
-        Use .params property instead.
-        """
-        return self._params
 
     def sample(self, n: int = 1, *, key=None):
         """
