@@ -1,21 +1,29 @@
 # Posterior
-## Package
+
+## Package Overview
 ---
 
 ::: psyphy.posterior
 
 ---
 
-## Posterior Representation
+## Parameter Posterior Protocol
+---
+
+::: psyphy.posterior.parameter_posterior
+
+---
+
+## Parameter Posterior Implementations
 ---
 
 ::: psyphy.posterior.posterior
 
 ---
 
-## Diagnostics
+## Predictive Posterior
 ---
 
-::: psyphy.posterior.diagnostics
+::: psyphy.posterior.predictive_posterior
 
 ---
