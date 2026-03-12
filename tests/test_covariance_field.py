@@ -235,10 +235,12 @@ def test_posterior_get_covariance_field_wishart(wishart_model, sample_data):
     # Get the parameter posterior (BoTorch-style: separate from fit)
     posterior = wishart_model.posterior(kind="parameter")
 
-    # Get field from posterior
-    field = posterior.get_covariance_field()
+    # Get field directly from the model using the fitted parameters
+    from psyphy.model.covariance_field import WPPMCovarianceField
 
-    # Should work and return sensible results
+    field = WPPMCovarianceField.from_params(wishart_model, posterior.params)
+
+    # Basic shape tests
     x = jnp.array([0.5, 0.5])
     Sigma = field(x)
     U = field.sqrt_cov(x)

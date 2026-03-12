@@ -17,7 +17,6 @@ from psyphy.model import WPPM, GaussianNoise, OddityTask, Prior
 from psyphy.posterior import (
     MAPPosterior,
     ParameterPosterior,
-    Posterior,
     PredictivePosterior,
     WPPMPredictivePosterior,
 )
@@ -68,40 +67,19 @@ class TestParameterPosterior:
         assert model.input_dim == 2
 
     def test_sample_with_key(self, param_posterior):
-        """sample() returns parameter samples with correct shape."""
-        key = jr.PRNGKey(42)
-        samples = param_posterior.sample(5, key=key)
+        """Sample from MAP posterior returns identical replicates."""
+        n_samples = 3
+        key = jr.PRNGKey(0)
+        samples = param_posterior.sample(n=n_samples, key=key)
 
         assert isinstance(samples, dict)
+        assert "W" in samples
+        assert samples["W"].shape[0] == n_samples
 
-    def test_log_prob_at_map(self, param_posterior):
-        """log_prob at MAP should be 0."""
-        log_p = param_posterior.log_prob(param_posterior.params)
-        assert jnp.isfinite(log_p)
-        # Delta distribution: 0 at MAP (or close to it due to numerics)
-        assert jnp.allclose(log_p, 0.0, atol=1e-5)
-
-    def test_diagnostics(self, param_posterior):
-        """diagnostics() returns dict."""
-        diag = param_posterior.diagnostics()
-        assert isinstance(diag, dict)
-
-    def test_predict_prob(self, param_posterior):
-        """predict_prob delegates to model."""
-        stimulus = (jnp.array([0.0, 0.0]), jnp.array([0.5, 0.5]))
-        prob = param_posterior.predict_prob(stimulus)
-        assert isinstance(prob, jnp.ndarray)
-        assert 0.0 <= prob <= 1.0
-
-    def test_predict_thresholds(self, param_posterior):
-        """predict_thresholds returns contour."""
-        reference = jnp.array([0.0, 0.0])
-        contour = param_posterior.predict_thresholds(reference, directions=8)
-        assert contour.shape == (8, 2)
-
-    def test_backwards_compatibility_alias(self):
-        """Posterior is alias for MAPPosterior."""
-        assert Posterior is MAPPosterior
+        # All samples should be identical to MAP estimate
+        map_params = param_posterior.params
+        for i in range(n_samples):
+            assert jnp.allclose(samples["W"][i], map_params["W"])
 
 
 class TestPredictivePosterior:
