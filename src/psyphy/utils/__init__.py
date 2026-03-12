@@ -41,7 +41,7 @@ from .diagnostics import (
     parameter_summary,
     print_parameter_summary,
 )
-from .math import chebyshev_basis, mahalanobis_distance, rbf_kernel
+from .math import chebyshev_basis, mahalanobis_distance
 from .rng import seed, split
 
 __all__ = [
@@ -61,7 +61,6 @@ __all__ = [
     # math
     "chebyshev_basis",
     "mahalanobis_distance",
-    "rbf_kernel",
     # rng
     "seed",
     "split",
