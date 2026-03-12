@@ -17,10 +17,14 @@ MVP implementation:
 - Future: compute covariance from Hessian at MAP params.
 """
 
-from psyphy.posterior.posterior import Posterior
+# import jax.scipy.linalg as jl
+# from optax import GradientTransformation
+
+from psyphy.inference.base import InferenceEngine
+from psyphy.posterior.posterior import MAPPosterior
 
 
-class LaplaceApproximation:
+class LaplaceApproximation(InferenceEngine):
     """
     Laplace approximation around MAP estimate.
 
@@ -30,7 +34,7 @@ class LaplaceApproximation:
         Construct a Gaussian approximation centered at MAP.
     """
 
-    def from_map(self, map_posterior: Posterior) -> Posterior:
+    def from_map(self, map_posterior: MAPPosterior) -> MAPPosterior:
         """
         Return posterior approximation from MAP.
 
@@ -41,7 +45,12 @@ class LaplaceApproximation:
 
         Returns
         -------
-        Posterior
-            Same posterior object (MVP).
+        MAPPosterior
+            Posterior distribution containing Laplace approximation.
         """
+        # 1. First find MAP estimate
+        # 2. Compute Hessian at MAP
+        # 3. Invert Hessian to get covariance
+        # 4. Return Gaussian posterior with MAP mean and covariance
+
         return map_posterior

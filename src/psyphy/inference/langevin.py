@@ -4,8 +4,8 @@ langevin.py
 
 Langevin samplers for posterior inference.
 
-Implements:
-- Overdamped (unadjusted) Langevin Algorithm (ULA)
+Will lkely implement:
+- Overdamped (unadjusted) Langevin Algorithm (ULA) (exists in BlackJax)
 - Underdamped Langevin (with BAOAB splitting scheme?)
 
 Used for posterior-aware trial placement (InfoGain).
@@ -16,10 +16,12 @@ MVP implementation:
 - Future: implement underdamped Langevin dynamics (e.g. BAOAB integrator).
 """
 
-from psyphy.posterior.posterior import Posterior
+
+from psyphy.inference.base import InferenceEngine
+from psyphy.posterior.posterior import MAPPosterior
 
 
-class LangevinSampler:
+class LangevinSampler(InferenceEngine):
     """
     Langevin sampler (stub).
 
@@ -40,7 +42,7 @@ class LangevinSampler:
         self.step_size = step_size
         self.temperature = temperature
 
-    def fit(self, model, data) -> Posterior:
+    def fit(self, model, data) -> MAPPosterior:
         """
         Fit model parameters with Langevin dynamics (stub).
 
@@ -51,9 +53,38 @@ class LangevinSampler:
         data : ResponseData
             Observed trials.
 
+        """
+
+        raise NotImplementedError("Langevin Sampler not implemented yet.")
+
+
+class NumpyroSampler(InferenceEngine):
+    """
+    Numpyro-based sampler (stub).
+
+    Parameters
+    ----------
+    steps : int, default=1000
+        Number of sampling steps.
+    """
+
+    def __init__(self, steps: int = 1000):
+        self.steps = steps
+
+    def fit(self, model, data) -> MAPPosterior:
+        """
+        Fit model parameters using Numpyro (stub).
+
+        Parameters
+        ----------
+        model : WPPM
+            Model instance.
+        data : ResponseData
+            Observed trials.
+
         Returns
         -------
-        Posterior
-            Posterior wrapper (MVP: params from init).
+        MAPPosterior
+            Posterior distribution containing sample history.
         """
-        return Posterior(params=model.init_params(None), model=model)
+        raise NotImplementedError("NumpyroSampler.fit not implemented yet.")

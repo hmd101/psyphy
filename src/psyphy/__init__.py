@@ -46,7 +46,6 @@ Top-level (core models + session):
 Subpackages:
   from psyphy.model import WPPM, Prior, OddityTask, GaussianNoise, StudentTNoise
   from psyphy.inference import MAPOptimizer, LangevinSampler, LaplaceApproximation
-  from psyphy.posterior import Posterior, effective_sample_size, rhat
   from psyphy.acquisition import expected_improvement, upper_confidence_bound, mutual_information
   from psyphy.acquisition import optimize_acqf, optimize_acqf_discrete, optimize_acqf_random
   from psyphy.trial_placement import GridPlacement, SobolPlacement
@@ -95,7 +94,9 @@ from .model.task import OddityTask, OddityTaskConfig
 from .model.wppm import WPPM
 
 # Posterior
-from .posterior.posterior import Posterior
+from .posterior.parameter_posterior import ParameterPosterior
+from .posterior.posterior import MAPPosterior
+from .posterior.predictive_posterior import PredictivePosterior, WPPMPredictivePosterior
 
 # Experiment orchestration
 from .session.experiment_session import ExperimentSession
@@ -112,8 +113,6 @@ __all__ = [
     "MAPOptimizer",
     "LangevinSampler",
     "LaplaceApproximation",
-    # Posterior
-    "Posterior",
     # Session orchestration
     "ExperimentSession",
     # Data handling
