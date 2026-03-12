@@ -16,7 +16,6 @@ MVP implementation:
 - Future: implement underdamped Langevin dynamics (e.g. BAOAB integrator).
 """
 
-
 from psyphy.inference.base import InferenceEngine
 from psyphy.posterior.posterior import MAPPosterior
 
