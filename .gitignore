@@ -9,6 +9,7 @@ build/
 
 *.sh
 
+*.csv
 # MkDocs build output and caches
 site/
 .cache/
