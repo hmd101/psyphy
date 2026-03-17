@@ -40,7 +40,6 @@ from .diagnostics import (
     estimate_threshold_uncertainty,
     parameter_summary,
     print_parameter_summary,
-    q,
 )
 from .math import chebyshev_basis
 
