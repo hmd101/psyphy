@@ -6,12 +6,6 @@
 
 ::: psyphy.utils
 
----
-
-## RNG
----
-
-::: psyphy.utils.rng
 
 ---
 
@@ -19,13 +13,5 @@
 ---
 
 ::: psyphy.utils.math
-
----
-
----
-## Stimulus candidates
----
-
-::: psyphy.utils.candidates
 
 ---
