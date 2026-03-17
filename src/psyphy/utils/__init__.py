@@ -41,27 +41,13 @@ from .diagnostics import (
     parameter_summary,
     print_parameter_summary,
 )
-from .math import chebyshev_basis, mahalanobis_distance
-from .rng import seed, split
+from .math import chebyshev_basis
 
 __all__ = [
-    # bootstrap
-    "bootstrap_predictions",
-    "bootstrap_statistic",
-    "bootstrap_compare_models",
     # candidates
     "grid_candidates",
     "sobol_candidates",
     "custom_candidates",
-    # diagnostics
-    "parameter_summary",
-    "print_parameter_summary",
-    "estimate_threshold_uncertainty",
-    "estimate_threshold_contour_uncertainty",
     # math
     "chebyshev_basis",
-    "mahalanobis_distance",
-    # rng
-    "seed",
-    "split",
 ]
