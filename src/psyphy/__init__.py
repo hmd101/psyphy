@@ -50,7 +50,6 @@ Subpackages:
   from psyphy.acquisition import optimize_acqf, optimize_acqf_discrete, optimize_acqf_random
   from psyphy.trial_placement import GridPlacement, SobolPlacement
   from psyphy.utils import grid_candidates, sobol_candidates, custom_candidates, chebyshev_basis
-  from psyphy.utils import bootstrap_predictions, bootstrap_statistic, bootstrap_compare_models
 
 Data flow
 ---------
