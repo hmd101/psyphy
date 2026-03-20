@@ -85,7 +85,7 @@ class WPPM(Model):
         online_config: OnlineConfig | None = None,
         input_dim: int = 2,
         extra_dims: int = 1,
-        variance_scale: float = 1e-9,
+        variance_scale: float = 4e-3,
         decay_rate: float = 1.0,
         diag_term: float = 1e-6,
         **model_kwargs: Any,
