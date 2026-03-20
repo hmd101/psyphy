@@ -10,10 +10,10 @@ used by acquisition functions for Bayesian optimization.
 Design
 ------
 PredictivePosterior wraps a ParameterPosterior and computes predictions via:
-    E[f(X*) | data] ≈ (1/N) Σᵢ f(X*; θᵢ) where θᵢ ~ p(θ | data)
+    E[f(X*) | data] \approx (1/N) Σᵢ f(X*; θ_i) where θ_i ~ p(θ | data)
 
 This separates concerns:
-- ParameterPosterior: represents uncertainty over θ (research)
+- ParameterPosterior: represents uncertainty over θ
 - PredictivePosterior: represents uncertainty over f(X*) (decision-making)
 """
 
