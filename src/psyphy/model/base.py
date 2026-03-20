@@ -106,6 +106,7 @@ class Model(ABC):
     Abstract base class for psychophysical models.
 
     - fit(X, y) --> train model
+
     - posterior(X) --> get predictions
     - condition_on_observations(X, y) --> online updates
 
