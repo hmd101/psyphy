@@ -15,8 +15,8 @@ import pytest
 
 from psyphy.inference import MAPOptimizer
 from psyphy.model import WPPM, OnlineConfig, Prior
+from psyphy.model.likelihood import OddityTask
 from psyphy.model.noise import GaussianNoise
-from psyphy.model.task import OddityTask
 from psyphy.posterior import ParameterPosterior, PredictivePosterior
 
 
@@ -29,7 +29,7 @@ class TestModelFit:
         return WPPM(
             input_dim=2,
             prior=Prior(input_dim=2, basis_degree=3),
-            task=OddityTask(),
+            likelihood=OddityTask(),
             noise=GaussianNoise(),
         )
 
@@ -41,11 +41,11 @@ class TestModelFit:
         key, subkey = jr.split(key)
         refs = jr.normal(subkey, (n, 2))
         key, subkey = jr.split(key)
-        probes = refs + jr.normal(subkey, (n, 2)) * 0.3
+        comparisons = refs + jr.normal(subkey, (n, 2)) * 0.3
         y = jnp.ones(n, dtype=int)  # All correct
 
         # Stack into (n, 2, input_dim) format
-        X = jnp.stack([refs, probes], axis=1)
+        X = jnp.stack([refs, comparisons], axis=1)
         return X, y
 
     def test_fit_returns_self(self, model, data_arrays):
@@ -104,7 +104,7 @@ class TestModelPosterior:
         model = WPPM(
             input_dim=2,
             prior=Prior(input_dim=2, basis_degree=3),
-            task=OddityTask(),
+            likelihood=OddityTask(),
             noise=GaussianNoise(),
         )
 
@@ -114,9 +114,9 @@ class TestModelPosterior:
         key, subkey = jr.split(key)
         refs = jr.normal(subkey, (n, 2))
         key, subkey = jr.split(key)
-        probes = refs + jr.normal(subkey, (n, 2)) * 0.3
+        comparisons = refs + jr.normal(subkey, (n, 2)) * 0.3
         y = jnp.ones(n, dtype=int)
-        X = jnp.stack([refs, probes], axis=1)
+        X = jnp.stack([refs, comparisons], axis=1)
 
         model.fit(X, y, inference="map", inference_config={"steps": 20})
         return model
@@ -126,7 +126,7 @@ class TestModelPosterior:
         model = WPPM(
             input_dim=2,
             prior=Prior(input_dim=2, basis_degree=3),
-            task=OddityTask(),
+            likelihood=OddityTask(),
             noise=GaussianNoise(),
         )
         with pytest.raises(RuntimeError, match="Must call fit"):
@@ -135,8 +135,8 @@ class TestModelPosterior:
     def test_posterior_predictive_default(self, fitted_model):
         """posterior() returns PredictivePosterior by default."""
         X_test = jnp.array([[0.0, 0.0], [1.0, 1.0]])
-        probes = jnp.array([[0.5, 0.0], [1.5, 1.0]])
-        post = fitted_model.posterior(X_test, probes=probes)
+        comparisons = jnp.array([[0.5, 0.0], [1.5, 1.0]])
+        post = fitted_model.posterior(X_test, comparisons=comparisons)
         assert isinstance(post, PredictivePosterior)
 
     def test_posterior_parameter_kind(self, fitted_model):
@@ -152,8 +152,8 @@ class TestModelPosterior:
     def test_posterior_predictive_has_correct_shape(self, fitted_model):
         """Predictive posterior has correct shape."""
         X_test = jnp.array([[0.0, 0.0], [1.0, 1.0], [2.0, 2.0]])
-        probes = jnp.array([[0.5, 0.0], [1.5, 1.0], [2.5, 2.0]])
-        post = fitted_model.posterior(X_test, probes=probes)
+        comparisons = jnp.array([[0.5, 0.0], [1.5, 1.0], [2.5, 2.0]])
+        post = fitted_model.posterior(X_test, comparisons=comparisons)
 
         mean = post.mean
         var = post.variance
@@ -171,7 +171,7 @@ class TestConditionOnObservations:
         return WPPM(
             input_dim=2,
             prior=Prior(input_dim=2, basis_degree=3),
-            task=OddityTask(),
+            likelihood=OddityTask(),
             noise=GaussianNoise(),
             online_config=OnlineConfig(strategy="full", refit_interval=1),
         )
@@ -184,9 +184,9 @@ class TestConditionOnObservations:
         key, subkey = jr.split(key)
         refs = jr.normal(subkey, (n, 2))
         key, subkey = jr.split(key)
-        probes = refs + jr.normal(subkey, (n, 2)) * 0.3
+        comparisons = refs + jr.normal(subkey, (n, 2)) * 0.3
         y = jnp.ones(n, dtype=int)
-        X = jnp.stack([refs, probes], axis=1)
+        X = jnp.stack([refs, comparisons], axis=1)
         return X, y
 
     def test_condition_returns_new_instance(self, model, initial_data):
@@ -273,7 +273,7 @@ class TestSlidingWindowStrategy:
         model = WPPM(
             input_dim=2,
             prior=Prior(input_dim=2, basis_degree=3),
-            task=OddityTask(),
+            likelihood=OddityTask(),
             noise=GaussianNoise(),
             online_config=OnlineConfig(
                 strategy="sliding_window",
@@ -288,9 +288,9 @@ class TestSlidingWindowStrategy:
         key, subkey = jr.split(key)
         refs = jr.normal(subkey, (n, 2))
         key, subkey = jr.split(key)
-        probes = refs + jr.normal(subkey, (n, 2)) * 0.3
+        comparisons = refs + jr.normal(subkey, (n, 2)) * 0.3
         y = jnp.ones(n, dtype=int)
-        X = jnp.stack([refs, probes], axis=1)
+        X = jnp.stack([refs, comparisons], axis=1)
 
         model.fit(X, y, inference="map", inference_config={"steps": 10})
 
@@ -313,7 +313,7 @@ class TestIntegrationWorkflow:
         model = WPPM(
             input_dim=2,
             prior=Prior(input_dim=2, basis_degree=3),
-            task=OddityTask(),
+            likelihood=OddityTask(),
             noise=GaussianNoise(),
         )
 
@@ -323,9 +323,9 @@ class TestIntegrationWorkflow:
         key, subkey = jr.split(key)
         refs = jr.normal(subkey, (n, 2))
         key, subkey = jr.split(key)
-        probes = refs + jr.normal(subkey, (n, 2)) * 0.4
+        comparisons = refs + jr.normal(subkey, (n, 2)) * 0.4
         y = jnp.ones(n, dtype=int)
-        X = jnp.stack([refs, probes], axis=1)
+        X = jnp.stack([refs, comparisons], axis=1)
 
         # 3. Fit model (new API)
         model.fit(X, y, inference="map", inference_config={"steps": 50})
@@ -333,7 +333,7 @@ class TestIntegrationWorkflow:
         # 4. Get predictive posterior
         X_test = jnp.array([[0.0, 0.0], [1.0, 1.0]])
         probes_test = jnp.array([[0.3, 0.0], [1.3, 1.0]])
-        pred_post = model.posterior(X_test, probes=probes_test)
+        pred_post = model.posterior(X_test, comparisons=probes_test)
 
         # 5. Make predictions
         mean = pred_post.mean
@@ -349,7 +349,7 @@ class TestIntegrationWorkflow:
         model = WPPM(
             input_dim=2,
             prior=Prior(input_dim=2, basis_degree=3),
-            task=OddityTask(),
+            likelihood=OddityTask(),
             noise=GaussianNoise(),
             online_config=OnlineConfig(
                 strategy="sliding_window",
@@ -364,9 +364,9 @@ class TestIntegrationWorkflow:
         key, subkey = jr.split(key)
         refs = jr.normal(subkey, (n, 2))
         key, subkey = jr.split(key)
-        probes = refs + jr.normal(subkey, (n, 2)) * 0.3
+        comparisons = refs + jr.normal(subkey, (n, 2)) * 0.3
         y = jnp.ones(n, dtype=int)
-        X = jnp.stack([refs, probes], axis=1)
+        X = jnp.stack([refs, comparisons], axis=1)
 
         model.fit(X, y, inference="map", inference_config={"steps": 20})
 
@@ -387,6 +387,6 @@ class TestIntegrationWorkflow:
         # 5. Can still make predictions
         X_test = jnp.array([[0.0, 0.0]])
         probes_test = jnp.array([[0.3, 0.0]])
-        pred_post = model.posterior(X_test, probes=probes_test)
+        pred_post = model.posterior(X_test, comparisons=probes_test)
         mean = pred_post.mean
         assert mean.shape == (1,)

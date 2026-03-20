@@ -52,7 +52,7 @@ def expected_improvement(
     Examples
     --------
     >>> # Basic usage
-    >>> posterior = model.posterior(X_candidates, probes=probes)
+    >>> posterior = model.posterior(X_candidates, comparisons=comparisons)
     >>> best_f = jnp.max(y_observed)
     >>> ei = expected_improvement(posterior, best_f)
     >>> X_next = X_candidates[jnp.argmax(ei)]

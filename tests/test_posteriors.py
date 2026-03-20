@@ -31,7 +31,7 @@ class TestParameterPosterior:
         return WPPM(
             input_dim=2,
             prior=Prior(input_dim=2, basis_degree=3),
-            task=OddityTask(),
+            likelihood=OddityTask(),
             noise=GaussianNoise(),
         )
 
@@ -91,7 +91,7 @@ class TestPredictivePosterior:
         return WPPM(
             input_dim=2,
             prior=Prior(input_dim=2, basis_degree=3),
-            task=OddityTask(),
+            likelihood=OddityTask(),
             noise=GaussianNoise(),
         )
 
@@ -115,9 +115,9 @@ class TestPredictivePosterior:
     def predictive_posterior(self, param_posterior):
         """Create predictive posterior."""
         X_test = jnp.array([[0.0, 0.0], [1.0, 1.0], [2.0, 2.0]])
-        probes = jnp.array([[0.5, 0.0], [1.5, 1.0], [2.5, 2.0]])
+        comparisons = jnp.array([[0.5, 0.0], [1.5, 1.0], [2.5, 2.0]])
         return WPPMPredictivePosterior(
-            param_posterior, X_test, probes=probes, n_samples=10
+            param_posterior, X_test, comparisons=comparisons, n_samples=10
         )
 
     def test_is_predictive_posterior(self, predictive_posterior):
@@ -179,9 +179,9 @@ class TestPredictivePosterior:
             assert jnp.all(eigvals >= -1e-6)  # Numerically PSD
 
     def test_no_probes_raises(self, param_posterior):
-        """Creating predictive posterior without probes raises NotImplementedError."""
+        """Creating predictive posterior without comparisons raises NotImplementedError."""
         X_test = jnp.array([[0.0, 0.0]])
-        pred_post = WPPMPredictivePosterior(param_posterior, X_test, probes=None)
+        pred_post = WPPMPredictivePosterior(param_posterior, X_test, comparisons=None)
 
         with pytest.raises(NotImplementedError, match="Threshold prediction"):
             _ = pred_post.mean
@@ -196,7 +196,7 @@ class TestIntegration:
         model = WPPM(
             input_dim=2,
             prior=Prior(input_dim=2, basis_degree=3),
-            task=OddityTask(),
+            likelihood=OddityTask(),
             noise=GaussianNoise(),
         )
 
@@ -215,8 +215,10 @@ class TestIntegration:
 
         # 5. Create PredictivePosterior
         X_test = jnp.array([[0.0, 0.0], [1.0, 1.0]])
-        probes = jnp.array([[0.3, 0.0], [1.3, 1.0]])
-        pred_post = WPPMPredictivePosterior(param_post, X_test, probes, n_samples=20)
+        comparisons = jnp.array([[0.3, 0.0], [1.3, 1.0]])
+        pred_post = WPPMPredictivePosterior(
+            param_post, X_test, comparisons, n_samples=20
+        )
 
         # 6. Get predictions
         mean = pred_post.mean

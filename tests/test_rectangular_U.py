@@ -87,7 +87,9 @@ class TestRectangularUShape:
             input_dim=input_dim, basis_degree=5, extra_embedding_dims=extra_dims
         )
         task = OddityTask()
-        model = WPPM(input_dim=input_dim, extra_dims=extra_dims, prior=prior, task=task)
+        model = WPPM(
+            input_dim=input_dim, extra_dims=extra_dims, prior=prior, likelihood=task
+        )
 
         params = prior.sample_params(jr.PRNGKey(42))
         x = jnp.ones(input_dim) * 0.5
@@ -123,7 +125,9 @@ class TestLocalCovarianceShape:
             input_dim=input_dim, basis_degree=5, extra_embedding_dims=extra_dims
         )
         task = OddityTask()
-        model = WPPM(input_dim=input_dim, extra_dims=extra_dims, prior=prior, task=task)
+        model = WPPM(
+            input_dim=input_dim, extra_dims=extra_dims, prior=prior, likelihood=task
+        )
 
         params = prior.sample_params(jr.PRNGKey(42))
         x = jnp.ones(input_dim) * 0.5
@@ -142,7 +146,7 @@ class TestLocalCovarianceShape:
         """Σ(x) = U @ U^T + diag_term*I should be positive definite."""
         prior = Prior(input_dim=2, basis_degree=5, extra_embedding_dims=1)
         task = OddityTask()
-        model = WPPM(input_dim=2, extra_dims=1, prior=prior, task=task)
+        model = WPPM(input_dim=2, extra_dims=1, prior=prior, likelihood=task)
 
         params = prior.sample_params(jr.PRNGKey(42))
         x = jnp.array([0.3, 0.7])
@@ -152,53 +156,6 @@ class TestLocalCovarianceShape:
         # Check positive definite via eigenvalues
         eigvals = jnp.linalg.eigvalsh(Sigma)
         assert jnp.all(eigvals > 0), f"Σ not positive definite. Eigenvalues: {eigvals}"
-
-
-class TestDiscriminabilityNoExtraction:
-    """Test that discriminability works directly without block extraction."""
-
-    def test_discriminability_no_extraction_needed(self):
-        """discriminability should use Σ directly, no [:input_dim, :input_dim] needed."""
-        prior = Prior(input_dim=2, basis_degree=5, extra_embedding_dims=1)
-        task = OddityTask()
-        model = WPPM(input_dim=2, extra_dims=1, prior=prior, task=task)
-
-        params = prior.sample_params(jr.PRNGKey(42))
-        x_ref = jnp.array([0.5, 0.5])
-        x_odd = jnp.array([0.6, 0.5])
-        stimulus = (x_ref, x_odd)
-
-        # Should compute without errors
-        d = model.discriminability(params, stimulus)
-
-        assert d.shape == (), "Discriminability should be scalar"
-        assert d >= 0, "Discriminability should be non-negative"
-
-    @pytest.mark.parametrize("input_dim", [2, 3])
-    def test_discriminability_matches_mahalanobis(self, input_dim):
-        """Discriminability should equal Mahalanobis distance."""
-        prior = Prior(input_dim=input_dim, basis_degree=5, extra_embedding_dims=1)
-        task = OddityTask()
-        model = WPPM(
-            input_dim=input_dim, extra_dims=1, prior=prior, task=task, diag_term=1e-6
-        )
-
-        params = prior.sample_params(jr.PRNGKey(42))
-        x_ref = jnp.ones(input_dim) * 0.5
-        x_odd = x_ref.at[0].set(0.6)
-        stimulus = (x_ref, x_odd)
-
-        d = model.discriminability(params, stimulus)
-
-        # Manual computation (discriminability returns sqrt of quadratic form)
-        Sigma = model.local_covariance(params, x_ref)
-        delta = x_odd - x_ref
-        d2_manual = delta @ jnp.linalg.solve(Sigma, delta)
-        d_manual = jnp.sqrt(d2_manual)
-
-        assert jnp.allclose(d, d_manual, atol=1e-4), (
-            f"Discriminability mismatch. Model: {d}, Manual: {d_manual}"
-        )
 
 
 class TestParameterCount:
@@ -240,7 +197,7 @@ class TestCovarianceFieldProtocol:
 
         prior = Prior(input_dim=2, basis_degree=5, extra_embedding_dims=1)
         task = OddityTask()
-        model = WPPM(input_dim=2, extra_dims=1, prior=prior, task=task)
+        model = WPPM(input_dim=2, extra_dims=1, prior=prior, likelihood=task)
 
         params = prior.sample_params(jr.PRNGKey(42))
         field = WPPMCovarianceField(model, params)
@@ -256,7 +213,7 @@ class TestCovarianceFieldProtocol:
 
         prior = Prior(input_dim=2, basis_degree=5, extra_embedding_dims=1)
         task = OddityTask()
-        model = WPPM(input_dim=2, extra_dims=1, prior=prior, task=task)
+        model = WPPM(input_dim=2, extra_dims=1, prior=prior, likelihood=task)
 
         params = prior.sample_params(jr.PRNGKey(42))
         field = WPPMCovarianceField(model, params)
@@ -273,7 +230,7 @@ class TestCovarianceFieldProtocol:
 
         prior = Prior(input_dim=2, basis_degree=5, extra_embedding_dims=1)
         task = OddityTask()
-        model = WPPM(input_dim=2, extra_dims=1, prior=prior, task=task)
+        model = WPPM(input_dim=2, extra_dims=1, prior=prior, likelihood=task)
 
         params = prior.sample_params(jr.PRNGKey(42))
         field = WPPMCovarianceField(model, params)

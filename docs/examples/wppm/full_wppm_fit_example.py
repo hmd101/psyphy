@@ -187,7 +187,7 @@ truth_model = WPPM(
     input_dim=input_dim,
     extra_dims=extra_dims,
     prior=truth_prior,
-    task=task,  # oddity task ("pick the odd-one out among 3 stimuli")
+    likelihood=task,  # oddity task ("pick the odd-one out among 3 stimuli")
     noise=noise,  # (Gaussian noise)
     diag_term=diag_term,  # ensure positive-definite covariances
 )
@@ -217,7 +217,7 @@ ref_points = jnp.stack(jnp.meshgrid(ref_grid, ref_grid), axis=-1).reshape(-1, 2)
 
 # --- Stimulus design: covariance-scaled probe displacements ---
 #
-# Rather than sampling probes at a fixed Euclidean radius, we scale the probe
+# Rather than sampling comparisons at a fixed Euclidean radius, we scale the probe
 # displacement by sqrt(Σ_ref). This tends to equalize trial difficulty across
 # space (roughly constant Mahalanobis radius).
 
@@ -241,7 +241,7 @@ unit_dirs = jnp.stack([jnp.cos(angles), jnp.sin(angles)], axis=1)  # (N, 2)
 
 # displacement scale/orientation follows the local ellipse
 # (constant-ish Mahalanobis radius).
-# a constant Mahalanobis radius for generating probes around reference points
+# a constant Mahalanobis radius for generating comparisons around reference points
 # MAHAL_RADIUS * chol(Sigma_ref) @ unit_dir
 MAHAL_RADIUS = 2.8
 
@@ -304,7 +304,7 @@ prior = Prior(
 model = WPPM(
     input_dim=input_dim,
     prior=prior,
-    task=task,
+    likelihood=task,
     noise=noise,  # Gaussian
     diag_term=1e-4,  # ensure positive-definite covariances
 )

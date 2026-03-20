@@ -21,9 +21,9 @@ Typical usage
 
 from .base import Model, OnlineConfig
 from .covariance_field import CovarianceField, WPPMCovarianceField
+from .likelihood import OddityTask, OddityTaskConfig, TaskLikelihood
 from .noise import GaussianNoise, StudentTNoise
 from .prior import Prior
-from .task import OddityTask, OddityTaskConfig, TaskLikelihood
 from .wppm import WPPM
 
 __all__ = [

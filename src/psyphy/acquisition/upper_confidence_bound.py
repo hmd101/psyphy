@@ -55,7 +55,7 @@ def upper_confidence_bound(
     Examples
     --------
     >>> # Balanced exploration-exploitation
-    >>> posterior = model.posterior(X_candidates, probes=probes)
+    >>> posterior = model.posterior(X_candidates, comparisons=comparisons)
     >>> ucb = upper_confidence_bound(posterior, beta=2.0)
     >>> X_next = X_candidates[jnp.argmax(ucb)]
 

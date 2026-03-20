@@ -30,7 +30,7 @@ class ParameterPosterior(Protocol):
     Protocol for posterior distributions over model parameters p(θ | data).
 
     Returned by InferenceEngine.fit(model, data).
-    Used for research workflows: diagnostics, parameter sampling, uncertainty.
+    Used for diagnostics, parameter sampling, uncertainty.
     """
 
     @property
@@ -58,7 +58,7 @@ class ParameterPosterior(Protocol):
         Returns
         -------
         Model
-            The WPPM or other model instance used for predictions.
+            The WPPM or (other model) instance used for predictions.
         """
         ...
 
@@ -77,7 +77,7 @@ class ParameterPosterior(Protocol):
         -------
         dict
             Parameter PyTree with leading dimension n.
-            Example: {"log_diag": jnp.ndarray with shape (n, input_dim)}
+
 
         Notes
         -----

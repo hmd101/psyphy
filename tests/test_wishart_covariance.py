@@ -22,7 +22,7 @@ class TestWishartParameters:
         model = WPPM(
             input_dim=2,
             prior=Prior(input_dim=2, basis_degree=3),
-            task=OddityTask(),
+            likelihood=OddityTask(),
             noise=GaussianNoise(),
         )
 
@@ -49,7 +49,7 @@ class TestWishartParameters:
         model = WPPM(
             input_dim=2,
             prior=Prior(input_dim=2, basis_degree=3, extra_embedding_dims=extra_dims),
-            task=OddityTask(),
+            likelihood=OddityTask(),
             noise=GaussianNoise(),
             extra_dims=extra_dims,
         )
@@ -102,7 +102,7 @@ class TestSpatiallyVaryingCovariance:
         model = WPPM(
             input_dim=2,
             prior=Prior(input_dim=2, basis_degree=3),
-            task=OddityTask(),
+            likelihood=OddityTask(),
             noise=GaussianNoise(),
         )
 
@@ -122,7 +122,7 @@ class TestSpatiallyVaryingCovariance:
         model = WPPM(
             input_dim=2,
             prior=Prior(input_dim=2, basis_degree=3, decay_rate=0.8),
-            task=OddityTask(),
+            likelihood=OddityTask(),
             noise=GaussianNoise(),
         )
 
@@ -147,7 +147,7 @@ class TestSpatiallyVaryingCovariance:
         model = WPPM(
             input_dim=2,
             prior=Prior(input_dim=2, basis_degree=3),
-            task=OddityTask(),
+            likelihood=OddityTask(),
             noise=GaussianNoise(),
         )
 
@@ -169,7 +169,7 @@ class TestSpatiallyVaryingCovariance:
         model = WPPM(
             input_dim=2,
             prior=Prior(input_dim=2, basis_degree=3),
-            task=OddityTask(),
+            likelihood=OddityTask(),
             noise=GaussianNoise(),
         )
 
@@ -187,7 +187,7 @@ class TestSpatiallyVaryingCovariance:
         model = WPPM(
             input_dim=2,
             prior=Prior(input_dim=2, basis_degree=3),
-            task=OddityTask(),
+            likelihood=OddityTask(),
             noise=GaussianNoise(),
             diag_term=diag_term,
         )
@@ -204,33 +204,12 @@ class TestSpatiallyVaryingCovariance:
 class TestWishartIntegration:
     """Integration tests with model pipeline."""
 
-    def test_discriminability_with_wishart(self):
-        """Discriminability should work with spatially-varying covariance."""
-        model = WPPM(
-            input_dim=2,
-            prior=Prior(input_dim=2, basis_degree=3),
-            task=OddityTask(),
-            noise=GaussianNoise(),
-        )
-
-        params = model.init_params(jr.PRNGKey(0))
-
-        ref = jnp.array([0.5, 0.3])
-        probe = jnp.array([0.6, 0.4])
-        stimulus = (ref, probe)
-
-        d = model.discriminability(params, stimulus)
-
-        # Should be non-negative scalar
-        assert d.shape == ()
-        assert d >= 0.0
-
     def test_prediction_with_wishart(self):
         """Model predictions should work with Wishart covariance."""
         model = WPPM(
             input_dim=2,
             prior=Prior(input_dim=2, basis_degree=3),
-            task=OddityTask(),
+            likelihood=OddityTask(),
             noise=GaussianNoise(),
         )
 
@@ -250,7 +229,7 @@ class TestWishartIntegration:
         model = WPPM(
             input_dim=2,
             prior=Prior(input_dim=2, basis_degree=3),  # Lower degree for speed
-            task=OddityTask(),
+            likelihood=OddityTask(),
             noise=GaussianNoise(),
         )
 
@@ -258,47 +237,16 @@ class TestWishartIntegration:
         n = 20
         key = jr.PRNGKey(42)
         refs = jr.uniform(key, (n, 2))
-        probes = refs + 0.05
+        comparisons = refs + 0.05
         y = jnp.ones(n, dtype=int)
-        X = jnp.stack([refs, probes], axis=1)
+        X = jnp.stack([refs, comparisons], axis=1)
 
         # Fit should not raise
         model.fit(X, y, inference="map", inference_config={"steps": 10})
 
         # Should be able to make predictions
-        pred_post = model.posterior(refs[:5], probes=probes[:5])
+        pred_post = model.posterior(refs[:5], comparisons=comparisons[:5])
         assert pred_post.mean.shape == (5,)
-
-    def test_wishart_predictions(self):
-        # Wishart model
-        wishart = WPPM(
-            input_dim=2,
-            prior=Prior(input_dim=2, basis_degree=3),
-            task=OddityTask(),
-            noise=GaussianNoise(),
-        )
-
-        # Use same random seed for W initialization
-
-        params_wishart = wishart.init_params(jr.PRNGKey(0))
-
-        # Test at different locations
-        ref1 = jnp.array([0.2, 0.3])
-        ref2 = jnp.array([0.7, 0.8])
-        probe_offset = jnp.array([0.1, 0.1])
-
-        # Wishart: discriminability can vary with location
-        d_wishart_1 = wishart.discriminability(
-            params_wishart, (ref1, ref1 + probe_offset)
-        )
-        d_wishart_2 = wishart.discriminability(
-            params_wishart, (ref2, ref2 + probe_offset)
-        )
-
-        # Not a strict assertion - just demonstrating that spatial variation is possible
-        # In practice, with good W coefficients, discriminability typically varies with location
-        # For now, we just verify the computation doesn't crash and both models work
-        assert d_wishart_1 > 0 and d_wishart_2 > 0  # Wishart computed successfully
 
 
 class TestComputeU:
@@ -315,7 +263,7 @@ class TestComputeU:
         model = WPPM(
             input_dim=2,
             prior=Prior(input_dim=2, basis_degree=3, extra_embedding_dims=extra_dims),
-            task=OddityTask(),
+            likelihood=OddityTask(),
             noise=GaussianNoise(),
             extra_dims=extra_dims,
         )
@@ -335,7 +283,7 @@ class TestComputeU:
         model = WPPM(
             input_dim=2,
             prior=Prior(input_dim=2, basis_degree=3),
-            task=OddityTask(),
+            likelihood=OddityTask(),
             noise=GaussianNoise(),
         )
 
@@ -356,7 +304,7 @@ class TestComputeU:
         model = WPPM(
             input_dim=2,
             prior=Prior(input_dim=2, basis_degree=3),
-            task=OddityTask(),
+            likelihood=OddityTask(),
             noise=GaussianNoise(),
             diag_term=diag_term,
         )

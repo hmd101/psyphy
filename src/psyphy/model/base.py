@@ -276,7 +276,7 @@ class Model(ABC):
         self,
         X: jnp.ndarray | None = None,
         *,
-        probes: jnp.ndarray | None = None,
+        comparisons: jnp.ndarray | None = None,
         kind: str = "predictive",
     ) -> PredictivePosterior | ParameterPosterior:
         """
@@ -287,8 +287,8 @@ class Model(ABC):
         X : jnp.ndarray | None
             Test stimuli (references), shape (n_test, input_dim).
             Required for predictive posteriors, optional for parameter posteriors.
-        probes : jnp.ndarray | None
-            Test probes, shape (n_test, input_dim).
+        comparisons : jnp.ndarray | None
+            Test comparisons, shape (n_test, input_dim).
             Required for predictive posteriors.
         kind : {"predictive", "parameter"}
             Type of posterior to return:
@@ -308,7 +308,7 @@ class Model(ABC):
         Examples
         --------
         >>> # For acquisition functions
-        >>> pred_post = model.posterior(X_candidates, probes=X_probes)
+        >>> pred_post = model.posterior(X_candidates, comparisons=X_probes)
         >>> mean = pred_post.mean
         >>> var = pred_post.variance
 
@@ -326,7 +326,7 @@ class Model(ABC):
                 raise ValueError("X is required for predictive posteriors")
             from psyphy.posterior import WPPMPredictivePosterior
 
-            return WPPMPredictivePosterior(self._posterior, X, probes=probes)
+            return WPPMPredictivePosterior(self._posterior, X, comparisons=comparisons)
         else:
             raise ValueError(
                 f"Unknown kind: '{kind}'. Use 'predictive' or 'parameter'."
@@ -335,7 +335,7 @@ class Model(ABC):
     def predict_with_params(
         self,
         X: jnp.ndarray,
-        probes: jnp.ndarray | None,
+        comparisons: jnp.ndarray | None,
         params: dict[str, jnp.ndarray],
     ) -> jnp.ndarray:
         """
@@ -353,7 +353,7 @@ class Model(ABC):
         ----------
         X : jnp.ndarray, shape (n_test, input_dim)
             Test stimuli (references)
-        probes : jnp.ndarray, shape (n_test, input_dim), optional
+        comparisons : jnp.ndarray, shape (n_test, input_dim), optional
             Probe stimuli (for discrimination tasks)
         params : dict[str, jnp.ndarray]
             Specific parameter values to evaluate at.
@@ -372,7 +372,7 @@ class Model(ABC):
         >>>
         >>> # Evaluate at first parameter sample
         >>> params_0 = {k: v[0] for k, v in samples.items()}
-        >>> predictions = model.predict_with_params(X_test, probes, params_0)
+        >>> predictions = model.predict_with_params(X_test, comparisons, params_0)
         >>>
         >>> # Use for threshold uncertainty estimation
         >>> threshold_locs = []
@@ -387,13 +387,13 @@ class Model(ABC):
         This bypasses the posterior marginalization. For acquisition functions,
         always use .posterior() which properly accounts for parameter uncertainty.
         """
-        return self._forward(X, probes, params)
+        return self._forward(X, comparisons, params)
 
     @abstractmethod
     def _forward(
         self,
         X: jnp.ndarray,
-        probes: jnp.ndarray | None,
+        comparisons: jnp.ndarray | None,
         params: dict[str, jnp.ndarray],
     ) -> jnp.ndarray:
         """
@@ -405,7 +405,7 @@ class Model(ABC):
         ----------
         X : jnp.ndarray, shape (n_test, input_dim)
             Test stimuli
-        probes : jnp.ndarray | None, shape (n_test, input_dim)
+        comparisons : jnp.ndarray | None, shape (n_test, input_dim)
             Probe stimuli (None for detection tasks)
         params : dict[str, jnp.ndarray]
             Model parameters

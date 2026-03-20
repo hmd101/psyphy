@@ -28,7 +28,7 @@ Core design
    - WPPM: structured prior over basis weights and
      decay_rate-controlled covariance fields.
 
-3. TaskLikelihood (model/task.py):
+3. TaskLikelihood (model/likelihood.py):
    - Encodes the psychophysical decision rule.
    - WPPM: loglik and predict implemented via Monte Carlo
      observer simulations, using the noise model explicitly.
@@ -87,9 +87,9 @@ from .inference.laplace import LaplaceApproximation
 
 # Inference
 from .inference.map_optimizer import MAPOptimizer
+from .model.likelihood import OddityTask, OddityTaskConfig
 from .model.noise import GaussianNoise, StudentTNoise
 from .model.prior import Prior
-from .model.task import OddityTask, OddityTaskConfig
 from .model.wppm import WPPM
 
 # Posterior

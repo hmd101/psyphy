@@ -1,4 +1,4 @@
-"""psyphy.model.task
+"""psyphy.model.likelihood
 
 Task likelihoods for psychophysical experiments.
 
@@ -23,7 +23,7 @@ The public API is:
 Connections
 -----------
 - WPPM delegates to the task to compute likelihood.
-- Noise models are passed through so tasks can simulate observer responses.
+- Noise models are passed through so likelihoods can simulate observer responses.
 """
 
 from __future__ import annotations
@@ -124,17 +124,22 @@ class OddityTask(TaskLikelihood):
 
     Examples
     --------
-    >>> from psyphy.model.task import OddityTask
-    >>> from psyphy.model.task import OddityTaskConfig
+    >>> from psyphy.model.likelihood import OddityTask
+    >>> from psyphy.model.likelihood import OddityTaskConfig
     >>> from psyphy.model import WPPM, Prior
     >>> from psyphy.model.noise import GaussianNoise
     >>> import jax.numpy as jnp
     >>> import jax.random as jr
     >>>
     >>> # Create task and model (task-owned MC controls)
-    >>> task = OddityTask(config=OddityTaskConfig(num_samples=1000, bandwidth=1e-2))
+    >>> likelihood = OddityTask(
+    ...     config=OddityTaskConfig(num_samples=1000, bandwidth=1e-2)
+    ... )
     >>> model = WPPM(
-    ...     input_dim=2, prior=Prior(input_dim=2), task=task, noise=GaussianNoise()
+    ...     input_dim=2,
+    ...     prior=Prior(input_dim=2),
+    ...     likelihood=task,
+    ...     noise=GaussianNoise(),
     ... )
     >>> params = model.init_params(jr.PRNGKey(0))
 
@@ -142,7 +147,7 @@ class OddityTask(TaskLikelihood):
     >>> from psyphy.data.dataset import ResponseData
     >>> data = ResponseData()
     >>> data.add_trial(ref, comparison, resp=1)
-    >>> ll_mc = task.loglik(params, data, model, model.noise, key=jr.PRNGKey(42))
+    >>> ll_mc = likelihood.loglik(params, data, model, model.noise, key=jr.PRNGKey(42))
     >>> print(f"Log-likelihood (MC): {ll_mc:.4f}")
     """
 
@@ -280,7 +285,7 @@ class OddityTask(TaskLikelihood):
             >>> import jax.numpy as jnp
             >>> import jax.random as jr
             >>> from psyphy.model import WPPM, Prior
-            >>> from psyphy.model.task import OddityTask
+            >>> from psyphy.model.likelihood import OddityTask
             >>> from psyphy.model.noise import GaussianNoise
             >>> from psyphy.data.dataset import ResponseData
             >>>
@@ -288,7 +293,7 @@ class OddityTask(TaskLikelihood):
             >>> model = WPPM(
             ...     input_dim=2,
             ...     prior=Prior(input_dim=2, basis_degree=3),
-            ...     task=OddityTask(),
+            ...     likelihood=OddityTask(),
             ...     noise=GaussianNoise(sigma=0.03),
             ... )
             >>> params = model.init_params(jr.PRNGKey(0))
@@ -299,7 +304,7 @@ class OddityTask(TaskLikelihood):
             ...     ref=jnp.array([0.0, 0.0]), comparison=jnp.array([0.3, 0.2]), resp=1
             ... )
             >>>
-            >>> loglik = model.task.loglik(
+            >>> loglik = model.likelihood.loglik(
             ...     params,
             ...     data,
             ...     model,

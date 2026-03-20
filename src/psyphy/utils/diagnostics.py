@@ -23,7 +23,7 @@ Examples
 >>> # Threshold uncertainty
 >>> from psyphy.utils.diagnostics import estimate_threshold_uncertainty
 >>> threshold_locs, mean_loc, std_loc = estimate_threshold_uncertainty(
-...     model, X_grid, probes, n_samples=200, key=jr.PRNGKey(0)
+...     model, X_grid, comparisons, n_samples=200, key=jr.PRNGKey(0)
 ... )
 """
 
@@ -159,7 +159,7 @@ def print_parameter_summary(
 def estimate_threshold_uncertainty(
     model: Model,
     X_grid: jnp.ndarray,
-    probes: jnp.ndarray,
+    comparisons: jnp.ndarray,
     threshold_criterion: float = 0.75,
     n_samples: int = 100,
     *,
@@ -178,7 +178,7 @@ def estimate_threshold_uncertainty(
         Fitted model (must support predict_with_params)
     X_grid : jnp.ndarray, shape (n_grid, input_dim)
         Grid of test points to search over (e.g., line through stimulus space)
-    probes : jnp.ndarray, shape (n_grid, input_dim)
+    comparisons : jnp.ndarray, shape (n_grid, input_dim)
         Probe at each grid point
     threshold_criterion : float, default=0.75
         Target accuracy level (e.g., 0.75 for 75% correct threshold)
@@ -203,13 +203,13 @@ def estimate_threshold_uncertainty(
     >>> direction = jnp.array([0.1, 0.05])
     >>> t = jnp.linspace(-1, 1, 200)
     >>> X_grid = reference + t[:, None] * direction
-    >>> probes = X_grid + 0.05  # Small probe offset
+    >>> comparisons = X_grid + 0.05  # Small probe offset
     >>>
     >>> # Estimate threshold uncertainty
     >>> indices, mean_idx, std_idx = estimate_threshold_uncertainty(
     ...     model,
     ...     X_grid,
-    ...     probes,
+    ...     comparisons,
     ...     threshold_criterion=0.75,
     ...     n_samples=200,
     ...     key=jr.PRNGKey(0),
@@ -256,7 +256,7 @@ def estimate_threshold_uncertainty(
         params_i = {k: v[i] for k, v in param_samples.items()}
 
         # Evaluate model at all grid points with these specific parameters
-        predictions_i = model.predict_with_params(X_grid, probes, params_i)
+        predictions_i = model.predict_with_params(X_grid, comparisons, params_i)
 
         # Find where this crosses threshold
         diffs = jnp.abs(predictions_i - threshold_criterion)
@@ -356,14 +356,14 @@ def estimate_threshold_contour_uncertainty(
         # Grid along this direction
         t = jnp.linspace(0, max_distance, n_grid_points)
         X_grid = reference + t[:, None] * direction
-        probes = X_grid + probe_offset * direction
+        comparisons = X_grid + probe_offset * direction
 
         # Estimate threshold
         key, subkey = jr.split(key)
         indices, mean_idx, std_idx = estimate_threshold_uncertainty(
             model,
             X_grid,
-            probes,
+            comparisons,
             threshold_criterion=threshold_criterion,
             n_samples=n_samples,
             key=subkey,
