@@ -131,7 +131,7 @@ class WPPMPredictivePosterior:
         Posterior over model parameters
     X : jnp.ndarray, shape (n_test, input_dim)
         Test reference stimuli
-    probes : jnp.ndarray, shape (n_test, input_dim), optional
+    comparisons : jnp.ndarray, shape (n_test, input_dim), optional
         Test probe stimuli. If None, predictions are over thresholds.
     n_samples : int, default=100
         Number of posterior samples for MC integration
@@ -142,8 +142,8 @@ class WPPMPredictivePosterior:
         Wrapped parameter posterior
     X : jnp.ndarray
         Test stimuli
-    probes : jnp.ndarray | None
-        Test probes
+    comparisons : jnp.ndarray | None
+        Test comparisons
     n_samples : int
         MC sample count
 
@@ -156,12 +156,12 @@ class WPPMPredictivePosterior:
         self,
         param_posterior: ParameterPosterior,
         X: jnp.ndarray,
-        probes: jnp.ndarray | None = None,
+        comparisons: jnp.ndarray | None = None,
         n_samples: int = 100,
     ):
         self.param_posterior = param_posterior
         self.X = X
-        self.probes = probes
+        self.comparisons = comparisons
         self.n_samples = n_samples
 
         # Lazy evaluation cache
@@ -180,18 +180,18 @@ class WPPMPredictivePosterior:
 
         model = self.param_posterior.model
 
-        if self.probes is None:
+        if self.comparisons is None:
             # TODO: Implement threshold prediction
             raise NotImplementedError(
                 "Threshold prediction not yet implemented. "
-                "Pass probes argument for pairwise discrimination."
+                "Pass comparisons argument for pairwise discrimination."
             )
 
         # Vectorized prediction over parameter samples
         def predict_batch(params):
             """Predict p(correct) for all (ref, probe) pairs given params."""
             return jax.vmap(lambda r, p: model.predict_prob(params, (r, p)))(
-                self.X, self.probes
+                self.X, self.comparisons
             )
 
         # predictions: shape (n_samples, n_test)
@@ -235,13 +235,13 @@ class WPPMPredictivePosterior:
 
         model = self.param_posterior.model
 
-        if self.probes is None:
+        if self.comparisons is None:
             raise NotImplementedError("Threshold sampling not yet implemented")
 
         def predict_one(params):
             """Predict for all test points with given params."""
             return jax.vmap(lambda r, p: model.predict_prob(params, (r, p)))(
-                self.X, self.probes
+                self.X, self.comparisons
             )
 
         samples = jax.vmap(predict_one)(param_samples)

@@ -10,8 +10,8 @@ import jax.random as jr
 import pytest
 
 from psyphy.model import WPPM, Prior
+from psyphy.model.likelihood import OddityTask
 from psyphy.model.noise import GaussianNoise
-from psyphy.model.task import OddityTask
 from psyphy.utils import (
     estimate_threshold_contour_uncertainty,
     estimate_threshold_uncertainty,
@@ -28,15 +28,15 @@ def trained_model():
     n = 20
 
     refs = jr.uniform(key, (n, 2), minval=0, maxval=1)
-    probes = refs + 0.05
+    comparisons = refs + 0.05
     y = jnp.ones(n, dtype=int)
-    X = jnp.stack([refs, probes], axis=1)
+    X = jnp.stack([refs, comparisons], axis=1)
 
     # Create and fit model
     model = WPPM(
         input_dim=2,
         prior=Prior(input_dim=2, basis_degree=3, variance_scale=1.0, decay_rate=0.7),
-        task=OddityTask(),
+        likelihood=OddityTask(),
         noise=GaussianNoise(),
     )
     model.fit(X, y, inference="map", inference_config={"steps": 50})
@@ -100,13 +100,13 @@ def test_estimate_threshold_uncertainty_1d_line(trained_model):
     direction = jnp.array([0.1, 0.05])
     t = jnp.linspace(-1, 1, 100)
     X_grid = reference + t[:, None] * direction
-    probes = X_grid + 0.05
+    comparisons = X_grid + 0.05
 
     # Estimate threshold
     indices, mean_idx, std_idx = estimate_threshold_uncertainty(
         trained_model,
         X_grid,
-        probes,
+        comparisons,
         threshold_criterion=0.75,
         n_samples=20,  # Small for speed
         key=jr.PRNGKey(0),
@@ -130,13 +130,13 @@ def test_estimate_threshold_uncertainty_different_criteria(trained_model):
     direction = jnp.array([0.1, 0.05])
     t = jnp.linspace(-1, 1, 50)
     X_grid = reference + t[:, None] * direction
-    probes = X_grid + 0.05
+    comparisons = X_grid + 0.05
 
     # Different thresholds should give different locations
     indices_50, mean_50, _ = estimate_threshold_uncertainty(
         trained_model,
         X_grid,
-        probes,
+        comparisons,
         threshold_criterion=0.5,
         n_samples=10,
         key=jr.PRNGKey(0),
@@ -145,7 +145,7 @@ def test_estimate_threshold_uncertainty_different_criteria(trained_model):
     indices_75, mean_75, _ = estimate_threshold_uncertainty(
         trained_model,
         X_grid,
-        probes,
+        comparisons,
         threshold_criterion=0.75,
         n_samples=10,
         key=jr.PRNGKey(0),
@@ -202,10 +202,10 @@ def test_threshold_uncertainty_with_predict_with_params(trained_model):
 
     # Create test points
     X = jnp.array([[0.5, 0.3], [0.6, 0.4]])
-    probes = X + 0.05
+    comparisons = X + 0.05
 
     # Call predict_with_params directly
-    predictions = trained_model.predict_with_params(X, probes, params_i)
+    predictions = trained_model.predict_with_params(X, comparisons, params_i)
 
     # Should return predictions at each test point
     assert predictions.shape == (2,)

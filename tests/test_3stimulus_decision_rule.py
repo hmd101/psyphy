@@ -28,7 +28,9 @@ class TestThreeStimulusDecisionRule:
         model = WPPM(
             input_dim=2,
             prior=Prior(input_dim=2, basis_degree=2),
-            task=OddityTask(config=OddityTaskConfig(num_samples=5000, bandwidth=1e-2)),
+            likelihood=OddityTask(
+                config=OddityTaskConfig(num_samples=5000, bandwidth=1e-2)
+            ),
             noise=GaussianNoise(sigma=0.01),  # Small noise
         )
         params = model.init_params(jr.PRNGKey(0))
@@ -41,7 +43,7 @@ class TestThreeStimulusDecisionRule:
 
         # Compute P(correct) with many samples for accurate estimate
         # loglik = log P(correct | ref, comparison, params)
-        loglik = model.task.loglik(
+        loglik = model.likelihood.loglik(
             params,
             data,
             model,
@@ -70,7 +72,9 @@ class TestThreeStimulusDecisionRule:
         model = WPPM(
             input_dim=2,
             prior=Prior(input_dim=2, basis_degree=2),
-            task=OddityTask(config=OddityTaskConfig(num_samples=5000, bandwidth=1e-2)),
+            likelihood=OddityTask(
+                config=OddityTaskConfig(num_samples=5000, bandwidth=1e-2)
+            ),
             noise=GaussianNoise(sigma=0.01),  # Small noise for easy discrimination
         )
         params = model.init_params(jr.PRNGKey(0))
@@ -82,7 +86,7 @@ class TestThreeStimulusDecisionRule:
         data.add_trial(ref, comparison, resp=1)
 
         # Compute P(correct)
-        loglik = model.task.loglik(
+        loglik = model.likelihood.loglik(
             params,
             data,
             model,
@@ -108,7 +112,9 @@ class TestThreeStimulusDecisionRule:
         model = WPPM(
             input_dim=2,
             prior=Prior(input_dim=2, basis_degree=2),
-            task=OddityTask(config=OddityTaskConfig(num_samples=5000, bandwidth=1e-2)),
+            likelihood=OddityTask(
+                config=OddityTaskConfig(num_samples=5000, bandwidth=1e-2)
+            ),
             noise=GaussianNoise(sigma=0.05),
         )
         params = model.init_params(jr.PRNGKey(0))
@@ -120,7 +126,9 @@ class TestThreeStimulusDecisionRule:
         data.add_trial(ref, comparison, resp=1)
 
         # Compute P(correct)
-        loglik = model.task.loglik(params, data, model, model.noise, key=jr.PRNGKey(42))
+        loglik = model.likelihood.loglik(
+            params, data, model, model.noise, key=jr.PRNGKey(42)
+        )
 
         p_correct = jnp.exp(loglik)
 
@@ -142,7 +150,7 @@ class TestThreeStimulusDecisionRule:
         model = WPPM(
             input_dim=2,
             prior=Prior(input_dim=2, basis_degree=3, extra_embedding_dims=1),
-            task=OddityTask(),
+            likelihood=OddityTask(),
             noise=GaussianNoise(sigma=0.01),
             extra_dims=1,
         )
@@ -153,10 +161,10 @@ class TestThreeStimulusDecisionRule:
         ref = jnp.array([0.5, 0.5])
         data_identical.add_trial(ref, ref, resp=1)
 
-        model.task = OddityTask(
+        model.likelihood = OddityTask(
             config=OddityTaskConfig(num_samples=3000, bandwidth=1e-2)
         )
-        loglik_identical = model.task.loglik(
+        loglik_identical = model.likelihood.loglik(
             params,
             data_identical,
             model,
@@ -170,7 +178,7 @@ class TestThreeStimulusDecisionRule:
         comparison_far = jnp.array([5.0, 5.0])
         data_distant.add_trial(ref, comparison_far, resp=1)
 
-        loglik_distant = model.task.loglik(
+        loglik_distant = model.likelihood.loglik(
             params,
             data_distant,
             model,
@@ -292,7 +300,9 @@ class TestEdgeCases:
         model = WPPM(
             input_dim=2,
             prior=Prior(input_dim=2, basis_degree=2),
-            task=OddityTask(config=OddityTaskConfig(num_samples=1000, bandwidth=1e-6)),
+            likelihood=OddityTask(
+                config=OddityTaskConfig(num_samples=1000, bandwidth=1e-6)
+            ),
             noise=GaussianNoise(sigma=0.01),
         )
         params = model.init_params(jr.PRNGKey(0))
@@ -302,7 +312,9 @@ class TestEdgeCases:
         comparison = jnp.array([2.0, 2.0])
         data.add_trial(ref, comparison, resp=1)
 
-        loglik = model.task.loglik(params, data, model, model.noise, key=jr.PRNGKey(42))
+        loglik = model.likelihood.loglik(
+            params, data, model, model.noise, key=jr.PRNGKey(42)
+        )
 
         p_correct = jnp.exp(loglik)
 
@@ -322,7 +334,9 @@ class TestEdgeCases:
         model = WPPM(
             input_dim=2,
             prior=Prior(input_dim=2, basis_degree=2),
-            task=OddityTask(config=OddityTaskConfig(num_samples=1000, bandwidth=0.1)),
+            likelihood=OddityTask(
+                config=OddityTaskConfig(num_samples=1000, bandwidth=0.1)
+            ),
             noise=GaussianNoise(sigma=0.01),
         )
         params = model.init_params(jr.PRNGKey(0))
@@ -332,7 +346,9 @@ class TestEdgeCases:
         comparison = jnp.array([0.5, 0.5])  # Moderately different
         data.add_trial(ref, comparison, resp=1)
 
-        loglik = model.task.loglik(params, data, model, model.noise, key=jr.PRNGKey(42))
+        loglik = model.likelihood.loglik(
+            params, data, model, model.noise, key=jr.PRNGKey(42)
+        )
 
         p_correct = jnp.exp(loglik)
 
@@ -351,7 +367,9 @@ class TestEdgeCases:
         model = WPPM(
             input_dim=2,
             prior=Prior(input_dim=2, basis_degree=2),
-            task=OddityTask(config=OddityTaskConfig(num_samples=10, bandwidth=1e-2)),
+            likelihood=OddityTask(
+                config=OddityTaskConfig(num_samples=10, bandwidth=1e-2)
+            ),
             noise=GaussianNoise(sigma=0.01),
         )
         params = model.init_params(jr.PRNGKey(0))
@@ -361,7 +379,9 @@ class TestEdgeCases:
         comparison = jnp.array([3.0, 3.0])
         data.add_trial(ref, comparison, resp=1)
 
-        loglik = model.task.loglik(params, data, model, model.noise, key=jr.PRNGKey(42))
+        loglik = model.likelihood.loglik(
+            params, data, model, model.noise, key=jr.PRNGKey(42)
+        )
 
         p_correct = jnp.exp(loglik)
 
@@ -381,7 +401,7 @@ class TestEdgeCases:
         model = WPPM(
             input_dim=2,
             prior=Prior(input_dim=2, basis_degree=2),
-            task=task,
+            likelihood=task,
             noise=GaussianNoise(sigma=0.01),
         )
         params = model.init_params(jr.PRNGKey(0))
@@ -392,11 +412,11 @@ class TestEdgeCases:
         data.add_trial(ref, comparison, resp=1)
 
         # Compute with two different seeds (same task config)
-        loglik1 = model.task.loglik(
+        loglik1 = model.likelihood.loglik(
             params, data, model, model.noise, key=jr.PRNGKey(42)
         )
 
-        loglik2 = model.task.loglik(
+        loglik2 = model.likelihood.loglik(
             params,
             data,
             model,
@@ -423,7 +443,7 @@ class TestEdgeCases:
         model = WPPM(
             input_dim=2,
             prior=Prior(input_dim=2, basis_degree=2),
-            task=task,
+            likelihood=task,
             noise=GaussianNoise(sigma=0.01),
         )
         params = model.init_params(jr.PRNGKey(0))
@@ -437,7 +457,7 @@ class TestEdgeCases:
             data_multi.add_trial(ref, comparison, resp=1)
 
         # Compute combined loglik
-        loglik_multi = model.task.loglik(
+        loglik_multi = model.likelihood.loglik(
             params,
             data_multi,
             model,
@@ -449,7 +469,7 @@ class TestEdgeCases:
         data_single = ResponseData()
         data_single.add_trial(ref, comparison, resp=1)
 
-        loglik_single = model.task.loglik(
+        loglik_single = model.likelihood.loglik(
             params,
             data_single,
             model,
@@ -485,7 +505,7 @@ class TestEdgeCases:
         model = WPPM(
             input_dim=2,
             prior=Prior(input_dim=2, basis_degree=2),
-            task=task,
+            likelihood=task,
             noise=GaussianNoise(sigma=0.01),
         )
         params = model.init_params(jr.PRNGKey(0))
@@ -494,7 +514,7 @@ class TestEdgeCases:
         data.add_trial(jnp.array([0.0, 0.0]), jnp.array([1.0, 1.0]), resp=1)
 
         # Compute twice with same seed
-        loglik1 = model.task.loglik(
+        loglik1 = model.likelihood.loglik(
             params,
             data,
             model,
@@ -502,7 +522,7 @@ class TestEdgeCases:
             key=jr.PRNGKey(42),  # Same seed
         )
 
-        loglik2 = model.task.loglik(
+        loglik2 = model.likelihood.loglik(
             params,
             data,
             model,
@@ -531,7 +551,7 @@ class TestDecisionRuleSymmetry:
         model = WPPM(
             input_dim=2,
             prior=Prior(input_dim=2, basis_degree=2),
-            task=task,
+            likelihood=task,
             noise=GaussianNoise(sigma=0.01),
         )
         params = model.init_params(jr.PRNGKey(0))
@@ -543,7 +563,7 @@ class TestDecisionRuleSymmetry:
         data.add_trial(ref, comparison, resp=1)
 
         # Compute with one seed
-        loglik1 = model.task.loglik(
+        loglik1 = model.likelihood.loglik(
             params,
             data,
             model,
@@ -552,7 +572,7 @@ class TestDecisionRuleSymmetry:
         )
 
         # Compute with different seed (different sampling order)
-        loglik2 = model.task.loglik(
+        loglik2 = model.likelihood.loglik(
             params,
             data,
             model,

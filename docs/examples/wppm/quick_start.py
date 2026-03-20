@@ -132,7 +132,7 @@ truth_model = WPPM(
     input_dim=input_dim,
     extra_dims=extra_dims,
     prior=truth_prior,
-    task=task,
+    likelihood=task,
     noise=noise,
     diag_term=diag_term,
 )
@@ -222,7 +222,7 @@ prior = Prior(
 model = WPPM(
     input_dim=input_dim,
     prior=prior,
-    task=task,
+    likelihood=task,
     noise=noise,
     diag_term=1e-4,
 )

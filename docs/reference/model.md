@@ -27,9 +27,9 @@
 
 ---
 
-## Tasks
+## Likelihood (defined by Tasks)
 ---
 
-::: psyphy.model.task
+::: psyphy.model.likelihood
 
 ---

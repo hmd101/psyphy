@@ -63,9 +63,9 @@ class SobolPlacement:
             low + (high - low) * raw[:, i] for i, (low, high) in enumerate(self.bounds)
         ]
         # Convert column-wise scaled arrays into list of probe vectors
-        probes = [tuple(vals) for vals in zip(*scaled)]
+        comparisons = [tuple(vals) for vals in zip(*scaled)]
         # MVP: use a zero reference vector of matching dimension
         dim = len(self.bounds)
         zero_ref = 0.0 if dim == 1 else tuple(0.0 for _ in range(dim))
-        trials = [(zero_ref, p) for p in probes]
+        trials = [(zero_ref, p) for p in comparisons]
         return TrialBatch.from_stimuli(trials)

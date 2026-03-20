@@ -23,7 +23,7 @@ Why this matters
 
 MVP implementation
 ------------------
-- Grid-based candidates (probes on circles around a reference).
+- Grid-based candidates (comparisons on circles around a reference).
 - Sobol sequence candidates (low-discrepancy exploration).
 - Custom user-defined candidate pools.
 
@@ -47,7 +47,7 @@ def grid_candidates(
     reference: jnp.ndarray, radii: list[float], directions: int = 16
 ) -> list[Stimulus]:
     """
-    Generate grid-based candidate probes around a reference.
+    Generate grid-based candidate comparisons around a reference.
 
     Parameters
     ----------
@@ -65,15 +65,17 @@ def grid_candidates(
 
     Notes
     -----
-    - MVP: probes lie on concentric circles around reference.
+    - MVP: comparisons lie on concentric circles around reference.
     - Full WPPM mode: could adaptively refine grid around regions of
       high posterior uncertainty.
     """
     candidates = []
     angles = jnp.linspace(0, 2 * jnp.pi, directions, endpoint=False)
     for r in radii:
-        probes = [reference + r * jnp.array([jnp.cos(a), jnp.sin(a)]) for a in angles]
-        candidates.extend([(reference, p) for p in probes])
+        comparisons = [
+            reference + r * jnp.array([jnp.cos(a), jnp.sin(a)]) for a in angles
+        ]
+        candidates.extend([(reference, p) for p in comparisons])
     return candidates
 
 
@@ -111,15 +113,15 @@ def sobol_candidates(
     engine = Sobol(d=dim, scramble=True, seed=seed)
     raw = engine.random(n)
     scaled = [low + (high - low) * raw[:, i] for i, (low, high) in enumerate(bounds)]
-    probes = np.stack(scaled, axis=-1)
-    return [(reference, jnp.array(p)) for p in probes]
+    comparisons = np.stack(scaled, axis=-1)
+    return [(reference, jnp.array(p)) for p in comparisons]
 
 
 def custom_candidates(
     reference: jnp.ndarray, probe_list: list[jnp.ndarray]
 ) -> list[Stimulus]:
     """
-    Wrap a user-defined list of probes into candidate pairs.
+    Wrap a user-defined list of comparisons into candidate pairs.
 
     Parameters
     ----------

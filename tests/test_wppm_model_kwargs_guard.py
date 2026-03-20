@@ -9,7 +9,7 @@ These tests protect the "single source of truth" policy:
 import pytest
 
 from psyphy.model import WPPM, Prior
-from psyphy.model.task import OddityTask
+from psyphy.model.likelihood import OddityTask
 
 
 def _make_minimal_wppm():
@@ -29,6 +29,6 @@ def test_wppm_constructor_rejects_task_knobs_via_model_kwargs(bad_kw: str):
         WPPM(
             input_dim=input_dim,
             prior=prior,
-            task=task,
+            likelihood=task,
             **bad_kwargs,
         )
