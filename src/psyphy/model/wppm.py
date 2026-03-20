@@ -392,60 +392,6 @@ class WPPM(Model):
         raise ValueError("params must contain 'W' (weights of WPPM)")
 
     # ----------------------------------------------------------------------
-    # DISCRIMINABILITY (d), later implemented via MC simulation
-    # ----------------------------------------------------------------------
-    def discriminability(self, params: Params, stimulus: Stimulus) -> jnp.ndarray:
-        """
-        Compute scalar discriminability d >= 0 for a (reference, probe) pair
-
-
-        WPPM (rectangular U design) if extra_dims > 0:
-            d = sqrt( (probe - ref)^T Σ(ref)^{-1} (probe - ref) )
-            where Σ(ref) is directly computed in stimulus space (input_dim, input_dim)
-            via U(x) @ U(x)^T with U rectangular.
-
-        The discrimination task only depends on observable stimulus dimensions.
-        The rectangular U design means local_covariance() already returns
-        the stimulus covariance - no block extraction needed.
-
-        WPPM:
-            d is implicit via Monte Carlo simulation of internal noisy responses
-            under the task's decision rule (no closed form). In that case, tasks
-            will directly implement predict/loglik with MC, and this method may be
-            used only for diagnostics.
-
-        Parameters
-        ----------
-        params : dict
-            Model parameters.
-        stimulus : tuple
-            (reference, probe) arrays of shape (input_dim,).
-
-        Returns
-        -------
-        d : jnp.ndarray
-            Nonnegative scalar discriminability.
-        """
-        ref, probe = stimulus
-
-        # Delta is in stimulus space (input_dim)
-        delta = probe - ref
-
-        # Get stimulus covariance at reference
-        # (rectangular U design: already returns (input_dim, input_dim))
-        Sigma = self.local_covariance(params, ref)
-
-        # Add jitter for stable solve; diag_term is configurable
-        jitter = self.diag_term * jnp.eye(self.input_dim)
-
-        # Solve (Σ + jitter)^{-1} delta using a PD-aware solver
-        x = jax.scipy.linalg.solve(Sigma + jitter, delta, assume_a="pos")
-        d2 = jnp.dot(delta, x)  # quadratic form
-
-        # Guard against tiny negative values from numerical error
-        return jnp.sqrt(jnp.maximum(d2, 0.0))
-
-    # ----------------------------------------------------------------------
     # PREDICTION (delegates to task)
     # ----------------------------------------------------------------------
     def predict_prob(
