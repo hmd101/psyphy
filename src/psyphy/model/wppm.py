@@ -86,7 +86,7 @@ class WPPM(Model):
         input_dim: int = 2,
         extra_dims: int = 1,
         variance_scale: float = 4e-3,
-        decay_rate: float = 1.0,
+        decay_rate: float = 0.4,
         diag_term: float = 1e-6,
         **model_kwargs: Any,
     ) -> None:
