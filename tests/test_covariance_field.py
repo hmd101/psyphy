@@ -40,7 +40,7 @@ def wishart_model():
             decay_rate=0.3,
             extra_embedding_dims=1,  # should match model's extra_dims
         ),
-        task=OddityTask(),
+        likelihood=OddityTask(),
         noise=GaussianNoise(),
         extra_dims=1,
         diag_term=1e-3,
