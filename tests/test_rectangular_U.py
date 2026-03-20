@@ -87,7 +87,9 @@ class TestRectangularUShape:
             input_dim=input_dim, basis_degree=5, extra_embedding_dims=extra_dims
         )
         task = OddityTask()
-        model = WPPM(input_dim=input_dim, extra_dims=extra_dims, prior=prior, task=task)
+        model = WPPM(
+            input_dim=input_dim, extra_dims=extra_dims, prior=prior, likelihood=task
+        )
 
         params = prior.sample_params(jr.PRNGKey(42))
         x = jnp.ones(input_dim) * 0.5
@@ -123,7 +125,9 @@ class TestLocalCovarianceShape:
             input_dim=input_dim, basis_degree=5, extra_embedding_dims=extra_dims
         )
         task = OddityTask()
-        model = WPPM(input_dim=input_dim, extra_dims=extra_dims, prior=prior, task=task)
+        model = WPPM(
+            input_dim=input_dim, extra_dims=extra_dims, prior=prior, likelihood=task
+        )
 
         params = prior.sample_params(jr.PRNGKey(42))
         x = jnp.ones(input_dim) * 0.5
@@ -142,7 +146,7 @@ class TestLocalCovarianceShape:
         """Σ(x) = U @ U^T + diag_term*I should be positive definite."""
         prior = Prior(input_dim=2, basis_degree=5, extra_embedding_dims=1)
         task = OddityTask()
-        model = WPPM(input_dim=2, extra_dims=1, prior=prior, task=task)
+        model = WPPM(input_dim=2, extra_dims=1, prior=prior, likelihood=task)
 
         params = prior.sample_params(jr.PRNGKey(42))
         x = jnp.array([0.3, 0.7])
@@ -193,7 +197,7 @@ class TestCovarianceFieldProtocol:
 
         prior = Prior(input_dim=2, basis_degree=5, extra_embedding_dims=1)
         task = OddityTask()
-        model = WPPM(input_dim=2, extra_dims=1, prior=prior, task=task)
+        model = WPPM(input_dim=2, extra_dims=1, prior=prior, likelihood=task)
 
         params = prior.sample_params(jr.PRNGKey(42))
         field = WPPMCovarianceField(model, params)
@@ -209,7 +213,7 @@ class TestCovarianceFieldProtocol:
 
         prior = Prior(input_dim=2, basis_degree=5, extra_embedding_dims=1)
         task = OddityTask()
-        model = WPPM(input_dim=2, extra_dims=1, prior=prior, task=task)
+        model = WPPM(input_dim=2, extra_dims=1, prior=prior, likelihood=task)
 
         params = prior.sample_params(jr.PRNGKey(42))
         field = WPPMCovarianceField(model, params)
@@ -226,7 +230,7 @@ class TestCovarianceFieldProtocol:
 
         prior = Prior(input_dim=2, basis_degree=5, extra_embedding_dims=1)
         task = OddityTask()
-        model = WPPM(input_dim=2, extra_dims=1, prior=prior, task=task)
+        model = WPPM(input_dim=2, extra_dims=1, prior=prior, likelihood=task)
 
         params = prior.sample_params(jr.PRNGKey(42))
         field = WPPMCovarianceField(model, params)

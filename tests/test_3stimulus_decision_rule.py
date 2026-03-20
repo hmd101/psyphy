@@ -28,7 +28,9 @@ class TestThreeStimulusDecisionRule:
         model = WPPM(
             input_dim=2,
             prior=Prior(input_dim=2, basis_degree=2),
-            task=OddityTask(config=OddityTaskConfig(num_samples=5000, bandwidth=1e-2)),
+            likelihood=OddityTask(
+                config=OddityTaskConfig(num_samples=5000, bandwidth=1e-2)
+            ),
             noise=GaussianNoise(sigma=0.01),  # Small noise
         )
         params = model.init_params(jr.PRNGKey(0))
@@ -70,7 +72,9 @@ class TestThreeStimulusDecisionRule:
         model = WPPM(
             input_dim=2,
             prior=Prior(input_dim=2, basis_degree=2),
-            task=OddityTask(config=OddityTaskConfig(num_samples=5000, bandwidth=1e-2)),
+            likelihood=OddityTask(
+                config=OddityTaskConfig(num_samples=5000, bandwidth=1e-2)
+            ),
             noise=GaussianNoise(sigma=0.01),  # Small noise for easy discrimination
         )
         params = model.init_params(jr.PRNGKey(0))
@@ -108,7 +112,9 @@ class TestThreeStimulusDecisionRule:
         model = WPPM(
             input_dim=2,
             prior=Prior(input_dim=2, basis_degree=2),
-            task=OddityTask(config=OddityTaskConfig(num_samples=5000, bandwidth=1e-2)),
+            likelihood=OddityTask(
+                config=OddityTaskConfig(num_samples=5000, bandwidth=1e-2)
+            ),
             noise=GaussianNoise(sigma=0.05),
         )
         params = model.init_params(jr.PRNGKey(0))
@@ -144,7 +150,7 @@ class TestThreeStimulusDecisionRule:
         model = WPPM(
             input_dim=2,
             prior=Prior(input_dim=2, basis_degree=3, extra_embedding_dims=1),
-            task=OddityTask(),
+            likelihood=OddityTask(),
             noise=GaussianNoise(sigma=0.01),
             extra_dims=1,
         )
@@ -294,7 +300,9 @@ class TestEdgeCases:
         model = WPPM(
             input_dim=2,
             prior=Prior(input_dim=2, basis_degree=2),
-            task=OddityTask(config=OddityTaskConfig(num_samples=1000, bandwidth=1e-6)),
+            likelihood=OddityTask(
+                config=OddityTaskConfig(num_samples=1000, bandwidth=1e-6)
+            ),
             noise=GaussianNoise(sigma=0.01),
         )
         params = model.init_params(jr.PRNGKey(0))
@@ -326,7 +334,9 @@ class TestEdgeCases:
         model = WPPM(
             input_dim=2,
             prior=Prior(input_dim=2, basis_degree=2),
-            task=OddityTask(config=OddityTaskConfig(num_samples=1000, bandwidth=0.1)),
+            likelihood=OddityTask(
+                config=OddityTaskConfig(num_samples=1000, bandwidth=0.1)
+            ),
             noise=GaussianNoise(sigma=0.01),
         )
         params = model.init_params(jr.PRNGKey(0))
@@ -357,7 +367,9 @@ class TestEdgeCases:
         model = WPPM(
             input_dim=2,
             prior=Prior(input_dim=2, basis_degree=2),
-            task=OddityTask(config=OddityTaskConfig(num_samples=10, bandwidth=1e-2)),
+            likelihood=OddityTask(
+                config=OddityTaskConfig(num_samples=10, bandwidth=1e-2)
+            ),
             noise=GaussianNoise(sigma=0.01),
         )
         params = model.init_params(jr.PRNGKey(0))
@@ -389,7 +401,7 @@ class TestEdgeCases:
         model = WPPM(
             input_dim=2,
             prior=Prior(input_dim=2, basis_degree=2),
-            task=task,
+            likelihood=task,
             noise=GaussianNoise(sigma=0.01),
         )
         params = model.init_params(jr.PRNGKey(0))
@@ -431,7 +443,7 @@ class TestEdgeCases:
         model = WPPM(
             input_dim=2,
             prior=Prior(input_dim=2, basis_degree=2),
-            task=task,
+            likelihood=task,
             noise=GaussianNoise(sigma=0.01),
         )
         params = model.init_params(jr.PRNGKey(0))
@@ -493,7 +505,7 @@ class TestEdgeCases:
         model = WPPM(
             input_dim=2,
             prior=Prior(input_dim=2, basis_degree=2),
-            task=task,
+            likelihood=task,
             noise=GaussianNoise(sigma=0.01),
         )
         params = model.init_params(jr.PRNGKey(0))
@@ -539,7 +551,7 @@ class TestDecisionRuleSymmetry:
         model = WPPM(
             input_dim=2,
             prior=Prior(input_dim=2, basis_degree=2),
-            task=task,
+            likelihood=task,
             noise=GaussianNoise(sigma=0.01),
         )
         params = model.init_params(jr.PRNGKey(0))

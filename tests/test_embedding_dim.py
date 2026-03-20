@@ -23,7 +23,7 @@ def test_wppm_no_embedding_dim_parameter():
     model = WPPM(
         input_dim=2,
         prior=Prior(input_dim=2, basis_degree=3),  # Need Wishart mode for extra_dims
-        task=OddityTask(),
+        likelihood=OddityTask(),
         noise=GaussianNoise(),
         extra_dims=1,
     )
@@ -38,7 +38,7 @@ def test_wppm_no_embedding_dim_parameter():
             input_dim=2,
             embedding_dim=5,  # This should fail
             prior=Prior(input_dim=2),
-            task=OddityTask(),
+            likelihood=OddityTask(),
             noise=GaussianNoise(),
         )
 
@@ -67,7 +67,7 @@ def test_embedding_dim_computed_correctly(
         prior=Prior(
             input_dim=input_dim, basis_degree=3
         ),  # Need Wishart mode for extra_dims
-        task=OddityTask(),
+        likelihood=OddityTask(),
         noise=GaussianNoise(),
         extra_dims=extra_dims,
     )
@@ -85,7 +85,7 @@ def test_wishart_W_shape_uses_full_embedding_dim():
     model = WPPM(
         input_dim=2,
         prior=Prior(input_dim=2, basis_degree=3, extra_embedding_dims=1),
-        task=OddityTask(),
+        likelihood=OddityTask(),
         noise=GaussianNoise(),
         extra_dims=1,
     )
@@ -112,7 +112,7 @@ def test_local_covariance_shape_wishart():
     model = WPPM(
         input_dim=2,
         prior=Prior(input_dim=2, basis_degree=3, extra_embedding_dims=1),
-        task=OddityTask(),
+        likelihood=OddityTask(),
         noise=GaussianNoise(),
         extra_dims=1,
     )
@@ -137,7 +137,7 @@ def test_compute_sqrt_shape():
     model = WPPM(
         input_dim=2,
         prior=Prior(input_dim=2, basis_degree=3, extra_embedding_dims=1),
-        task=OddityTask(),
+        likelihood=OddityTask(),
         noise=GaussianNoise(),
         extra_dims=1,
     )
@@ -162,7 +162,7 @@ def test_full_embedding_covariance_positive_definite():
     model = WPPM(
         input_dim=2,
         prior=Prior(input_dim=2, basis_degree=3, extra_embedding_dims=2),
-        task=OddityTask(),
+        likelihood=OddityTask(),
         noise=GaussianNoise(),
         extra_dims=2,
     )
@@ -191,7 +191,7 @@ def test_stimulus_subspace_positive_definite():
     model = WPPM(
         input_dim=2,
         prior=Prior(input_dim=2, basis_degree=3, extra_embedding_dims=1),
-        task=OddityTask(),
+        likelihood=OddityTask(),
         noise=GaussianNoise(),
         extra_dims=1,
     )
