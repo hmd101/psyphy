@@ -28,7 +28,9 @@ class TestNoiseModels:
         return WPPM(
             input_dim=2,
             prior=Prior(input_dim=2, basis_degree=3),
-            task=OddityTask(config=OddityTaskConfig(num_samples=2000, bandwidth=1e-2)),
+            likelihood=OddityTask(
+                config=OddityTaskConfig(num_samples=2000, bandwidth=1e-2)
+            ),
             noise=GaussianNoise(sigma=0.03),
         )
 
@@ -37,7 +39,9 @@ class TestNoiseModels:
         return WPPM(
             input_dim=2,
             prior=Prior(input_dim=2, basis_degree=3),
-            task=OddityTask(config=OddityTaskConfig(num_samples=2000, bandwidth=1e-2)),
+            likelihood=OddityTask(
+                config=OddityTaskConfig(num_samples=2000, bandwidth=1e-2)
+            ),
             noise=StudentTNoise(df=3.0, scale=0.03),
         )
 
@@ -57,7 +61,7 @@ class TestNoiseModels:
         )
 
         # Compute likelihood with Gaussian noise
-        ll_gaussian = model_gaussian.task.loglik(
+        ll_gaussian = model_gaussian.likelihood.loglik(
             params=params,
             data=data,
             model=model_gaussian,
@@ -66,7 +70,7 @@ class TestNoiseModels:
         )
 
         # Compute likelihood with Student-t noise
-        ll_student = model_student_t.task.loglik(
+        ll_student = model_student_t.likelihood.loglik(
             params=params,
             data=data,
             model=model_student_t,
@@ -94,10 +98,12 @@ class TestNoiseModels:
         model_student_t = WPPM(
             input_dim=model_student_t.input_dim,
             prior=model_student_t.prior,
-            task=OddityTask(config=OddityTaskConfig(num_samples=500, bandwidth=1e-2)),
+            likelihood=OddityTask(
+                config=OddityTaskConfig(num_samples=500, bandwidth=1e-2)
+            ),
             noise=model_student_t.noise,
         )
-        ll = model_student_t.task.loglik(
+        ll = model_student_t.likelihood.loglik(
             params=params,
             data=data,
             model=model_student_t,

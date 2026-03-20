@@ -1,8 +1,8 @@
 import jax.numpy as jnp
 import pytest
 
+from psyphy.model.likelihood import TaskLikelihood
 from psyphy.model.prior import Prior
-from psyphy.model.task import TaskLikelihood
 from psyphy.model.wppm import WPPM
 
 
@@ -23,7 +23,7 @@ def test_input_dim_mismatch_raises_error():
     task = MockTask()
 
     with pytest.raises(ValueError, match="Dimension mismatch"):
-        WPPM(input_dim=input_dim_model, prior=prior, task=task)
+        WPPM(input_dim=input_dim_model, prior=prior, likelihood=task)
 
 
 def test_input_dim_match_success():
@@ -33,6 +33,6 @@ def test_input_dim_match_success():
     prior = Prior(input_dim=input_dim)
     task = MockTask()
 
-    model = WPPM(input_dim=input_dim, prior=prior, task=task)
+    model = WPPM(input_dim=input_dim, prior=prior, likelihood=task)
     assert model.input_dim == input_dim
     assert model.prior.input_dim == input_dim

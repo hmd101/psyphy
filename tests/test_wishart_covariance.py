@@ -237,15 +237,15 @@ class TestWishartIntegration:
         n = 20
         key = jr.PRNGKey(42)
         refs = jr.uniform(key, (n, 2))
-        probes = refs + 0.05
+        comparisons = refs + 0.05
         y = jnp.ones(n, dtype=int)
-        X = jnp.stack([refs, probes], axis=1)
+        X = jnp.stack([refs, comparisons], axis=1)
 
         # Fit should not raise
         model.fit(X, y, inference="map", inference_config={"steps": 10})
 
         # Should be able to make predictions
-        pred_post = model.posterior(refs[:5], probes=probes[:5])
+        pred_post = model.posterior(refs[:5], comparisons=comparisons[:5])
         assert pred_post.mean.shape == (5,)
 
 
