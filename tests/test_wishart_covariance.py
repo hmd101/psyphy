@@ -36,7 +36,7 @@ class TestWishartParameters:
         # Note: degree+1 because we have basis functions [T_0, ..., T_degree]
         degree = 3
         embedding_dim = model.embedding_dim
-        expected_shape = (degree + 1, degree + 1, embedding_dim, embedding_dim)
+        expected_shape = (degree + 1, degree + 1, model.input_dim, embedding_dim)
         assert params["W"].shape == expected_shape
 
     def test_wishart_params_with_extra_dims(self):
@@ -164,8 +164,8 @@ class TestSpatiallyVaryingCovariance:
             eigenvalues = jnp.linalg.eigvalsh(Sigma)
             assert jnp.all(eigenvalues > 0), f"Non-PD at {x}: eigenvalues={eigenvalues}"
 
-    def test_covariance_shape_in_embedding_space(self):
-        """Σ(x) should be embedding_dim × embedding_dim."""
+    def test_covariance_shape_in_stimulus_space(self):
+        """Σ(x) should be input_dim x input_dim."""
         model = WPPM(
             input_dim=2,
             prior=Prior(input_dim=2, basis_degree=3),
@@ -177,9 +177,23 @@ class TestSpatiallyVaryingCovariance:
         x = jnp.array([0.5, 0.3])
         Sigma = model.local_covariance(params, x)
 
-        # Should be embedding_dim × embedding_dim
+        assert Sigma.shape == (model.input_dim, model.input_dim)
+
+    def test_sqrt_U_shape(self):
+        """U(x) should be input_dim x embedding_dim."""
+        model = WPPM(
+            input_dim=2,
+            prior=Prior(input_dim=2, basis_degree=3),
+            likelihood=OddityTask(),
+            noise=GaussianNoise(),
+        )
+
+        params = model.init_params(jr.PRNGKey(0))
+        x = jnp.array([0.5, 0.3])
+        # Should be input_dim × embedding_dim
         embedding_dim = model.embedding_dim
-        assert Sigma.shape == (embedding_dim, embedding_dim)
+        U = model._compute_sqrt(params, x)
+        assert U.shape == (model.input_dim, embedding_dim)
 
     def test_diag_term_prevents_degeneracy(self):
         """diag_term should ensure minimum eigenvalue."""
@@ -316,6 +330,6 @@ class TestComputeU:
         Sigma = model.local_covariance(params, x)
 
         # Manual computation
-        expected_Sigma = U @ U.T + diag_term * jnp.eye(model.embedding_dim)
+        expected_Sigma = U @ U.T + diag_term * jnp.eye(model.input_dim)
 
         assert jnp.allclose(Sigma, expected_Sigma, atol=1e-6)

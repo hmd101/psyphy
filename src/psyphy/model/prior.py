@@ -52,11 +52,11 @@ class Prior:
         Allows richer ellipsoid shapes in Wishart mode.
     """
 
-    input_dim: int
-    basis_degree: int | None = None
-    variance_scale: float = 1.0
-    decay_rate: float = 0.5
-    extra_embedding_dims: int = 0
+    input_dim: int = 2
+    basis_degree: int = 4  # | None = None
+    variance_scale: float = 4e-3
+    decay_rate: float = 0.4
+    extra_embedding_dims: int = 1
 
     def __post_init__(self):
         """Validate and normalize parameters."""

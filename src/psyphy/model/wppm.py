@@ -58,7 +58,7 @@ class WPPM(Model):
 
     Forward-compatible hyperparameters
     -----------------------------------
-    extra_dims : int, default=0
+    extra_dims : int, default=1
         Additional embedding dimensions for basis expansions (beyond input_dim).
         embedding_dim = input_dim + extra_dims.
     variance_scale : float, default=1.0
@@ -78,15 +78,15 @@ class WPPM(Model):
 
     def __init__(
         self,
-        input_dim: int,
         prior: Prior,
         likelihood: TaskLikelihood,
         noise: Any | None = None,
         *,  # everything after here is keyword-only
         online_config: OnlineConfig | None = None,
-        extra_dims: int = 0,
-        variance_scale: float = 1.0,
-        decay_rate: float = 1.0,
+        input_dim: int = 2,
+        extra_dims: int = 1,
+        variance_scale: float = 4e-3,
+        decay_rate: float = 0.4,
         diag_term: float = 1e-6,
         **model_kwargs: Any,
     ) -> None:
