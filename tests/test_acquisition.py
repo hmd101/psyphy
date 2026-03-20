@@ -65,9 +65,9 @@ def fitted_model():
     key, subkey = jr.split(key)
     refs = jr.normal(subkey, (n, 2))
     key, subkey = jr.split(key)
-    probes = refs + jr.normal(subkey, (n, 2)) * 0.3
+    comparisons = refs + jr.normal(subkey, (n, 2)) * 0.3
     y = jnp.ones(n, dtype=int)
-    X = jnp.stack([refs, probes], axis=1)
+    X = jnp.stack([refs, comparisons], axis=1)
 
     model.fit(X, y, inference="map", inference_config={"steps": 20})
 
@@ -147,9 +147,9 @@ class TestExpectedImprovement:
         """EI works with real model posterior."""
         # Create test candidates
         X_test = jnp.array([[0.0, 0.0], [0.5, 0.5], [1.0, 1.0]])
-        probes = X_test + 0.1
+        comparisons = X_test + 0.1
 
-        posterior = fitted_model.posterior(X_test, probes=probes)
+        posterior = fitted_model.posterior(X_test, comparisons=comparisons)
         best_f = 0.8
 
         ei = expected_improvement(posterior, best_f)
@@ -205,9 +205,9 @@ class TestUpperConfidenceBound:
     def test_ucb_with_model(self, fitted_model):
         """UCB works with real model posterior."""
         X_test = jnp.array([[0.0, 0.0], [0.5, 0.5], [1.0, 1.0]])
-        probes = X_test + 0.1
+        comparisons = X_test + 0.1
 
-        posterior = fitted_model.posterior(X_test, probes=probes)
+        posterior = fitted_model.posterior(X_test, comparisons=comparisons)
         ucb = upper_confidence_bound(posterior, beta=2.0)
 
         assert ucb.shape == (3,)
@@ -225,22 +225,22 @@ class TestMutualInformation:
         """MI computes non-negative values."""
         param_post = fitted_model.posterior(kind="parameter")
         X_test = jnp.array([[0.0, 0.0], [0.5, 0.5], [1.0, 1.0]])
-        probes = X_test + 0.1
+        comparisons = X_test + 0.1
 
         mi = mutual_information(
-            param_post, X_test, probes=probes, n_samples=10, key=jr.PRNGKey(0)
+            param_post, X_test, comparisons=comparisons, n_samples=10, key=jr.PRNGKey(0)
         )
 
         assert mi.shape == (3,)
         assert jnp.all(mi >= 0.0)  # MI is non-negative
 
     def test_mi_without_probes(self, fitted_model):
-        """MI works for threshold tasks (no probes)."""
+        """MI works for threshold tasks (no comparisons)."""
         param_post = fitted_model.posterior(kind="parameter")
         X_test = jnp.array([[0.0, 0.0], [0.5, 0.5]])
 
         mi = mutual_information(
-            param_post, X_test, probes=None, n_samples=10, key=jr.PRNGKey(0)
+            param_post, X_test, comparisons=None, n_samples=10, key=jr.PRNGKey(0)
         )
 
         assert mi.shape == (2,)
@@ -252,10 +252,10 @@ class TestMutualInformation:
         X_test = jnp.array([[0.0, 0.0], [0.5, 0.5]])
 
         mi1 = mutual_information(
-            param_post, X_test, probes=None, n_samples=20, key=jr.PRNGKey(42)
+            param_post, X_test, comparisons=None, n_samples=20, key=jr.PRNGKey(42)
         )
         mi2 = mutual_information(
-            param_post, X_test, probes=None, n_samples=20, key=jr.PRNGKey(42)
+            param_post, X_test, comparisons=None, n_samples=20, key=jr.PRNGKey(42)
         )
 
         assert jnp.allclose(mi1, mi2)
@@ -301,11 +301,11 @@ class TestDiscreteOptimization:
     def test_optimize_discrete_with_ei(self, fitted_model):
         """Discrete optimization works with EI."""
         candidates = jnp.array([[0.0, 0.0], [0.5, 0.5], [1.0, 1.0]])
-        probes = candidates + 0.1
+        comparisons = candidates + 0.1
         best_f = 0.8
 
         def acq_fn(X):
-            posterior = fitted_model.posterior(X, probes=probes)
+            posterior = fitted_model.posterior(X, comparisons=comparisons)
             return expected_improvement(posterior, best_f)
 
         X_next, ei_val = optimize_acqf_discrete(acq_fn, candidates, q=1)
@@ -431,9 +431,9 @@ class TestAcquisitionIntegration:
         key, subkey = jr.split(key)
         refs = jr.normal(subkey, (n, 2))
         key, subkey = jr.split(key)
-        probes = refs + jr.normal(subkey, (n, 2)) * 0.3
+        comparisons = refs + jr.normal(subkey, (n, 2)) * 0.3
         y = jnp.ones(n, dtype=int)
-        X = jnp.stack([refs, probes], axis=1)
+        X = jnp.stack([refs, comparisons], axis=1)
 
         model.fit(X, y, inference="map", inference_config={"steps": 30})
 
@@ -445,7 +445,7 @@ class TestAcquisitionIntegration:
         best_f = float(jnp.max(y))  # Cast to Python float
 
         def acq_fn(X_cand):
-            posterior = model.posterior(X_cand, probes=probes_test)
+            posterior = model.posterior(X_cand, comparisons=probes_test)
             return expected_improvement(posterior, best_f)  # type: ignore[arg-type]
 
         X_next, ei_val = optimize_acqf_discrete(acq_fn, candidates, q=1)
@@ -470,9 +470,9 @@ class TestAcquisitionIntegration:
         key, subkey = jr.split(key)
         refs = jr.normal(subkey, (n, 2))
         key, subkey = jr.split(key)
-        probes = refs + jr.normal(subkey, (n, 2)) * 0.3
+        comparisons = refs + jr.normal(subkey, (n, 2)) * 0.3
         y = jnp.ones(n, dtype=int)
-        X = jnp.stack([refs, probes], axis=1)
+        X = jnp.stack([refs, comparisons], axis=1)
 
         model.fit(X, y, inference="map", inference_config={"steps": 30})
 
@@ -482,7 +482,7 @@ class TestAcquisitionIntegration:
         # 3. Optimize UCB (using random search for speed)
         def acq_fn(X_cand):
             probes_cand = X_cand + 0.1
-            posterior = model.posterior(X_cand, probes=probes_cand)
+            posterior = model.posterior(X_cand, comparisons=probes_cand)
             return upper_confidence_bound(posterior, beta=2.0)  # type: ignore[arg-type]
 
         X_next, ucb_val = optimize_acqf(
@@ -514,9 +514,9 @@ class TestAcquisitionIntegration:
         key, subkey = jr.split(key)
         refs = jr.normal(subkey, (n, 2))
         key, subkey = jr.split(key)
-        probes = refs + jr.normal(subkey, (n, 2)) * 0.3
+        comparisons = refs + jr.normal(subkey, (n, 2)) * 0.3
         y = jnp.ones(n, dtype=int)
-        X = jnp.stack([refs, probes], axis=1)
+        X = jnp.stack([refs, comparisons], axis=1)
 
         model.fit(X, y, inference="map", inference_config={"steps": 20})
 
@@ -526,7 +526,7 @@ class TestAcquisitionIntegration:
         best_f = 1.0
 
         # Get best candidate via EI
-        posterior = model.posterior(candidates, probes=probes_cand)
+        posterior = model.posterior(candidates, comparisons=probes_cand)
         ei = expected_improvement(posterior, best_f)  # type: ignore[arg-type]
         best_idx = jnp.argmax(ei)
         X_next_ref = candidates[best_idx : best_idx + 1]

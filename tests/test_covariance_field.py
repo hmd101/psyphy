@@ -20,8 +20,8 @@ import pytest
 from psyphy.data import ResponseData
 from psyphy.inference import MAPOptimizer
 from psyphy.model import WPPM, Prior
+from psyphy.model.likelihood import OddityTask
 from psyphy.model.noise import GaussianNoise
-from psyphy.model.task import OddityTask
 
 # ==============================================================================
 # Test fixtures
@@ -227,8 +227,8 @@ def test_posterior_get_covariance_field_wishart(wishart_model, sample_data):
     spatially-varying structure learned during fitting.
     """
     # Fit model - convert ResponseData to arrays
-    refs, probes, responses = sample_data.to_numpy()
-    X = jnp.stack([refs, probes], axis=1)
+    refs, comparisons, responses = sample_data.to_numpy()
+    X = jnp.stack([refs, comparisons], axis=1)
     y = jnp.array(responses)
     wishart_model.fit(X, y, inference=MAPOptimizer(steps=10))
 

@@ -12,8 +12,6 @@ Wishart Process Psychophysical Model (WPPM):
        * variance_scale: global covariance scale
        * decay_rate: smoothness/length-scale for covariance field
        * diag_term: numerical stabilizer added to covariance diagonals
-   - Later, replace `local_covariance` with a basis-expansion Wishart process
-     and swap discriminability/likelihood with MC observer simulation.
 
 All numerics use JAX (jax.numpy as jnp) to support autodiff and optax optimizers
 """
@@ -28,8 +26,8 @@ import jax.numpy as jnp
 from psyphy.utils.math import chebyshev_basis
 
 from .base import Model, OnlineConfig
+from .likelihood import TaskLikelihood
 from .prior import Prior
-from .task import TaskLikelihood
 
 # Type aliases for readability
 Params = dict[str, jnp.ndarray]
@@ -51,7 +49,7 @@ class WPPM(Model):
         The WPPM delegates
         to prior.basis_degree to ensure consistency between parameter sampling and
         basis evaluation.
-    task : TaskLikelihood
+    likelihood : TaskLikelihood
         Psychophysical task mapping that defines how discriminability translates
         to p(correct) and how log-likelihood of responses is computed.
         (e.g., OddityTask)
@@ -82,7 +80,7 @@ class WPPM(Model):
         self,
         input_dim: int,
         prior: Prior,
-        task: TaskLikelihood,
+        likelihood: TaskLikelihood,
         noise: Any | None = None,
         *,  # everything after here is keyword-only
         online_config: OnlineConfig | None = None,
@@ -121,7 +119,7 @@ class WPPM(Model):
                 f"but Prior expects input_dim={self.prior.input_dim}."
             )
 
-        self.task = task  # task mapping and likelihood
+        self.likelihood = likelihood  # task mapping and likelihood
         self.noise = noise  # noise model
 
         self.extra_dims = int(extra_dims)
@@ -392,23 +390,24 @@ class WPPM(Model):
         raise ValueError("params must contain 'W' (weights of WPPM)")
 
     # ----------------------------------------------------------------------
-    # PREDICTION (delegates to task)
+    # PREDICTION (delegates to likelihood)
     # ----------------------------------------------------------------------
     def predict_prob(
-        self, params: Params, stimulus: Stimulus, **task_kwargs: Any
+        self, params: Params, stimulus: Stimulus, **likelihood_kwargs: Any
     ) -> jnp.ndarray:
         """
         Predict probability of a correct response for a single stimulus.
 
         Design choice:
-            WPPM computes discriminability & covariance; the TASK defines how
+            WPPM computes discriminability & covariance; the LIKELIHOOD defines how
             that translates to performance. We therefore delegate to:
-                task.predict(params, stimulus, model=self, noise=self.noise)
+                likelihood.predict(params, stimulus, model=self, noise=self.noise)
 
         Parameters
         ----------
         params : dict
-        stimulus : (reference, probe)
+        stimulus : tuple[jnp.ndarray, jnp.ndarray]
+             (reference, comparison) pair in model space.
 
         Returns
         -------
@@ -417,24 +416,22 @@ class WPPM(Model):
         # Strict task-owned configuration:
         # - MC control knobs (e.g. num_samples/bandwidth) live in the task config.
         # - WPPM.predict_prob therefore does not accept task-specific kwargs.
-        if task_kwargs:
-            unexpected = ", ".join(sorted(task_kwargs.keys()))
+        if likelihood_kwargs:
             raise TypeError(
-                "WPPM.predict_prob does not accept task-specific kwargs. "
-                "Configure task behavior via the task instance (e.g. OddityTaskConfig). "
-                f"Unexpected: {unexpected}"
+                f"WPPM.predict_prob got unexpected kwargs: {likelihood_kwargs}. "
+                "Configure likelihood behavior via the TaskLikelihood object itself."
             )
 
-        return self.task.predict(params, stimulus, self, self.noise)
+        return self.likelihood.predict(params, stimulus, self, self.noise)
 
     # ----------------------------------------------------------------------
-    # LIKELIHOOD (delegates to task)
+    # LIKELIHOOD (delegates to likelihood component)
     # ----------------------------------------------------------------------
     def log_likelihood(
         self,
         params: Params,
         refs: jnp.ndarray,
-        probes: jnp.ndarray,
+        comparisons: jnp.ndarray,
         responses: jnp.ndarray,
     ) -> jnp.ndarray:
         """
@@ -449,7 +446,7 @@ class WPPM(Model):
         params : dict
             Model parameters.
         refs : jnp.ndarray, shape (N, input_dim)
-        probes : jnp.ndarray, shape (N, input_dim)
+        comparisons : jnp.ndarray, shape (N, input_dim)
         responses : jnp.ndarray, shape (N,)
             Typically 0/1; task may support richer encodings.
 
@@ -473,20 +470,20 @@ class WPPM(Model):
 
         data = TrialData(
             refs=jnp.asarray(refs),
-            comparisons=jnp.asarray(probes),
+            comparisons=jnp.asarray(comparisons),
             responses=jnp.asarray(responses),
         )
-        return self.task.loglik(params, data, self, self.noise)
+        return self.likelihood.loglik(params, data, self, self.noise)
 
     def log_likelihood_from_data(
         self, params: Params, data: Any, *, key: jax.Array | None = None
     ) -> jnp.ndarray:
         """Compute log-likelihood directly from a batched data object.
 
-        Why delegate to the task?
-            - The task knows the decision rule (oddity, 2AFC, ...).
-            - The task can use the model (this WPPM) to fetch discriminabilities.
-            - The task can use the noise model if it needs MC simulation.
+        Why delegate to the likelihood?
+            - The likelihood knows the decision rule (oddity, 2AFC, ...).
+            - The likelihood can use the model (this WPPM) to fetch discriminabilities.
+            - The likelihood can use the noise model if it needs MC simulation.
 
         Parameters
         ----------
@@ -506,7 +503,7 @@ class WPPM(Model):
         loglik : jnp.ndarray
             Scalar log-likelihood (task-only; add prior outside if needed).
         """
-        return self.task.loglik(params, data, self, self.noise, key=key)
+        return self.likelihood.loglik(params, data, self, self.noise, key=key)
 
     # ----------------------------------------------------------------------
     # POSTERIOR-STYLE CONVENIENCE (OPTIONAL)
@@ -545,7 +542,7 @@ class WPPM(Model):
     def _forward(
         self,
         X: jnp.ndarray,
-        probes: jnp.ndarray | None,
+        comparisons: jnp.ndarray | None,
         params: dict[str, jnp.ndarray],
     ) -> jnp.ndarray:
         """
@@ -560,8 +557,8 @@ class WPPM(Model):
         ----------
         X : jnp.ndarray, shape (n_test, input_dim)
             Test stimuli (references)
-        probes : jnp.ndarray | None, shape (n_test, input_dim)
-            Probe stimuli (None for detection tasks)
+        comparisons : jnp.ndarray | None, shape (n_test, input_dim)
+            Comparisons stimuli (None for detection tasks)
         params : dict[str, jnp.ndarray]
             Model parameters (e.g., {"W": (input_dim,)})
 
@@ -576,19 +573,16 @@ class WPPM(Model):
         For proper predictions that account for parameter uncertainty,
         use model.posterior() instead.
         """
-        if probes is None:
-            # Detection task - not yet implemented in MVP
-            raise NotImplementedError(
-                "Detection tasks not yet supported in MVP. "
-                "Use discrimination with probes."
+        if comparisons is None:
+            raise ValueError(
+                "WPPM requires comparisons stimuli (comparisons) for predictions."
             )
 
         # Vectorize over test points
-        def predict_single(ref, probe):
-            stimulus = (ref, probe)
-            return self.predict_prob(params, stimulus)
+        def predict_single(ref, comp):
+            return self.predict_prob(params, (ref, comp))
 
         # Use vmap for efficient batch evaluation
-        predictions = jax.vmap(predict_single)(X, probes)
+        predictions = jax.vmap(predict_single)(X, comparisons)
 
         return predictions

@@ -39,17 +39,17 @@ def save_responses_csv(data: TrialData | ResponseData, path: PathLike) -> None:
     path : str or Path
     """
     if isinstance(data, TrialData):
-        refs, probes, resps = (
+        refs, comparisons, resps = (
             np.asarray(data.refs),
             np.asarray(data.comparisons),
             np.asarray(data.responses),
         )
     else:
-        refs, probes, resps = data.to_numpy()
+        refs, comparisons, resps = data.to_numpy()
     with open(path, "w", newline="") as f:
         writer = csv.writer(f)
         writer.writerow(["ref", "probe", "response"])
-        for r, p, y in zip(refs, probes, resps):
+        for r, p, y in zip(refs, comparisons, resps):
             writer.writerow([r.tolist(), p.tolist(), int(y)])
 
 

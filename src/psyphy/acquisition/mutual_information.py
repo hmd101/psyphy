@@ -28,7 +28,7 @@ if TYPE_CHECKING:
 def mutual_information(
     param_posterior: ParameterPosterior,
     X: jnp.ndarray,
-    probes: jnp.ndarray | None = None,
+    comparisons: jnp.ndarray | None = None,
     n_samples: int = 100,
     key: Any = None,
 ) -> jnp.ndarray:
@@ -46,7 +46,7 @@ def mutual_information(
         Posterior over model parameters p(θ | data)
     X : jnp.ndarray, shape (n_candidates, input_dim)
         Candidate reference stimuli
-    probes : jnp.ndarray, shape (n_candidates, input_dim) | None
+    comparisons : jnp.ndarray, shape (n_candidates, input_dim) | None
         Candidate probe stimuli. Required for discrimination tasks.
     n_samples : int, default=100
         Number of posterior samples for MC approximation
@@ -63,14 +63,14 @@ def mutual_information(
     >>> # Basic usage
     >>> param_post = model.posterior(kind="parameter")
     >>> X_candidates = jnp.array([[0.0, 0.0], [0.5, 0.5], [1.0, 1.0]])
-    >>> probes = X_candidates + 0.1
+    >>> comparisons = X_candidates + 0.1
     >>>
-    >>> mi = mutual_information(param_post, X_candidates, probes, n_samples=200)
+    >>> mi = mutual_information(param_post, X_candidates, comparisons, n_samples=200)
     >>> X_next = X_candidates[jnp.argmax(mi)]
 
     >>> # With optimization (discrete)
     >>> def acq_fn(X):
-    ...     return mutual_information(param_post, X, probes=None, n_samples=100)
+    ...     return mutual_information(param_post, X, comparisons=None, n_samples=100)
     >>> X_next, mi_val = optimize_acqf_discrete(acq_fn, candidates, q=1)
 
     Notes
@@ -129,13 +129,13 @@ def mutual_information(
         # params_i = {k: v[i] for k, v in param_samples.items()}
 
         # Compute p(correct | θ_i, X)
-        if probes is not None:
+        if comparisons is not None:
             # Discrimination task: compute prob of correct response
             # This requires model-specific logic
-            # For WPPM: prob_correct = model.predict_prob(params_i, X, probes)
+            # For WPPM: prob_correct = model.predict_prob(params_i, X, comparisons)
 
             # Placeholder: use predictive posterior mean as proxy
-            # TODO: Implement model.predict_prob_from_params(params, X, probes)
+            # TODO: Implement model.predict_prob_from_params(params, X, comparisons)
             prob_i = jnp.ones(X.shape[0]) * 0.5  # Stub
         else:
             # Threshold task
