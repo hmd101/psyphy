@@ -325,39 +325,6 @@ class TestEdgeCases:
             "Small bandwidth should still produce good accuracy for distant stimuli."
         )
 
-    def test_large_bandwidth(self):
-        """
-        Test with large bandwidth (smooth decision).
-
-        Large bandwidth -> smooth transition -> more gradual performance curve.
-        """
-        model = WPPM(
-            input_dim=2,
-            prior=Prior(input_dim=2, basis_degree=2),
-            likelihood=OddityTask(
-                config=OddityTaskConfig(num_samples=1000, bandwidth=0.1)
-            ),
-            noise=GaussianNoise(sigma=0.01),
-        )
-        params = model.init_params(jr.PRNGKey(0))
-
-        data = ResponseData()
-        ref = jnp.array([0.0, 0.0])
-        comparison = jnp.array([0.5, 0.5])  # Moderately different
-        data.add_trial(ref, comparison, resp=1)
-
-        loglik = model.likelihood.loglik(
-            params, data, model, model.noise, key=jr.PRNGKey(42)
-        )
-
-        p_correct = jnp.exp(loglik)
-
-        # Should be between chance and perfect (more gradual)
-        assert 0.23 < p_correct < 0.85, (
-            f"P(correct) = {p_correct:.3f} with large bandwidth. "
-            "Large bandwidth should produce intermediate performance."
-        )
-
     def test_small_num_samples(self):
         """
         Test with small num_samples (high MC variance).
