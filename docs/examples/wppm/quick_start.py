@@ -101,11 +101,11 @@ learning_rate = 5e-4  # full example: 5e-5. The smaller the lr, the more steps
 
 # input_dim = 2
 # basis_degree = 4  # smoothness / complexity of the basis
-extra_dims = 1  # embedding dim for the Wishart process
-decay_rate = 0.4  # how quickly high-frequency basis coefficients are shrunk
-variance_scale = 4e-3  # prior scale for the covariance matrices
+# extra_dims = 1  # embedding dim for the Wishart process
+# decay_rate = 0.4  # how quickly high-frequency basis coefficients are shrunk
+# variance_scale = 4e-3  # 1e-9    # prior scale for the covariance matrices
 # diag_term = 1e-4  # small diagonal jitter to keep covariances PD
-bandwidth = 1e-2  # logistic-CDF bandwidth in the oddity task
+# bandwidth = 1e-2  # logistic-CDF bandwidth in the oddity task
 # momentum = 0.9
 
 # ---------------------------------------------------------------------------
@@ -125,9 +125,9 @@ noise = GaussianNoise(sigma=0.1)
 truth_prior = Prior(
     # input_dim=input_dim,
     # basis_degree=basis_degree,
-    extra_embedding_dims=extra_dims,
-    decay_rate=decay_rate,
-    variance_scale=variance_scale,
+    # extra_embedding_dims=extra_dims,
+    # decay_rate=decay_rate,
+    # variance_scale=variance_scale,
 )
 truth_model = WPPM(
     # input_dim=input_dim,
@@ -216,9 +216,9 @@ print("[2/5] Building model and optimizer...")
 prior = Prior(
     # input_dim=input_dim,
     # basis_degree=basis_degree,
-    extra_embedding_dims=extra_dims,
-    decay_rate=decay_rate,
-    variance_scale=variance_scale,
+    # extra_embedding_dims=extra_dims,
+    # decay_rate=decay_rate,
+    # variance_scale=variance_scale,
 )
 model = WPPM(
     # input_dim=input_dim,
@@ -279,7 +279,9 @@ covs_map = map_field(vis_points)  # (1, 2, 2)
 
 # Scale ellipses so they are visually readable.
 gt_scale = float(jnp.sqrt(jnp.mean(jnp.linalg.eigvalsh(covs_truth[0]))))
-ellipse_scale = max(0.3, 0.4 * gt_scale / 0.01)  # keep readable on the unit square
+ellipse_scale = (
+    max(0.3, 0.4 * gt_scale / 0.01)  # * gt_scale
+)  # keep readable on the unit square
 
 fig, ax = plt.subplots(figsize=(6, 6))
 
