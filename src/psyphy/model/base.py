@@ -2,7 +2,7 @@
 base.py
 -------
 
-Base class for psychophysical models with BoTorch-style API.
+Base class for psychophysical models
 
 Provides:
 - Model.fit(X, y) --> fit model to data
@@ -105,7 +105,6 @@ class Model(ABC):
     """
     Abstract base class for psychophysical models.
 
-    Provides API that mimics BoTorch style:
     - fit(X, y) --> train model
     - posterior(X) --> get predictions
     - condition_on_observations(X, y) --> online updates
