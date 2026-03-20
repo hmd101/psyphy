@@ -99,14 +99,14 @@ learning_rate = 5e-4  # full example: 5e-5. The smaller the lr, the more steps
 # Model hyperparameters
 # ---------------------------------------------------------------------------
 
-input_dim = 2
-basis_degree = 4  # smoothness / complexity of the basis
+# input_dim = 2
+# basis_degree = 4  # smoothness / complexity of the basis
 extra_dims = 1  # embedding dim for the Wishart process
 decay_rate = 0.4  # how quickly high-frequency basis coefficients are shrunk
 variance_scale = 4e-3  # prior scale for the covariance matrices
-diag_term = 1e-4  # small diagonal jitter to keep covariances PD
+# diag_term = 1e-4  # small diagonal jitter to keep covariances PD
 bandwidth = 1e-2  # logistic-CDF bandwidth in the oddity task
-momentum = 0.9
+# momentum = 0.9
 
 # ---------------------------------------------------------------------------
 # Step 1 — Ground-truth model
@@ -116,25 +116,26 @@ print("[1/5] Setting up ground-truth WPPM and simulating data...")
 
 # --8<-- [start:truth_model]
 task = OddityTask(
-    config=OddityTaskConfig(num_samples=int(MC_SAMPLES), bandwidth=float(bandwidth))
+    config=OddityTaskConfig(num_samples=int(MC_SAMPLES))
+    # config=OddityTaskConfig(num_samples=int(MC_SAMPLES), bandwidth=float(bandwidth))
 )
 noise = GaussianNoise(sigma=0.1)
 
 # Set all Wishart process hyperparameters in Prior
 truth_prior = Prior(
-    input_dim=input_dim,
-    basis_degree=basis_degree,
+    # input_dim=input_dim,
+    # basis_degree=basis_degree,
     extra_embedding_dims=extra_dims,
     decay_rate=decay_rate,
     variance_scale=variance_scale,
 )
 truth_model = WPPM(
-    input_dim=input_dim,
-    extra_dims=extra_dims,
+    # input_dim=input_dim,
+    # extra_dims=extra_dims,
     prior=truth_prior,
     likelihood=task,
     noise=noise,
-    diag_term=diag_term,
+    # diag_term=diag_term,
 )
 
 # Sample ground-truth Wishart process weights
@@ -213,18 +214,18 @@ print("[2/5] Building model and optimizer...")
 
 # --8<-- [start:build_model]
 prior = Prior(
-    input_dim=input_dim,
-    basis_degree=basis_degree,
+    # input_dim=input_dim,
+    # basis_degree=basis_degree,
     extra_embedding_dims=extra_dims,
     decay_rate=decay_rate,
     variance_scale=variance_scale,
 )
 model = WPPM(
-    input_dim=input_dim,
+    # input_dim=input_dim,
     prior=prior,
     likelihood=task,
-    noise=noise,
-    diag_term=1e-4,
+    noise=noise,  # we use the same Gaussian noise as for the ground truth
+    # diag_term=1e-4,
 )
 # --8<-- [end:build_model]
 
@@ -247,7 +248,7 @@ print("[3/5] Fitting via MAPOptimizer ...")
 map_optimizer = MAPOptimizer(
     steps=NUM_STEPS,
     learning_rate=learning_rate,
-    momentum=momentum,
+    # momentum=momentum,
     track_history=True,
     log_every=1,
 )
