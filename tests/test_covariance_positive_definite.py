@@ -23,7 +23,7 @@ def test_local_covariance_positive_definite(diag_term):
     model = WPPM(
         input_dim=input_dim,
         prior=prior,
-        task=task,
+        likelihood=task,
         noise=noise,
         diag_term=diag_term,
     )

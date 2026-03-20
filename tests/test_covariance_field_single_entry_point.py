@@ -28,7 +28,7 @@ def wishart_field():
     model = WPPM(
         input_dim=2,
         prior=Prior(input_dim=2, basis_degree=3, extra_embedding_dims=1),
-        task=OddityTask(),
+        likelihood=OddityTask(),
         extra_dims=1,
     )
     key = jr.PRNGKey(123)
@@ -41,7 +41,7 @@ def field_3d():
     model = WPPM(
         input_dim=3,
         prior=Prior(input_dim=3, basis_degree=2),
-        task=OddityTask(),
+        likelihood=OddityTask(),
     )
     key = jr.PRNGKey(456)
     return WPPMCovarianceField.from_prior(model, key)
@@ -324,7 +324,7 @@ class TestEdgeCases:
         model = WPPM(
             input_dim=1,
             prior=Prior(input_dim=1, basis_degree=2),
-            task=OddityTask(),
+            likelihood=OddityTask(),
         )
         field = WPPMCovarianceField.from_prior(model, jr.PRNGKey(789))
 
@@ -340,7 +340,7 @@ class TestEdgeCases:
         model = WPPM(
             input_dim=1,
             prior=Prior(input_dim=1, basis_degree=2),
-            task=OddityTask(),
+            likelihood=OddityTask(),
         )
         field = WPPMCovarianceField.from_prior(model, jr.PRNGKey(789))
 

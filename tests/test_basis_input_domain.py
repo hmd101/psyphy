@@ -21,7 +21,7 @@ def test_evaluate_basis_at_point_accepts_chebyshev_domain(input_dim: int) -> Non
     model = WPPM(
         input_dim=input_dim,
         prior=Prior(input_dim=input_dim, basis_degree=3),
-        task=OddityTask(),
+        likelihood=OddityTask(),
         noise=GaussianNoise(),
     )
 
@@ -40,7 +40,7 @@ def test_evaluate_basis_at_point_rejects_out_of_range_2d(bad_x: jnp.ndarray) -> 
     model = WPPM(
         input_dim=2,
         prior=Prior(input_dim=2, basis_degree=2),
-        task=OddityTask(),
+        likelihood=OddityTask(),
         noise=GaussianNoise(),
     )
 
@@ -52,7 +52,7 @@ def test_evaluate_basis_at_point_rejects_wrong_shape() -> None:
     model = WPPM(
         input_dim=2,
         prior=Prior(input_dim=2, basis_degree=2),
-        task=OddityTask(),
+        likelihood=OddityTask(),
         noise=GaussianNoise(),
     )
 

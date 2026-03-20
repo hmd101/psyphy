@@ -22,7 +22,7 @@ class TestWishartParameters:
         model = WPPM(
             input_dim=2,
             prior=Prior(input_dim=2, basis_degree=3),
-            task=OddityTask(),
+            likelihood=OddityTask(),
             noise=GaussianNoise(),
         )
 
@@ -49,7 +49,7 @@ class TestWishartParameters:
         model = WPPM(
             input_dim=2,
             prior=Prior(input_dim=2, basis_degree=3, extra_embedding_dims=extra_dims),
-            task=OddityTask(),
+            likelihood=OddityTask(),
             noise=GaussianNoise(),
             extra_dims=extra_dims,
         )
@@ -102,7 +102,7 @@ class TestSpatiallyVaryingCovariance:
         model = WPPM(
             input_dim=2,
             prior=Prior(input_dim=2, basis_degree=3),
-            task=OddityTask(),
+            likelihood=OddityTask(),
             noise=GaussianNoise(),
         )
 
@@ -122,7 +122,7 @@ class TestSpatiallyVaryingCovariance:
         model = WPPM(
             input_dim=2,
             prior=Prior(input_dim=2, basis_degree=3, decay_rate=0.8),
-            task=OddityTask(),
+            likelihood=OddityTask(),
             noise=GaussianNoise(),
         )
 
@@ -147,7 +147,7 @@ class TestSpatiallyVaryingCovariance:
         model = WPPM(
             input_dim=2,
             prior=Prior(input_dim=2, basis_degree=3),
-            task=OddityTask(),
+            likelihood=OddityTask(),
             noise=GaussianNoise(),
         )
 
@@ -169,7 +169,7 @@ class TestSpatiallyVaryingCovariance:
         model = WPPM(
             input_dim=2,
             prior=Prior(input_dim=2, basis_degree=3),
-            task=OddityTask(),
+            likelihood=OddityTask(),
             noise=GaussianNoise(),
         )
 
@@ -187,7 +187,7 @@ class TestSpatiallyVaryingCovariance:
         model = WPPM(
             input_dim=2,
             prior=Prior(input_dim=2, basis_degree=3),
-            task=OddityTask(),
+            likelihood=OddityTask(),
             noise=GaussianNoise(),
             diag_term=diag_term,
         )
@@ -209,7 +209,7 @@ class TestWishartIntegration:
         model = WPPM(
             input_dim=2,
             prior=Prior(input_dim=2, basis_degree=3),
-            task=OddityTask(),
+            likelihood=OddityTask(),
             noise=GaussianNoise(),
         )
 
@@ -229,7 +229,7 @@ class TestWishartIntegration:
         model = WPPM(
             input_dim=2,
             prior=Prior(input_dim=2, basis_degree=3),  # Lower degree for speed
-            task=OddityTask(),
+            likelihood=OddityTask(),
             noise=GaussianNoise(),
         )
 
@@ -263,7 +263,7 @@ class TestComputeU:
         model = WPPM(
             input_dim=2,
             prior=Prior(input_dim=2, basis_degree=3, extra_embedding_dims=extra_dims),
-            task=OddityTask(),
+            likelihood=OddityTask(),
             noise=GaussianNoise(),
             extra_dims=extra_dims,
         )
@@ -283,7 +283,7 @@ class TestComputeU:
         model = WPPM(
             input_dim=2,
             prior=Prior(input_dim=2, basis_degree=3),
-            task=OddityTask(),
+            likelihood=OddityTask(),
             noise=GaussianNoise(),
         )
 
@@ -304,7 +304,7 @@ class TestComputeU:
         model = WPPM(
             input_dim=2,
             prior=Prior(input_dim=2, basis_degree=3),
-            task=OddityTask(),
+            likelihood=OddityTask(),
             noise=GaussianNoise(),
             diag_term=diag_term,
         )
