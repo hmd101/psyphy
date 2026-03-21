@@ -229,14 +229,19 @@ print(f"  shape of covs_prior: {covs_prior.shape}")
 print("[3/5] Fitting via MAPOptimizer ...")
 
 # --8<-- [start:fit_map]
-map_optimizer = MAPOptimizer(
+optimizer = MAPOptimizer(
     steps=NUM_STEPS,
     learning_rate=learning_rate,
     track_history=True,
     log_every=1,
 )
 
-map_posterior = map_optimizer.fit(model, data, init_params=prior_params, seed=4)
+map = optimizer.fit(model, data, init_params=prior_params, seed=4)
+# Protocol: ParameterPosterior, here point estimate
+
+# optional: for visualization:
+map_cov_field = WPPMCovarianceField(model, map.params)
+# OUTPUT: Covariance Matrices (N, 2, 2) for plotting
 # --8<-- [end:fit_map]
 
 # ---------------------------------------------------------------------------
@@ -249,26 +254,23 @@ print("[4/5] Plotting covariance ellipses ...")
 _PLOT_JITTER = 0.0
 
 
-map_field = WPPMCovarianceField(model, map_posterior.params)
-
 # --8<-- [start:cov_fields]
 # Evaluate any covariance-field object at a single point or a batch of points.
-covs_truth = truth_field(ref_point)  # (1, 2, 2)
-covs_prior = prior_field(ref_point)  # (1, 2, 2)
-covs_map = map_field(ref_point)  # (1, 2, 2)
+covs_truth = truth_field(ref_point)  # (N, 2, 2)
+covs_prior = prior_field(ref_point)  # (N, 2, 2)
+covs_map = map_cov_field(ref_point)  # (N, 2, 2)
+# here: N=1 for fast computation
 # --8<-- [end:cov_fields]
 
 # Scale ellipses so they are visually readable.
 gt_scale = float(jnp.sqrt(jnp.mean(jnp.linalg.eigvalsh(covs_truth[0]))))
-ellipse_scale = (
-    max(0.3, 0.4 * gt_scale / 0.01)  # * gt_scale
-)  # keep readable on the unit square
+ellipse_scale = max(0.3, 0.4 * gt_scale / 0.01)  # keep readable on the unit square
 
 fig, ax = plt.subplots(figsize=(6, 6))
 
 labels = ["Ground Truth", "Prior Sample (init)", "Fitted (MAP)"]
 colors = ["k", "b", "r"]
-fields = [truth_field, prior_field, map_field]
+fields = [truth_field, prior_field, map_cov_field]
 non_pd_counts = []
 
 for field, color, label in zip(fields, colors, labels):
@@ -320,7 +322,7 @@ print(f"  Saved → {PLOTS_DIR}/quick_start_ellipses.png")
 print("[5/5] Plotting learning curve ...")
 
 # --8<-- [start:plot_learning_curve]
-steps_hist, loss_hist = map_optimizer.get_history()
+steps_hist, loss_hist = optimizer.get_history()
 # --8<-- [end:plot_learning_curve]
 
 if steps_hist and loss_hist:
