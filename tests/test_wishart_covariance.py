@@ -11,7 +11,10 @@ where U(x) is computed from Chebyshev basis expansion.
 import jax.numpy as jnp
 import jax.random as jr
 
+from psyphy.data import TrialData
+from psyphy.inference import MAPOptimizer
 from psyphy.model import WPPM, GaussianNoise, OddityTask, Prior
+from psyphy.posterior import WPPMPredictivePosterior
 
 
 class TestWishartParameters:
@@ -252,14 +255,21 @@ class TestWishartIntegration:
         key = jr.PRNGKey(42)
         refs = jr.uniform(key, (n, 2))
         comparisons = refs + 0.05
-        y = jnp.ones(n, dtype=int)
-        X = jnp.stack([refs, comparisons], axis=1)
+        # y = jnp.ones(n, dtype=int)
+        # X = jnp.stack([refs, comparisons], axis=1)
+        responses = jnp.ones((n,), dtype=jnp.int32)
 
-        # Fit should not raise
-        model.fit(X, y, inference="map", inference_config={"steps": 10})
+        data = TrialData(refs=refs, comparisons=comparisons, responses=responses)
+
+        # fit
+        optimizer = MAPOptimizer(steps=10)
+        param_post = optimizer.fit(model, data)
 
         # Should be able to make predictions
-        pred_post = model.posterior(refs[:5], comparisons=comparisons[:5])
+        # pred_post = model.posterior(refs[:5], comparisons=comparisons[:5])
+        pred_post = WPPMPredictivePosterior(
+            param_post, refs[:5], comparisons=comparisons[:5]
+        )
         assert pred_post.mean.shape == (5,)
 
 
