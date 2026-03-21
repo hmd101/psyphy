@@ -12,7 +12,6 @@ def test_top_level_api_imports():
         "LaplaceApproximation",
         "ParameterPosterior",
         "MAPPosterior",
-        "ExperimentSession",
         "ResponseData",
         "TrialBatch",
     ]:
