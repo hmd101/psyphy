@@ -226,14 +226,9 @@ def test_posterior_get_covariance_field_wishart(wishart_model, sample_data):
     BoTorch-style two-step pattern. The covariance field will reflect the
     spatially-varying structure learned during fitting.
     """
-    # Fit model - convert ResponseData to arrays
-    refs, comparisons, responses = sample_data.to_numpy()
-    X = jnp.stack([refs, comparisons], axis=1)
-    y = jnp.array(responses)
-    wishart_model.fit(X, y, inference=MAPOptimizer(steps=10))
-
-    # Get the parameter posterior (BoTorch-style: separate from fit)
-    posterior = wishart_model.posterior(kind="parameter")
+    # Fit model using the functional API
+    optimizer = MAPOptimizer(steps=10)
+    posterior = optimizer.fit(wishart_model, sample_data)
 
     # Get field directly from the model using the fitted parameters
     from psyphy.model.covariance_field import WPPMCovarianceField

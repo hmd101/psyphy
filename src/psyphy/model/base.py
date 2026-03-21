@@ -2,150 +2,40 @@
 base.py
 -------
 
-Base class for psychophysical models
-
-Provides:
-- Model.fit(X, y) --> fit model to data
-- Model.posterior(X) --> get predictive posterior
-- Model.condition_on_observations(X, y) --> online learning
-- OnlineConfig --> memory management strategies
+Base class for psychophysical models.
 
 Design
 ------
-This façade delegates inference to specialized engines (MAP, Laplace, MCMC)
-while maintaining a simple, composable API for users.
+Models in PsyPhy are **stateless configuration objects**.
+They define:
+1. The parameter space (init_params)
+2. The probabilistic rules (log_likelihood, forward)
 
-Inspired by BoTorch but adapted for psychophysics:
-- Explicit parameter posteriors for research transparency
-- Online learning with bounded memory (sliding window, reservoir sampling)
-- Immutable updates (returns new instances)
+They do NOT hold data or fitted parameters.
+Inference is handled by external engines (e.g. MAPOptimizer) which
+return a Posterior object containing the results.
 """
 
 from __future__ import annotations
 
 from abc import ABC, abstractmethod
-from dataclasses import dataclass
-from typing import TYPE_CHECKING, Any, Literal
+from typing import TYPE_CHECKING, Any
 
 import jax.numpy as jnp
 
 if TYPE_CHECKING:
     from psyphy.data import ResponseData
-    from psyphy.inference.base import InferenceEngine
-    from psyphy.posterior import ParameterPosterior, PredictivePosterior
-
-
-@dataclass
-class OnlineConfig:
-    """
-    Configuration for online learning and memory management.
-
-    Attributes
-    ----------
-    strategy : {"full", "sliding_window", "reservoir", "none"}
-        Data retention strategy:
-        - "full": Keep all data (unbounded memory)
-        - "sliding_window": Keep only last N trials (FIFO)
-        - "reservoir": Reservoir sampling for uniform coverage
-        - "none": No caching, refit from scratch each time
-
-    window_size : int | None
-        Maximum number of trials to retain (for sliding_window/reservoir).
-        Required for sliding_window and reservoir strategies.
-
-    refit_interval : int
-        Refit model every N updates (1=always, 10=batch every 10 trials).
-        Trades off accuracy vs. computational cost.
-
-    warm_start : bool
-        If True, initialize refitting from cached parameters.
-        Speeds up convergence for small updates.
-
-    Examples
-    --------
-    >>> # Unbounded memory (default)
-    >>> config = OnlineConfig(strategy="full")
-
-    >>> # Sliding window: keep last 10K trials
-    >>> config = OnlineConfig(
-    ...     strategy="sliding_window",
-    ...     window_size=10_000,
-    ...     refit_interval=10,  # Batch every 10 trials
-    ... )
-
-    >>> # Reservoir sampling: uniform coverage with 5K trials
-    >>> config = OnlineConfig(
-    ...     strategy="reservoir",
-    ...     window_size=5_000,
-    ... )
-    """
-
-    strategy: Literal["full", "sliding_window", "reservoir", "none"] = "full"
-    window_size: int | None = None
-    refit_interval: int = 1
-    warm_start: bool = True
-
-    def __post_init__(self):
-        """Validate configuration."""
-        if self.strategy in ["sliding_window", "reservoir"]:
-            if self.window_size is None:
-                raise ValueError(f"window_size required for strategy='{self.strategy}'")
-            if self.window_size <= 0:
-                raise ValueError(
-                    f"window_size must be positive, got {self.window_size}"
-                )
-
-        if self.refit_interval <= 0:
-            raise ValueError(
-                f"refit_interval must be positive, got {self.refit_interval}"
-            )
 
 
 class Model(ABC):
     """
     Abstract base class for psychophysical models.
 
-    - fit(X, y) --> train model
-    - posterior(X) --> get predictions
-    - condition_on_observations(X, y) --> online updates
-
     Subclasses must implement:
     - init_params(key) --> sample initial parameters
     - log_likelihood_from_data(params, data) --> compute likelihood
-
-    Parameters
-    ----------
-    online_config : OnlineConfig | None
-        Configuration for online learning. If None, uses default (unbounded memory).
-
-    Attributes
-    ----------
-    _posterior : ParameterPosterior | None
-        Cached parameter posterior from last fit
-    _inference_engine : InferenceEngine | None
-        Cached inference engine for warm-start refitting
-    _data_buffer : ResponseData | None
-        Data buffer managed according to online_config
-    _n_updates : int
-        Number of condition_on_observations calls
-    online_config : OnlineConfig
-        Online learning configuration
+    - _forward(X, comparisons, params) --> compute predictions
     """
-
-    def __init__(self, *, online_config: OnlineConfig | None = None):
-        """
-        Initialize model.
-
-        Parameters
-        ----------
-        online_config : OnlineConfig | None
-            Online learning configuration. If None, uses default settings.
-        """
-        self._posterior: ParameterPosterior | None = None
-        self._inference_engine: InferenceEngine | None = None
-        self._data_buffer: ResponseData | None = None
-        self._n_updates: int = 0
-        self.online_config = online_config or OnlineConfig()
 
     # ------------------------------------------------------------------
     # Abstract methods (must be implemented by subclasses)
@@ -187,207 +77,6 @@ class Model(ABC):
         """
         ...
 
-    # ------------------------------------------------------------------
-    # High-level Facade: fit, posterior, condition_on_observations
-    # ------------------------------------------------------------------
-
-    def fit(
-        self,
-        X: jnp.ndarray,
-        y: jnp.ndarray,
-        *,
-        inference: InferenceEngine | str = "laplace",
-        inference_config: dict | None = None,
-    ) -> Model:
-        """
-        Fit model to data.
-
-        Parameters
-        ----------
-        X : jnp.ndarray
-            Stimuli, shape (n_trials, 2, input_dim) for (ref, probe) pairs
-            or (n_trials, input_dim) for references only
-        y : jnp.ndarray
-            Responses, shape (n_trials,)
-        inference : InferenceEngine | str, default="laplace"
-            Inference engine or string key ("map", "laplace", "langevin")
-        inference_config : dict | None
-            Hyperparameters for string-based inference.
-            Examples: {"steps": 500, "lr": 1e-3} for MAP
-
-        Returns
-        -------
-        Model
-            Self for method chaining
-
-        Examples
-        --------
-        >>> # Simple: use defaults
-        >>> model.fit(X, y)
-
-        >>> # Explicit optimizer
-        >>> from psyphy.inference import MAPOptimizer
-        >>> model.fit(X, y, inference=MAPOptimizer(steps=500))
-
-        >>> # String + config (for experiment tracking)
-        >>> model.fit(X, y, inference="map", inference_config={"steps": 500})
-        """
-        from psyphy.data import ResponseData
-        from psyphy.inference import INFERENCE_ENGINES, InferenceEngine
-
-        # Resolve inference engine
-        is_string_inference = isinstance(inference, str)
-
-        if is_string_inference:
-            config = inference_config or {}
-            inference_key: str = inference  # type: ignore[assignment]
-            if inference_key not in INFERENCE_ENGINES:
-                available = ", ".join(INFERENCE_ENGINES.keys())
-                raise ValueError(
-                    f"Unknown inference: '{inference}'. Available: {available}"
-                )
-            inference_engine: InferenceEngine = INFERENCE_ENGINES[inference_key](
-                **config
-            )
-        elif isinstance(inference, InferenceEngine):
-            inference_engine = inference
-        else:
-            raise TypeError(
-                f"inference must be InferenceEngine or str, got {type(inference)}"
-            )
-
-        if inference_config is not None and not is_string_inference:
-            raise ValueError(
-                "Cannot pass inference_config with InferenceEngine instance"
-            )
-
-        # Convert data to the canonical compute batch.
-        # ResponseData remains a Python-friendly log, but training uses TrialData.
-        data = ResponseData.from_arrays(X, y).to_trial_data()
-
-        # Fit
-        self._posterior = inference_engine.fit(self, data)
-        self._inference_engine = inference_engine
-        self._data_buffer = data  # Initialize buffer (TrialData)
-        return self
-
-    def posterior(
-        self,
-        X: jnp.ndarray | None = None,
-        *,
-        comparisons: jnp.ndarray | None = None,
-        kind: str = "predictive",
-    ) -> PredictivePosterior | ParameterPosterior:
-        """
-        Return posterior distribution.
-
-        Parameters
-        ----------
-        X : jnp.ndarray | None
-            Test stimuli (references), shape (n_test, input_dim).
-            Required for predictive posteriors, optional for parameter posteriors.
-        comparisons : jnp.ndarray | None
-            Test comparisons, shape (n_test, input_dim).
-            Required for predictive posteriors.
-        kind : {"predictive", "parameter"}
-            Type of posterior to return:
-            - "predictive": PredictivePosterior over f(X*) [for acquisitions]
-            - "parameter": ParameterPosterior over θ [for diagnostics]
-
-        Returns
-        -------
-        PredictivePosterior | ParameterPosterior
-            Posterior distribution
-
-        Raises
-        ------
-        RuntimeError
-            If model has not been fit yet
-
-        Examples
-        --------
-        >>> # For acquisition functions
-        >>> pred_post = model.posterior(X_candidates, comparisons=X_probes)
-        >>> mean = pred_post.mean
-        >>> var = pred_post.variance
-
-        >>> # For diagnostics
-        >>> param_post = model.posterior(kind="parameter")
-        >>> samples = param_post.sample(100, key=jr.PRNGKey(42))
-        """
-        if self._posterior is None:
-            raise RuntimeError("Must call fit() before posterior()")
-
-        if kind == "parameter":
-            return self._posterior
-        elif kind == "predictive":
-            if X is None:
-                raise ValueError("X is required for predictive posteriors")
-            from psyphy.posterior import WPPMPredictivePosterior
-
-            return WPPMPredictivePosterior(self._posterior, X, comparisons=comparisons)
-        else:
-            raise ValueError(
-                f"Unknown kind: '{kind}'. Use 'predictive' or 'parameter'."
-            )
-
-    def predict_with_params(
-        self,
-        X: jnp.ndarray,
-        comparisons: jnp.ndarray | None,
-        params: dict[str, jnp.ndarray],
-    ) -> jnp.ndarray:
-        """
-        Evaluate model at specific parameter values (no marginalization).
-
-        This is useful for:
-        - Threshold uncertainty estimation (evaluate at sampled parameters)
-        - Parameter sensitivity analysis
-        - Debugging and diagnostics
-
-        NOT for making predictions (use .posterior() instead, which
-        marginalizes over parameter uncertainty).
-
-        Parameters
-        ----------
-        X : jnp.ndarray, shape (n_test, input_dim)
-            Test stimuli (references)
-        comparisons : jnp.ndarray, shape (n_test, input_dim), optional
-            Probe stimuli (for discrimination tasks)
-        params : dict[str, jnp.ndarray]
-            Specific parameter values to evaluate at.
-            Keys and shapes depend on the model (e.g., WPPM has "W", "noise_scale", etc.)
-
-        Returns
-        -------
-        predictions : jnp.ndarray, shape (n_test,)
-            Predicted probabilities at each test point, given these parameters
-
-        Examples
-        --------
-        >>> # Sample parameters and evaluate
-        >>> param_post = model.posterior(kind="parameter")
-        >>> samples = param_post.sample(100, key=jr.PRNGKey(0))
-        >>>
-        >>> # Evaluate at first parameter sample
-        >>> params_0 = {k: v[0] for k, v in samples.items()}
-        >>> predictions = model.predict_with_params(X_test, comparisons, params_0)
-        >>>
-        >>> # Use for threshold uncertainty estimation
-        >>> threshold_locs = []
-        >>> for i in range(100):
-        ...     params_i = {k: v[i] for k, v in samples.items()}
-        ...     preds_i = model.predict_with_params(X_grid, probes_grid, params_i)
-        ...     threshold_idx = jnp.argmin(jnp.abs(preds_i - 0.75))
-        ...     threshold_locs.append(threshold_idx)
-
-        Notes
-        -----
-        This bypasses the posterior marginalization. For acquisition functions,
-        always use .posterior() which properly accounts for parameter uncertainty.
-        """
-        return self._forward(X, comparisons, params)
-
     @abstractmethod
     def _forward(
         self,
@@ -416,134 +105,36 @@ class Model(ABC):
         """
         pass
 
-    def condition_on_observations(self, X: jnp.ndarray, y: jnp.ndarray) -> Model:
+    # ------------------------------------------------------------------
+    # Functional Helpers
+    # ------------------------------------------------------------------
+
+    def predict_with_params(
+        self,
+        X: jnp.ndarray,
+        comparisons: jnp.ndarray | None,
+        params: dict[str, jnp.ndarray],
+    ) -> jnp.ndarray:
         """
-        Update model with new observations (online learning).
+        Evaluate model at specific parameter values (no marginalization).
 
-        Behavior depends on self.online_config.strategy:
-        - "full": Accumulate all data, refit periodically
-        - "sliding_window": Keep only recent window_size trials
-        - "reservoir": Random sampling of window_size trials
-        - "none": Refit from scratch (no caching)
-
-        Returns a NEW model instance (immutable update).
+        This is useful for:
+        - Threshold uncertainty estimation (evaluate at sampled parameters)
+        - Parameter sensitivity analysis
+        - Debugging and diagnostics
 
         Parameters
         ----------
-        X : jnp.ndarray
-            New stimuli
-        y : jnp.ndarray
-            New responses
+        X : jnp.ndarray, shape (n_test, input_dim)
+            Test stimuli (references)
+        comparisons : jnp.ndarray, shape (n_test, input_dim), optional
+            Probe stimuli (for discrimination tasks)
+        params : dict[str, jnp.ndarray]
+            Specific parameter values to evaluate at.
 
         Returns
         -------
-        Model
-            Updated model (new instance)
-
-        Examples
-        --------
-        >>> # Online learning loop
-        >>> model = WPPM(...).fit(X_init, y_init)
-        >>> for X_new, y_new in stream:
-        ...     model = model.condition_on_observations(X_new, y_new)
-        ...     # Model automatically manages memory and refitting
+        predictions : jnp.ndarray, shape (n_test,)
+            Predicted probabilities at each test point
         """
-
-        from psyphy.data import ResponseData
-
-        # Convert new data
-        new_data = ResponseData.from_arrays(X, y).to_trial_data()
-
-        # Update data buffer according to strategy
-        if self.online_config.strategy == "none":
-            data_to_fit = new_data
-
-        elif self.online_config.strategy == "full":
-            if self._data_buffer is None:
-                self._data_buffer = new_data
-            else:
-                self._data_buffer = self._concat_trial_data(self._data_buffer, new_data)
-            data_to_fit = self._data_buffer
-
-        elif self.online_config.strategy == "sliding_window":
-            if self._data_buffer is None:
-                self._data_buffer = new_data
-            else:
-                self._data_buffer = self._concat_trial_data(self._data_buffer, new_data)
-
-            # Keep only last N trials
-            window_size = self.online_config.window_size
-            assert window_size is not None, "window_size must be set for sliding_window"
-            self._data_buffer = self._tail_trial_data(self._data_buffer, window_size)
-            data_to_fit = self._data_buffer
-
-        elif self.online_config.strategy == "reservoir":
-            raise NotImplementedError(
-                "Reservoir sampling is not yet implemented for TrialData batches. "
-                "Use strategy='full' or 'sliding_window' for now."
-            )
-        else:
-            raise ValueError(f"Unknown strategy: {self.online_config.strategy}")
-
-        # Decide whether to refit
-        self._n_updates += 1
-        should_refit = self._n_updates % self.online_config.refit_interval == 0
-
-        if not should_refit:
-            # Return clone with updated buffer but old posterior
-            new_model = self._clone()
-            new_model._data_buffer = data_to_fit
-            return new_model
-
-        # Refit with optional warm start
-        inference = self._inference_engine
-        assert inference is not None, (
-            "Model must be fit before condition_on_observations"
-        )
-
-        if self.online_config.warm_start and self._posterior is not None:
-            # TODO: Add warm-start support to inference engines
-            # For now, just refit from cached params
-            pass
-
-        new_model = self._clone()
-        new_model._data_buffer = data_to_fit
-        new_model._posterior = inference.fit(new_model, data_to_fit)
-        new_model._inference_engine = inference
-
-        return new_model
-
-    # ------------------------------------------------------------------
-    # Internal helpers
-    # ------------------------------------------------------------------
-
-    def _clone(self) -> Model:
-        """Create shallow copy of model for immutable updates."""
-        new_model = self.__class__.__new__(self.__class__)
-        new_model.__dict__.update(self.__dict__)
-        return new_model
-
-    @staticmethod
-    def _concat_trial_data(a: Any, b: Any) -> Any:
-        """Concatenate two TrialData-like batches along the trial axis."""
-        from psyphy.data.dataset import TrialData
-
-        return TrialData(
-            refs=jnp.concatenate([a.refs, b.refs], axis=0),
-            comparisons=jnp.concatenate([a.comparisons, b.comparisons], axis=0),
-            responses=jnp.concatenate([a.responses, b.responses], axis=0),
-        )
-
-    @staticmethod
-    def _tail_trial_data(data: Any, n: int) -> Any:
-        """Return last n trials of a TrialData-like batch."""
-        from psyphy.data.dataset import TrialData
-
-        n = int(n)
-        if n <= 0:
-            raise ValueError(f"n must be > 0, got {n}")
-        return TrialData(
-            refs=data.refs[-n:],
-            comparisons=data.comparisons[-n:],
-            responses=data.responses[-n:],
-        )
+        return self._forward(X, comparisons, params)

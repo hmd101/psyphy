@@ -19,7 +19,7 @@ Typical usage
     from psyphy.model import WPPM, Prior, OddityTask, GaussianNoise
 """
 
-from .base import Model, OnlineConfig
+from .base import Model
 from .covariance_field import CovarianceField, WPPMCovarianceField
 from .likelihood import OddityTask, OddityTaskConfig, TaskLikelihood
 from .noise import GaussianNoise, StudentTNoise
@@ -29,7 +29,6 @@ from .wppm import WPPM
 __all__ = [
     # Base
     "Model",
-    "OnlineConfig",
     # Covariance fields
     "CovarianceField",
     "WPPMCovarianceField",
