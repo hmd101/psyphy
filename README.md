@@ -10,7 +10,6 @@
 </div>
 
 
-
 <h4 align="center">
   <a href="https://flatironinstitute.github.io/psyphy/#install/">Installation</a> |
   <a href="https://flatironinstitute.github.io/psyphy/reference/">Documentation</a> |
@@ -18,7 +17,21 @@
   <a href="https://flatironinstitute.github.io/psyphy/CONTRIBUTING/">Contributing</a>
 </h4>
 
-#### This package provides:
+
+## Install (editable)
+
+```bash
+git clone https://flatironinstitute.github.io/psyphy.git
+cd psyphy
+pip install -e .
+
+```
+
+## [Quickstart](https://flatironinstitute.github.io/psyphy/examples/wppm/quick_start/)
+[Go here](https://flatironinstitute.github.io/psyphy/examples/wppm/quick_start/) for a light-weight tutorial that demonstrates how to instantiate, evaluate and fit a model quickly. 
+
+
+## This package provides:
 
 - Wishart Process Psychophysical Model (WPPM)
     - fit to subject's data
@@ -38,50 +51,6 @@
 - Experiment session orchestration
     - reading session data and exporting next batch of trial placments
 
-
-
-## Install (editable)
-
-```bash
-git clone https://flatironinstitute.github.io/psyphy.git
-cd psyphy
-pip install -e .
-
-```
-
-## Quickstart
-If you already have data and just want to fit and predict without the experiment orchestrator, otherwise [go here](https://flatironinstitute.github.io/psyphy/usage/) for a more comprehensive example including the entire experiment orchestrator.
-
-```python
-from psyphy.data.dataset import ResponseData
-from psyphy.model import WPPM, Prior, TwoAFC
-from psyphy.inference.map_optimizer import MAPOptimizer
-import optax
-import jax.numpy as jnp
-# Prepare data
-# Create an empty container for trials (reference, probe, response)
-data = ResponseData()
-
-# Add one trial:
-# - ref: reference stimulus (shape: (input_dim,))
-# - probe: probe stimulus (same shape as ref)
-# - resp: binary response in {0, 1}; TwoAFC log-likelihood treats 1 as "correct"
-data.add_trial(ref=jnp.array([0.0, 0.0]), probe=jnp.array([0.1, 0.0]), resp=1)
-
-# Add another trial (subject responded 0 = "incorrect")
-data.add_trial(ref=jnp.array([0.0, 0.0]), probe=jnp.array([0.0, 0.1]), resp=0)
-
-# Model
-model = WPPM(input_dim=2, prior=Prior.default(2), task=TwoAFC())
-
-# Optimizer config (SGD + momentum)
-opt = optax.sgd(learning_rate=5e-4, momentum=0.9)
-posterior = MAPOptimizer(steps=500, optimizer=opt).fit(model, data)
-
-# Predictions
-p = posterior.predict_prob((jnp.array([0.0, 0.0]), jnp.array([0.05, 0.05])))
-contour = posterior.predict_thresholds(reference=jnp.array([0.0, 0.0]))
-```
 
 
 ## Background
