@@ -115,27 +115,15 @@ learning_rate = 5e-4  # full example: 5e-5. The smaller the lr, the more steps
 print("[1/5] Setting up ground-truth WPPM and simulating data...")
 
 # --8<-- [start:truth_model]
-task = OddityTask(
-    config=OddityTaskConfig(num_samples=int(MC_SAMPLES))
-    # config=OddityTaskConfig(num_samples=int(MC_SAMPLES), bandwidth=float(bandwidth))
-)
+task = OddityTask(config=OddityTaskConfig(num_samples=int(MC_SAMPLES)))
 noise = GaussianNoise(sigma=0.1)
 
 # Set all Wishart process hyperparameters in Prior
-truth_prior = Prior(
-    # input_dim=input_dim,
-    # basis_degree=basis_degree,
-    # extra_embedding_dims=extra_dims,
-    # decay_rate=decay_rate,
-    # variance_scale=variance_scale,
-)
+truth_prior = Prior()
 truth_model = WPPM(
-    # input_dim=input_dim,
-    # extra_dims=extra_dims,
     prior=truth_prior,
     likelihood=task,
     noise=noise,
-    # diag_term=diag_term,
 )
 
 # Sample ground-truth Wishart process weights
@@ -193,13 +181,14 @@ p_correct = jax.vmap(_p_correct_one)(refs, comparisons, trial_pred_keys)
 
 # Sample observed responses y ~ Bernoulli(p_correct).
 ys = jr.bernoulli(k_y, p_correct, shape=(NUM_TRIALS,)).astype(jnp.int32)
+# --8<-- [end:simulate_data]
 
 # --8<-- [start:data]
 data = TrialData(
     refs=refs, comparisons=comparisons, responses=ys
 )  # contains 3 JAX arrays
 # --8<-- [end:data]
-# --8<-- [end:simulate_data]
+
 
 print(
     f"  Simulated {NUM_TRIALS} trials at ref={ref_point[0].tolist()}, "
@@ -213,28 +202,23 @@ print(
 print("[2/5] Building model and optimizer...")
 
 # --8<-- [start:build_model]
-prior = Prior(
-    # input_dim=input_dim,
-    # basis_degree=basis_degree,
-    # extra_embedding_dims=extra_dims,
-    # decay_rate=decay_rate,
-    # variance_scale=variance_scale,
-)
+prior = Prior()
+
 model = WPPM(
-    # input_dim=input_dim,
     prior=prior,
     likelihood=task,
     noise=noise,  # we use the same Gaussian noise as for the ground truth
-    # diag_term=1e-4,
 )
 # --8<-- [end:build_model]
 
 # --8<-- [start:prior]
 # Initialize parameters at a sample from the prior
-init_params = model.init_params(jax.random.PRNGKey(42))
-init_field = WPPMCovarianceField(model, init_params)
+prior_params = model.init_params(
+    jax.random.PRNGKey(42)
+)  # intitialize with a draw from the prior
+prior_field = WPPMCovarianceField(model, prior_params)
 # Evaluate prior covariance at the reference point
-covs_prior = init_field(ref_point)  # (1, 2, 2)
+covs_prior = prior_field(ref_point)  # (1, 2, 2)
 # --8<-- [end:prior]
 print(f"  shape of covs_prior: {covs_prior.shape}")
 
@@ -248,12 +232,11 @@ print("[3/5] Fitting via MAPOptimizer ...")
 map_optimizer = MAPOptimizer(
     steps=NUM_STEPS,
     learning_rate=learning_rate,
-    # momentum=momentum,
     track_history=True,
     log_every=1,
 )
 
-map_posterior = map_optimizer.fit(model, data, init_params=init_params, seed=4)
+map_posterior = map_optimizer.fit(model, data, init_params=prior_params, seed=4)
 # --8<-- [end:fit_map]
 
 # ---------------------------------------------------------------------------
@@ -265,16 +248,14 @@ print("[4/5] Plotting covariance ellipses ...")
 # --8<-- [start:plot_ellipses]
 _PLOT_JITTER = 0.0
 
-# Use the single reference point as the visualization centre.
-vis_points = ref_point  # (1, 2)
 
 map_field = WPPMCovarianceField(model, map_posterior.params)
 
 # --8<-- [start:cov_fields]
 # Evaluate any covariance-field object at a single point or a batch of points.
-covs_truth = truth_field(vis_points)  # (1, 2, 2)
-covs_init = init_field(vis_points)  # (1, 2, 2)
-covs_map = map_field(vis_points)  # (1, 2, 2)
+covs_truth = truth_field(ref_point)  # (1, 2, 2)
+covs_prior = prior_field(ref_point)  # (1, 2, 2)
+covs_map = map_field(ref_point)  # (1, 2, 2)
 # --8<-- [end:cov_fields]
 
 # Scale ellipses so they are visually readable.
@@ -287,13 +268,13 @@ fig, ax = plt.subplots(figsize=(6, 6))
 
 labels = ["Ground Truth", "Prior Sample (init)", "Fitted (MAP)"]
 colors = ["k", "b", "r"]
-fields = [truth_field, init_field, map_field]
+fields = [truth_field, prior_field, map_field]
 non_pd_counts = []
 
 for field, color, label in zip(fields, colors, labels):
-    covs = field(vis_points)
+    covs = field(ref_point)
     segments, valid = _ellipse_segments_from_covs(
-        vis_points,
+        ref_point,
         covs,
         scale=ellipse_scale,
         plot_jitter=_PLOT_JITTER,
@@ -310,7 +291,7 @@ for field, color, label in zip(fields, colors, labels):
     ax.plot([], [], color=color, alpha=0.8, linewidth=1.5, label=label)
 
 ax.scatter(
-    vis_points[:, 0], vis_points[:, 1], c="g", s=40, zorder=5, label="Reference Point"
+    ref_point[:, 0], ref_point[:, 1], c="g", s=40, zorder=5, label="Reference Point"
 )
 ax.set_xlim(-0.6, 0.6)
 ax.set_ylim(-0.6, 0.6)
