@@ -8,7 +8,7 @@ MVP:
 - Uses a Sobol engine to generate low-discrepancy points.
 - Ignores the posterior (pure exploration).
 
-Full WPPM mode:
+Levaraging WPPM's posterior:
 - Could combine Sobol exploration (early) with posterior-aware exploitation (later).
 """
 
@@ -51,12 +51,6 @@ class SobolPlacement:
         TrialBatch
             Candidate trials from Sobol sequence.
 
-        Notes
-        -----
-        MVP:
-            Pure exploration of space.
-        Full WPPM mode:
-            Use Sobol as initialization, then switch to InfoGain.
         """
         raw = self.engine.random(batch_size)
         scaled = [

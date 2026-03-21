@@ -73,12 +73,13 @@ Extensibility
 
 # Data
 # Re-export subpackages for unified import style (e.g., psyphy.model, psyphy.inference)
-from . import acquisition as acquisition
+# from . import acquisition as acquisition
 from . import data as data
 from . import inference as inference
 from . import model as model
 from . import posterior as posterior
-from . import session as session
+
+# from . import session as session
 from . import trial_placement as trial_placement
 from . import utils as utils
 from .data.dataset import ResponseData, TrialBatch
@@ -98,7 +99,7 @@ from .posterior.posterior import MAPPosterior
 from .posterior.predictive_posterior import PredictivePosterior, WPPMPredictivePosterior
 
 # Experiment orchestration
-from .session.experiment_session import ExperimentSession
+# from .session.experiment_session import ExperimentSession
 
 __all__ = [
     # Core model
@@ -112,8 +113,6 @@ __all__ = [
     "MAPOptimizer",
     "LangevinSampler",
     "LaplaceApproximation",
-    # Session orchestration
-    "ExperimentSession",
     # Data handling
     "ResponseData",
     "TrialBatch",
@@ -124,5 +123,4 @@ __all__ = [
     "trial_placement",
     "utils",
     "data",
-    "session",
 ]

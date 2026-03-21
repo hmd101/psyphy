@@ -25,13 +25,13 @@ import jax.numpy as jnp
 
 from psyphy.utils.math import chebyshev_basis
 
-from .base import Model, OnlineConfig
+from .base import Model
 from .likelihood import TaskLikelihood
 from .prior import Prior
 
 # Type aliases for readability
 Params = dict[str, jnp.ndarray]
-# A "stimulus" is a pair (reference, probe) in model space (shape: (input_dim,))
+# A "stimulus" is a pair (reference, comparison) in model space (shape: (input_dim,))
 Stimulus = tuple[jnp.ndarray, jnp.ndarray]
 
 
@@ -43,7 +43,7 @@ class WPPM(Model):
     ----------
     input_dim : int
         Dimensionality of the *input stimulus space* (e.g., 2 for isoluminant plane,
-        3 for RGB). Both reference and probe live in R^{input_dim}.
+        3 for RGB). Both reference and comparison live in R^{input_dim}.
     prior : Prior
         Prior distribution over model parameters. Controls basis_degree in WPPM (basis expansion).
         The WPPM delegates
@@ -56,9 +56,9 @@ class WPPM(Model):
     noise : Any, optional
         Noise model describing internal representation noise (e.g., GaussianNoise).
 
-    Forward-compatible hyperparameters
+    hyperparameters
     -----------------------------------
-    extra_dims : int, default=1
+    extra_dims : int, default=0
         Additional embedding dimensions for basis expansions (beyond input_dim).
         embedding_dim = input_dim + extra_dims.
     variance_scale : float, default=1.0
@@ -67,9 +67,6 @@ class WPPM(Model):
         Smoothness/length-scale for spatial covariance variation
     diag_term : float, default=1e-6
         Small positive value added to the covariance diagonal for numerical stability.
-    online_config : OnlineConfig | None, optional (keyword-only)
-        Base-model lifecycle / online-learning policy. This is the supported way
-        to configure buffering and refit scheduling via `Model.condition_on_observations`.
 
     **model_kwargs : Any
         Reserved for *future* keyword arguments accepted by the base `Model.__init__`.
@@ -82,7 +79,6 @@ class WPPM(Model):
         likelihood: TaskLikelihood,
         noise: Any | None = None,
         *,  # everything after here is keyword-only
-        online_config: OnlineConfig | None = None,
         input_dim: int = 2,
         extra_dims: int = 1,
         variance_scale: float = 4e-3,
@@ -90,16 +86,13 @@ class WPPM(Model):
         diag_term: float = 1e-6,
         **model_kwargs: Any,
     ) -> None:
-        # Base-model configuration (lifecycle / online learning).
-        #
-        # `online_config` is the explicit, user-facing knob for online learning
-        # and data retention (see `psyphy.model.base.OnlineConfig`).
+        # Base-model configuration.
         #
         # `model_kwargs` is reserved for *future* base `Model.__init__` kwargs.
         # It should NOT be used for WPPM-specific math (e.g. alternative covariance
         # parameterizations) or for task-specific likelihood knobs.
         if model_kwargs:
-            known_misuses = {"num_samples", "bandwidth"}
+            known_misuses = {"num_samples", "bandwidth", "online_config"}
             bad = sorted(known_misuses.intersection(model_kwargs.keys()))
             if bad:
                 raise TypeError(
@@ -107,7 +100,7 @@ class WPPM(Model):
                     f"Move {bad} into the task config (e.g. OddityTaskConfig)."
                 )
 
-        super().__init__(online_config=online_config, **model_kwargs)
+        super().__init__(**model_kwargs)
 
         # --- core components ---
         self.input_dim = int(input_dim)  # stimulus-space dimensionality

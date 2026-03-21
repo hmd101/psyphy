@@ -32,4 +32,4 @@ pip install -e .
 - Inference: MAP, Langevin, Laplace
 - Posterior: wrappers and diagnostics
 - Trial placement: acquisition functions for optimal stimulus placement
-- Session: end-to-end orchestration of an experiment
+

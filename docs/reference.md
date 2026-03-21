@@ -28,5 +28,4 @@ This page has moved. See the structured API pages:
 - [Inference](reference/inference.md)
 - [Posterior](reference/posterior.md)
 - [Trial Placement](reference/trial_placement.md)
-- [Session](reference/session.md)
 - [Utils](reference/utils.md)
