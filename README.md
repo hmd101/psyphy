@@ -28,7 +28,8 @@ pip install -e .
 ```
 
 ## [Quickstart](https://flatironinstitute.github.io/psyphy/examples/wppm/quick_start/)
-[Go here](https://flatironinstitute.github.io/psyphy/examples/wppm/quick_start/) for a light-weight tutorial that demonstrates how to instantiate, evaluate and fit a model quickly. 
+- Go [here](https://flatironinstitute.github.io/psyphy/examples/wppm/quick_start/) for a light-weight tutorial that demonstrates how to instantiate, evaluate and fit a model quickly. You should be able to run the underlying [script](https://github.com/flatironinstitute/psyphy/blob/main/docs/examples/wppm/quick_start.py) on your CPU.
+- Go [here](https://flatironinstitute.github.io/psyphy/examples/wppm/full_wppm_fit_example/) for a more comprehensive example visualizing a spatially varying covariance field, also explaining the underlying math. The underlying [script](https://github.com/flatironinstitute/psyphy/blob/main/docs/examples/wppm/full_wppm_fit_example.py) for this tutorial requires a GPU.
 
 
 ## This package provides:
