@@ -420,6 +420,7 @@ class WPPM(Model):
     # ----------------------------------------------------------------------
     # LIKELIHOOD (delegates to likelihood component)
     # ----------------------------------------------------------------------
+    # TODO: add random key
     def log_likelihood(
         self,
         params: Params,
@@ -528,54 +529,3 @@ class WPPM(Model):
         return self.log_likelihood_from_data(
             params, data, key=key
         ) + self.prior.log_prob(params)
-
-    # ----------------------------------------------------------------------
-    # MODEL FORWARD PASS (for predict_with_params)
-    # ----------------------------------------------------------------------
-    def _forward(
-        self,
-        X: jnp.ndarray,
-        comparisons: jnp.ndarray | None,
-        params: dict[str, jnp.ndarray],
-    ) -> jnp.ndarray:
-        """
-        Evaluate WPPM at specific parameter values (no marginalization).
-
-        This is called by Model.predict_with_params() and is used for:
-        - Threshold uncertainty estimation
-        - Parameter sensitivity analysis
-        - Debugging
-
-        Parameters
-        ----------
-        X : jnp.ndarray, shape (n_test, input_dim)
-            Test stimuli (references)
-        comparisons : jnp.ndarray | None, shape (n_test, input_dim)
-            Comparisons stimuli (None for detection tasks)
-        params : dict[str, jnp.ndarray]
-            Model parameters (e.g., {"W": (input_dim,)})
-
-        Returns
-        -------
-        predictions : jnp.ndarray, shape (n_test,)
-            Predicted response probabilities at each test point
-
-        Notes
-        -----
-        This evaluates the model deterministically at the given parameters.
-        For proper predictions that account for parameter uncertainty,
-        use model.posterior() instead.
-        """
-        if comparisons is None:
-            raise ValueError(
-                "WPPM requires comparisons stimuli (comparisons) for predictions."
-            )
-
-        # Vectorize over test points
-        def predict_single(ref, comp):
-            return self.predict_prob(params, (ref, comp))
-
-        # Use vmap for efficient batch evaluation
-        predictions = jax.vmap(predict_single)(X, comparisons)
-
-        return predictions
