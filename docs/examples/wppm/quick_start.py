@@ -229,14 +229,14 @@ print(f"  shape of covs_prior: {covs_prior.shape}")
 print("[3/5] Fitting via MAPOptimizer ...")
 
 # --8<-- [start:fit_map]
-optimizer = MAPOptimizer(
+inference = MAPOptimizer(
     steps=NUM_STEPS,
     learning_rate=learning_rate,
     track_history=True,
     log_every=1,
 )
 
-map_estimate = optimizer.fit(model, data, init_params=init_params, seed=4)
+map_estimate = inference.fit(model, data, init_params=init_params, seed=4)
 # Protocol: ParameterPosterior, here point estimate
 
 # optional: for visualization:
@@ -322,7 +322,7 @@ print(f"  Saved → {PLOTS_DIR}/quick_start_ellipses.png")
 print("[5/5] Plotting learning curve ...")
 
 # --8<-- [start:plot_learning_curve]
-steps_hist, loss_hist = optimizer.get_history()
+steps_hist, loss_hist = inference.get_history()
 # --8<-- [end:plot_learning_curve]
 
 if steps_hist and loss_hist:
