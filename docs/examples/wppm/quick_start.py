@@ -213,10 +213,10 @@ model = WPPM(
 
 # --8<-- [start:prior]
 # Initialize parameters at a sample from the prior
-prior_params = model.init_params(
+init_params = model.init_params(
     jax.random.PRNGKey(42)
 )  # intitialize with a draw from the prior
-prior_field = WPPMCovarianceField(model, prior_params)
+prior_field = WPPMCovarianceField(model, init_params)
 # Evaluate prior covariance at the reference point
 covs_prior = prior_field(ref_point)  # (1, 2, 2)
 # --8<-- [end:prior]
@@ -229,18 +229,18 @@ print(f"  shape of covs_prior: {covs_prior.shape}")
 print("[3/5] Fitting via MAPOptimizer ...")
 
 # --8<-- [start:fit_map]
-optimizer = MAPOptimizer(
+inference = MAPOptimizer(
     steps=NUM_STEPS,
     learning_rate=learning_rate,
     track_history=True,
     log_every=1,
 )
 
-map = optimizer.fit(model, data, init_params=prior_params, seed=4)
+map_estimate = inference.fit(model, data, init_params=init_params, seed=4)
 # Protocol: ParameterPosterior, here point estimate
 
 # optional: for visualization:
-map_cov_field = WPPMCovarianceField(model, map.params)
+map_cov_field = WPPMCovarianceField(model, map_estimate.params)
 # OUTPUT: Covariance Matrices (N, 2, 2) for plotting
 # --8<-- [end:fit_map]
 
@@ -322,7 +322,7 @@ print(f"  Saved → {PLOTS_DIR}/quick_start_ellipses.png")
 print("[5/5] Plotting learning curve ...")
 
 # --8<-- [start:plot_learning_curve]
-steps_hist, loss_hist = optimizer.get_history()
+steps_hist, loss_hist = inference.get_history()
 # --8<-- [end:plot_learning_curve]
 
 if steps_hist and loss_hist:
