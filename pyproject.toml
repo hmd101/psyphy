@@ -7,6 +7,7 @@ name = "psyphy"
 version = "0.1.0"
 description = "Psychophysical modeling and adaptive trial placement"
 readme = "README.md"
+license = {file = "LICENSE.md"}
 requires-python = ">=3.9"
 classifiers = [
   "Programming Language :: Python :: 3",
@@ -17,6 +18,20 @@ dependencies = [
   "jax>=0.4.28",
   "optax>=0.2.4",
   "numpy>=1.22",
+  "scipy>=1.7",
+]
+
+[project.optional-dependencies]
+dev = [
+  "pytest>=8.0",
+  "ruff>=0.9",
+  "mypy>=1.0",
+  "pre-commit>=3.0",
+]
+docs = [
+  "matplotlib>=3.5",
+  "seaborn>=0.13",
+  "jupyterlab>=4.0",
 ]
 
 [project.urls]
@@ -28,7 +43,7 @@ Issues = "https://flatironinstitute.github.io/psyphy/issues"
 packages = ["src/psyphy"]
 
 [tool.hatch.build.targets.sdist]
-include = ["src/psyphy", "README.md", "requirements.txt", "tests"]
+include = ["src/psyphy", "README.md", "LICENSE.md", "tests"]
 
 # Ruff configuration
 [tool.ruff]
