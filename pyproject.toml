@@ -36,8 +36,8 @@ docs = [
 
 [project.urls]
 Homepage = "https://flatironinstitute.github.io/psyphy"
-Repository = "https://flatironinstitute.github.io/psyphy"
-Issues = "https://flatironinstitute.github.io/psyphy/issues"
+Repository = "https://github.com/flatironinstitute/psyphy"
+Issues = "https://github.com/flatironinstitute/psyphy/issues"
 
 [tool.hatch.build.targets.wheel]
 packages = ["src/psyphy"]
