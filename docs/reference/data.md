@@ -13,13 +13,6 @@
 
 ---
 
-## Transforms (e.g., from RGB to model space)
----
-
-::: psyphy.data.transforms
-
----
-
 ## I/O
 ---
 
