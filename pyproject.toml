@@ -5,7 +5,17 @@ build-backend = "hatchling.build"
 [project]
 name = "psyphy"
 version = "0.0.1"
-description = "Psychophysical modeling and adaptive trial placement"
+
+authors = [
+  { name = "Alex Williams" },
+  { name = "Hanna Dettki" }
+]
+
+maintainers = [
+  { name = "Hanna Dettki" }
+]
+
+description = "Adaptive Trial Placement for Psychophysical Experiments"
 readme = "README.md"
 license = {file = "LICENSE.md"}
 requires-python = ">=3.9"
