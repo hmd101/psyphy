@@ -6,7 +6,7 @@
     <source srcset="docs/images/psyphy_logo_draft.png"  media="(prefers-color-scheme: dark)"/>
     <!-- <img align="center" src="docs/assets/logo/logo_text_black.svg" alt="Inferno" width="400" style="padding-right: 10px; padding left: 10px;"/> -->
     </picture>
-    <h3>Psychophysical Modeling and Adaptive Trial Placement</h3>
+    <h3>Active-learning-driven adaptive experimentation in psychophysics</h3>
 </div>
 
 
@@ -17,15 +17,22 @@
   <a href="https://flatironinstitute.github.io/psyphy/CONTRIBUTING/">Contributing</a>
 </h4>
 
+## Overview
 
-## Install 
+`psyphy` is an open-source, JAX-based framework for psychophysics research. It leverages GPU acceleration and efficient approximate inference to power Bayesian, active-learning-driven adaptive experiments.
+
+Designed to be modular and extensible, `psyphy` accelerates research workflows and enables real-time adaptive experiments. While currently focused on human color perception, it can be adapted to other perceptual modalities.
+
+The package is under active development, and we welcome contributions.
+
+## Install
 `psyphy` only supports python 3.10+. We recommend installing `psyphy` under a virtual environment. Once you've created a virtual environment for `psyphy` and activated it, you can install `psyphy` using pip:
 
 ```bash
 pip install psyphy
 ```
 
-If you're developer or want to use the latest features, you can install from GitHub using: 
+If you're developer or want to use the latest features, you can install from GitHub using:
 ```bash
 git clone https://flatironinstitute.github.io/psyphy.git
 cd psyphy
@@ -38,58 +45,6 @@ pip install -e .
 - Go [here](https://flatironinstitute.github.io/psyphy/examples/wppm/full_wppm_fit_example/) for a more comprehensive example visualizing a spatially varying covariance field, also explaining the underlying math. The underlying [script](https://github.com/flatironinstitute/psyphy/blob/main/docs/examples/wppm/full_wppm_fit_example.py) for this tutorial requires a GPU.
 
 
-## This package provides:
+## Contributing
 
-- Wishart Process Psychophysical Model (WPPM)
-    - fit to subject's data
-    - predict psychphysical thresholds
-    - optional trial placement strategy leveraging model's posterior (e.g., information gain, place next batch of trials such that model's uncertainty is maximally reduced)
-- Priors and noise models
-    - supports cold and warm starts where warm means initialzing with parameters from previous subjects fitted parameters
-    - Noise Model:
-        - default: Gaussian
-        - supports Student's T
-- Task likelihoods
-    - currently supports OddityTask, TwoAFC
-- Inference engines (MAP, Langevin, Laplace)
-- Posterior wrappers and diagnostics
-- Trial placement strategies (grid, information gain)
-    - supports online and batchwise trial placement
-- Experiment session orchestration
-    - reading session data and exporting next batch of trial placments
-
-
-
-## Background
-
-This package implements methods described in:
--  [Hong et al. (2025). *Comprehensive characterization of human color discrimination thresholds*.](https://www.biorxiv.org/content/10.1101/2025.07.16.665219v1)
-
-While the paper above  used AEPsych (a Gaussian Process–based trial placer),
-`psyphy` integrates trial placement directly with the WPPM posterior (e.g. via InfoGain/EAVC),
-making the  adaptive trial placement model-aware.
-
-## Docs
-
-Build and preview the documentation locally:
-
-```bash
-# from repo root
-source .venv/bin/activate
-pip install mkdocs mkdocs-material 'mkdocstrings[python]'
-mkdocs serve
-```
-
-Build the static site:
-
-```bash
-mkdocs build
-```
-
-Deploy to GitHub Pages (manual):
-
-```bash
-mkdocs gh-deploy --clean
-```
-
-For contributors, see CONTRIBUTING.md for full doc guidelines and NumPy-style docstrings.
+For contributors, see  [`CONTRIBUTING.md`](CONTRIBUTING.md) for full doc guidelines and NumPy-style docstrings.
