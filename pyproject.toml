@@ -7,8 +7,9 @@ name = "psyphy"
 version = "0.0.2"
 
 authors = [
-  { name = "Alex Williams" },
-  { name = "Hanna Dettki" }
+  { name = "Hanna Dettki" },
+  { name = "Alex Williams" }
+
 ]
 
 maintainers = [
