@@ -18,8 +18,14 @@
 </h4>
 
 
-## Install (editable)
+## Install 
+`psyphy` only supports python 3.10+. We recommend installing `psyphy` under a virtual environment. Once you've created a virtual environment for `psyphy` and activated it, you can install `psyphy` using pip:
 
+```bash
+pip install psyphy
+```
+
+If you're developer or want to use the latest features, you can install from GitHub using: 
 ```bash
 git clone https://flatironinstitute.github.io/psyphy.git
 cd psyphy
