@@ -1,5 +1,5 @@
 # Contributing
-![psyphy logo](images/psyphy_logo_draft.png)
+![psyphy logo](images/psyphy_logo.png)
 
 
 ## Dev setup

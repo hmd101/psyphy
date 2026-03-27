@@ -1,12 +1,13 @@
-![psyphy logo](images/psyphy_logo_draft.png)
+![psyphy logo](images/psyphy_logo.png)
 
 <div align="center">
     <picture>
-    <source srcset="images/psyphy_logo_draft.png" media="(prefers-color-scheme: light)"/>
-    <source srcset="images/psyphy_logo_draft.png"  media="(prefers-color-scheme: dark)"/>
+    <source srcset="images/psyphy_logo.png" media="(prefers-color-scheme: light)"/>
+    <source srcset="images/psyphy_logo.png"  media="(prefers-color-scheme: dark)"/>
     <!-- <img align="center" src="docs/assets/logo/logo_text_black.svg" alt="Inferno" width="400" style="padding-right: 10px; padding left: 10px;"/> -->
     </picture>
-    <h3>Psychophysical Modeling and Adaptive Trial Placement</h3>
+    <h3>Active-learning-driven adaptive
+experimentation in psychophysics</h3>
 </div>
 
 

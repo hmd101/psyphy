@@ -6,7 +6,7 @@ repo_name: flatironinstitute/psyphy
 
 theme:
   name: material
-  logo: images/psyphy_logo_draft.png
+  logo: images/psyphy_logo.png
   features:
     - navigation.tabs
     - navigation.sections
