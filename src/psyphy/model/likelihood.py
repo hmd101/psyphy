@@ -36,8 +36,6 @@ import jax
 import jax.numpy as jnp
 import jax.random as jr
 
-Stimulus = tuple[jnp.ndarray, jnp.ndarray]
-
 
 @dataclass(frozen=True, slots=True)
 class OddityTaskConfig:
@@ -69,35 +67,150 @@ class OddityTaskConfig:
 
 class TaskLikelihood(ABC):
     """
-    Abstract base class for task likelihoods
+    Abstract base class for task likelihoods.
+
+    Subclasses must implement:
+    - ``predict(params, ref, comparison, model, *, key)`` → p(correct) for one trial
+
+    The base class provides concrete implementations of:
+    - ``loglik(params, data, model, *, key)`` → Bernoulli log-likelihood over a batch
+    - ``simulate(params, refs, comparisons, model, *, key)`` → simulated responses
+
+    The Bernoulli log-likelihood step is identical for all binary-response tasks,
+    so it lives here rather than being re-implemented in every subclass.
     """
 
     @abstractmethod
     def predict(
-        self, params: Any, stimuli: Stimulus, model: Any, noise: Any
+        self,
+        params: Any,
+        ref: jnp.ndarray,
+        comparison: jnp.ndarray,
+        model: Any,
+        *,
+        key: Any = None,
     ) -> jnp.ndarray:
-        """Predict probability of correct response for a stimulus."""
-        ...
+        """Return p(correct) for a single (ref, comparison) trial.
 
-    @abstractmethod
-    def loglik(
-        self, params: Any, data: Any, model: Any, noise: Any, **kwargs: Any
-    ) -> jnp.ndarray:
-        """Compute log-likelihood of observed responses under this task.
+        Parameters
+        ----------
+        params : Any
+            Model parameters.
+        ref : jnp.ndarray, shape (input_dim,)
+            Reference stimulus.
+        comparison : jnp.ndarray, shape (input_dim,)
+            Comparison stimulus.
+        model : Any
+            Model instance (provides covariance structure and ``model.noise``).
+        key : jax.random.KeyArray, optional
+            PRNG key for stochastic tasks. When None, the task falls back to
+            its ``config.default_key_seed``.
 
-        Why ``**kwargs``?
-        - Different tasks may need different optional runtime controls.
-        - MC-based tasks may need parameters such as a PRNG ``key``.
-            In particular, :class:`OddityTask` takes Monte Carlo controls
-            (``num_samples`` and ``bandwidth``) exclusively from
-            :class:`OddityTaskConfig` to avoid silent mismatch bugs.
-
-        Notes
-        -----
-        - Task implementations should document which kwargs they accept.
-        - Callers should not assume arbitrary kwargs are supported.
+        Returns
+        -------
+        jnp.ndarray
+            Scalar p(correct) in (0, 1).
         """
         ...
+
+    def loglik(
+        self,
+        params: Any,
+        data: Any,
+        model: Any,
+        *,
+        key: Any = None,
+    ) -> jnp.ndarray:
+        """Compute Bernoulli log-likelihood over a batch of trials.
+
+        This is a concrete base-class method: it vmaps ``predict`` over trials
+        then applies the Bernoulli log-likelihood formula. Subclasses only need
+        to implement ``predict``.
+
+        Parameters
+        ----------
+        params : Any
+            Model parameters.
+        data : Any
+            Object with ``.refs``, ``.comparisons``, ``.responses`` array attributes.
+        model : Any
+            Model instance.
+        key : jax.random.KeyArray, optional
+            PRNG key. Passed as independent per-trial subkeys to ``predict``.
+            When None, falls back to ``key=jr.PRNGKey(0)`` (deterministic).
+
+        Returns
+        -------
+        jnp.ndarray
+            Scalar sum of Bernoulli log-likelihoods over all trials.
+        """
+        refs = jnp.asarray(data.refs)
+        comparisons = jnp.asarray(data.comparisons)
+        responses = jnp.asarray(data.responses)
+        n_trials = int(refs.shape[0])
+
+        base_key = key if key is not None else jr.PRNGKey(0)
+        trial_keys = jr.split(base_key, n_trials)
+
+        probs = jax.vmap(
+            lambda ref, comparison, k: self.predict(
+                params, ref, comparison, model, key=k
+            )
+        )(refs, comparisons, trial_keys)
+
+        log_likelihoods = jnp.where(
+            responses == 1,
+            jnp.log(probs),
+            jnp.log(1.0 - probs),
+        )
+        return jnp.sum(log_likelihoods)
+
+    def simulate(
+        self,
+        params: Any,
+        refs: jnp.ndarray,
+        comparisons: jnp.ndarray,
+        model: Any,
+        *,
+        key: Any,
+    ) -> tuple[jnp.ndarray, jnp.ndarray]:
+        """Simulate observed binary responses for a batch of trials.
+
+        Parameters
+        ----------
+        params : Any
+            Model parameters.
+        refs : jnp.ndarray, shape (n_trials, input_dim)
+            Reference stimuli.
+        comparisons : jnp.ndarray, shape (n_trials, input_dim)
+            Comparison stimuli.
+        model : Any
+            Model instance.
+        key : jax.random.KeyArray
+            PRNG key (required; split internally for prediction and sampling).
+
+        Returns
+        -------
+        responses : jnp.ndarray, shape (n_trials,), dtype int32
+            Simulated binary responses (1 = correct, 0 = incorrect).
+        p_correct : jnp.ndarray, shape (n_trials,)
+            Estimated P(correct) per trial used to draw the responses.
+        """
+        refs = jnp.asarray(refs)
+        comparisons = jnp.asarray(comparisons)
+        n_trials = int(refs.shape[0])
+
+        k_pred, k_bernoulli = jr.split(key)
+        trial_keys = jr.split(k_pred, n_trials)
+
+        p_correct = jax.vmap(
+            lambda ref, comparison, k: self.predict(
+                params, ref, comparison, model, key=k
+            )
+        )(refs, comparisons, trial_keys)
+
+        responses = jr.bernoulli(k_bernoulli, p_correct).astype(jnp.int32)
+        return responses, p_correct
 
 
 class OddityTask(TaskLikelihood):
@@ -147,7 +260,7 @@ class OddityTask(TaskLikelihood):
     >>> from psyphy.data.dataset import ResponseData
     >>> data = ResponseData()
     >>> data.add_trial(ref, comparison, resp=1)
-    >>> ll_mc = likelihood.loglik(params, data, model, model.noise, key=jr.PRNGKey(42))
+    >>> ll_mc = likelihood.loglik(params, data, model, key=jr.PRNGKey(42))
     >>> print(f"Log-likelihood (MC): {ll_mc:.4f}")
     """
 
@@ -156,282 +269,34 @@ class OddityTask(TaskLikelihood):
         self.config = config or OddityTaskConfig()
 
     def predict(
-        self, params: Any, stimuli: Stimulus, model: Any, noise: Any
+        self,
+        params: Any,
+        ref: jnp.ndarray,
+        comparison: jnp.ndarray,
+        model: Any,
+        *,
+        key: Any = None,
     ) -> jnp.ndarray:
-        """Predict p(correct) for a single (ref, comparison) stimulus.
+        """Return p(correct) for a single (ref, comparison) trial via MC simulation.
 
-        Even though OddityTask is *MC-only*, we still implement ``predict``.
-        Reason: large parts of the library (posterior predictive, acquisition
-        functions, diagnostics, etc.) need a forward model that returns
-        p(correct) at candidate stimuli. Historically this used an analytical
-        approximation, but in MC-only mode we compute it via simulation.
-
-        Notes
-        -----
-        - This method is intentionally lightweight: it performs the same
-          single-trial Monte Carlo simulation used by ``loglik``.
-                - If you need to control MC fidelity/smoothing, set
-                    ``OddityTaskConfig(num_samples=..., bandwidth=...)`` when you
-                    construct the task.
-                - If you need reproducible randomness, pass ``key=...`` to ``loglik``.
+        MC controls (``num_samples``, ``bandwidth``) are read from
+        :class:`OddityTaskConfig`. Pass ``key`` to control randomness; when
+        None, ``config.default_key_seed`` is used.
         """
-
         num_samples = int(self.config.num_samples)
         bandwidth = float(self.config.bandwidth)
-        key = jr.PRNGKey(int(self.config.default_key_seed))
+        if key is None:
+            key = jr.PRNGKey(int(self.config.default_key_seed))
 
-        ref, comparison = stimuli
         return self._simulate_trial_mc(
             params=params,
             ref=ref,
             comparison=comparison,
             model=model,
-            noise=noise,
             num_samples=num_samples,
             bandwidth=bandwidth,
             key=key,
         )
-
-    # Intentionally no `predict_with_kwargs`: we want a single source of truth.
-
-    def loglik(
-        self, params: Any, data: Any, model: Any, noise: Any, **kwargs: Any
-    ) -> jnp.ndarray:
-        """
-            Compute log-likelihood via Monte Carlo observer simulation.
-
-            This method implements the FULL 3-stimulus oddity task. Instead of using
-            an analytical approximation, we:
-            1. Sample three internal noisy representations per trial:
-               - z_ref, z_refprime ~ N(ref, Σ_ref)  [two samples from reference]
-               - z_comparison ~ N(comparison, Σ_comparison)           [one sample from comparison]
-            2. Compute three pairwise Mahalanobis distances
-            3. Apply oddity decision rule: comparison is odd if it's farther from BOTH ref and reference_prime
-            4. Apply logistic smoothing to approximate P(correct)
-            5. Average over MC samples
-
-            Parameters
-            ----------
-            params : Any
-                Model parameters as expected by ``model._compute_sqrt``.
-            data : ResponseData
-                Trial data with refs, comparisons, and responses
-            model : WPPM
-                Model instance providing ``_compute_sqrt`` for covariance computation.
-            noise : NoiseModel
-                Observer noise model (provides ``sample_standard``).
-            key : jax.random.PRNGKey, optional
-                Random key for reproducible sampling.
-                If None, uses ``OddityTaskConfig.default_key_seed``.
-
-            Returns
-            -------
-            jnp.ndarray
-                Scalar sum of log-likelihoods over all trials.
-                Same shape and interpretation as ``loglik``.
-
-            Raises
-            ------
-            TypeError
-                If ``num_samples`` or ``bandwidth`` are provided as kwargs.
-            ValueError
-                If the task configuration is invalid (e.g. ``num_samples <= 0``).
-
-            Notes
-            -----
-            Monte Carlo controls (``num_samples``, ``bandwidth``) are owned by the
-            task configuration:
-
-            - Create the task with ``OddityTask(config=OddityTaskConfig(...))``.
-            - Pass only the PRNG ``key`` at call time when you want to control
-              randomness.
-
-            Notes
-            -----
-            **Full 3-stimulus oddity task algorithm:**
-
-            For each trial (ref, comparison, response):
-            1. Compute covariances:
-               - Σ_ref = U_ref @ U_ref.T + σ^2 I
-               - Σ_comparison = U_comparison @ U_comparison.T + σ^2 I
-               - Σ_avg = (2/3) Σ_ref + (1/3) Σ_comparison  [weighted by stimulus frequency]
-
-            2. Sample three internal representations:
-               - z_ref, z_refprime ~ N(ref, Σ_ref)  [2 samples from reference, num_samples times each]
-               - z_comparison ~ N(comparison, Σ_comparison)           [1 sample from comparison, num_samples times]
-
-            3. Compute three pairwise Mahalanobis distances:
-               - d^2(z_ref, z_refprime) = (z_ref - z_refprime).T @ Σ_avg^{-1} @ (z_ref - z_refprime)  [ref vs reference_prime]
-               - d^2(z_ref, z_comparison) = (z_ref - z_comparison).T @ Σ_avg^{-1} @ (z_ref - z_comparison)  [ref vs comparison]
-               - d^2(z_refprime, z_comparison) = (z_refprime - z_comparison).T @ Σ_avg^{-1} @ (z_refprime - z_comparison)  [reference_prime vs comparison]
-
-            4. Apply oddity decision rule:
-               - delta = min(d^2(z_ref,z_comparison), d^2(z_refprime,z_comparison)) - d^2(z_ref,z_refprime)
-               - delta > 0 means comparison is farther from BOTH ref and reference_prime -> correct identification
-
-            5. Apply logistic smoothing:
-               - P(correct) \approx mean(logistic.cdf(delta / bandwidth))
-
-            6. Bernoulli log-likelihood:
-               - LL = Σ [y * log(p) + (1-y) * log(1-p)]
-
-            Performance:
-            - Memory: O(num_samples * input_dim) per trial
-            - Vectorized across trials using jax.vmap for GPU acceleration
-        - Can be JIT-compiled for additional speed (future optimization)
-
-            Examples
-            --------
-            >>> import jax.numpy as jnp
-            >>> import jax.random as jr
-            >>> from psyphy.model import WPPM, Prior
-            >>> from psyphy.model.likelihood import OddityTask
-            >>> from psyphy.model.noise import GaussianNoise
-            >>> from psyphy.data.dataset import ResponseData
-            >>>
-            >>> # Setup
-            >>> model = WPPM(
-            ...     input_dim=2,
-            ...     prior=Prior(input_dim=2, basis_degree=3),
-            ...     likelihood=OddityTask(),
-            ...     noise=GaussianNoise(sigma=0.03),
-            ... )
-            >>> params = model.init_params(jr.PRNGKey(0))
-            >>>
-            >>> # Create trial data
-            >>> data = ResponseData()
-            >>> data.add_trial(
-            ...     ref=jnp.array([0.0, 0.0]), comparison=jnp.array([0.3, 0.2]), resp=1
-            ... )
-            >>>
-            >>> loglik = model.likelihood.loglik(
-            ...     params,
-            ...     data,
-            ...     model,
-            ...     model.noise,
-            ...     num_samples=5000,
-            ...     bandwidth=1e-3,
-            ...     key=jr.PRNGKey(42),
-            ... )
-            >>> print(f"MC (N=5000): {loglik:.4f}")
-
-
-        """
-        # Task is the single source of truth for MC controls.
-        num_samples = int(self.config.num_samples)
-        bandwidth = float(self.config.bandwidth)
-
-        # Only PRNG key is accepted dynamically.
-        key = kwargs.pop("key", None)
-        if "num_samples" in kwargs or "bandwidth" in kwargs:
-            raise TypeError(
-                "OddityTask.loglik does not accept 'num_samples'/'bandwidth' overrides. "
-                "Configure them via OddityTaskConfig when constructing the task."
-            )
-        if kwargs:
-            unexpected = ", ".join(sorted(kwargs.keys()))
-            raise TypeError(
-                f"Unexpected keyword arguments for OddityTask.loglik: {unexpected}"
-            )
-
-        if num_samples <= 0:
-            raise ValueError(f"num_samples must be > 0, got {num_samples}")
-        if bandwidth <= 0:
-            raise ValueError(f"bandwidth must be > 0, got {bandwidth}")
-
-        if key is None:
-            key = jr.PRNGKey(int(self.config.default_key_seed))
-
-        # Unpack trial data.
-        #
-        # Compute-efficient contract: `data` should be a batch of arrays.
-        # We accept either a TrialData dataclass or any object with
-        # `.refs/.comparisons/.responses` array attributes.
-        refs = jnp.asarray(data.refs)
-        comparisons = jnp.asarray(data.comparisons)
-        responses = jnp.asarray(data.responses)
-        n_trials = int(refs.shape[0])
-
-        # Split keys for each trial (ensures independent sampling)
-        trial_keys = jr.split(key, n_trials)
-
-        # Vectorized computation of P(correct) for all trials
-        # This processes all trials in parallel using jax.vmap
-        # Note: probabilities are already clipped in _simulate_trial_mc()
-        probs = self._simulate_trials_mc_vectorized(
-            params=params,
-            refs=refs,
-            comparisons=comparisons,
-            model=model,
-            noise=noise,
-            num_samples=num_samples,
-            bandwidth=bandwidth,
-            trial_keys=trial_keys,
-        )
-
-        # Bernoulli log-likelihood: LL = Σ [y log(p) + (1-y) log(1-p)]
-        # Probabilities are already clipped to [eps, 1-eps] so log is safe
-        log_likelihoods = jnp.where(
-            responses == 1,
-            jnp.log(probs),  # Correct response
-            jnp.log(1.0 - probs),  # Incorrect response
-        )
-
-        return jnp.sum(log_likelihoods)
-
-    def _simulate_trials_mc_vectorized(
-        self,
-        params: Any,
-        refs: jnp.ndarray,
-        comparisons: jnp.ndarray,
-        model: Any,
-        noise: Any,
-        num_samples: int,
-        bandwidth: float,
-        trial_keys: jnp.ndarray,
-    ) -> jnp.ndarray:
-        """
-        Vectorized Monte Carlo simulation across all trials.
-
-        This method processes multiple trials in parallel using JAX's vmap,
-        which is much faster than a Python loop (especially on GPU/TPU).
-
-        Parameters
-        ----------
-        params : Any
-            Model parameters as expected by ``model._compute_sqrt``.
-        refs : jnp.ndarray, shape (n_trials, input_dim)
-            Reference stimuli for all trials
-        comparisons : jnp.ndarray, shape (n_trials, input_dim)
-            Probe stimuli for all trials
-        model : WPPM
-            Model instance
-        noise : NoiseModel
-            Observer noise model
-        num_samples : int
-            Number of Monte Carlo samples per trial
-        bandwidth : float
-            Logistic smoothing bandwidth
-        trial_keys : jnp.ndarray, shape (n_trials, 2)
-            Random keys for each trial
-
-        Returns
-        -------
-        probs : jnp.ndarray, shape (n_trials,)
-            Estimated P(correct) for each trial
-        """
-
-        # Create a vectorized version of the single-trial simulation
-        # vmap automatically batches over the first axis of each input
-        def simulate_single(ref, comparison, key):
-            return self._simulate_trial_mc(
-                params, ref, comparison, model, noise, num_samples, bandwidth, key
-            )
-
-        # Apply to all trials in parallel
-        probs = jax.vmap(simulate_single)(refs, comparisons, trial_keys)
-
-        return probs
 
     def _simulate_trial_mc(
         self,
@@ -439,7 +304,6 @@ class OddityTask(TaskLikelihood):
         ref: jnp.ndarray,
         comparison: jnp.ndarray,
         model: Any,
-        noise: Any,
         num_samples: int,
         bandwidth: float,
         key: Any,
@@ -460,9 +324,7 @@ class OddityTask(TaskLikelihood):
         comparison : jnp.ndarray, shape (input_dim,)
             Probe stimulus (1 sample represented, the "odd one out")
         model : WPPM
-            Model instance providing covariance structure
-        noise : NoiseModel
-            Observer noise (currently unused, noise in covariance?)
+            Model instance providing covariance structure and ``model.noise``.
         num_samples : int
             Number of Monte Carlo samples for estimating P(correct)
         bandwidth : float
@@ -548,14 +410,20 @@ class OddityTask(TaskLikelihood):
         embed_dim = U_ref.shape[1]  # type: ignore
 
         # Samples from standard normal  (will be transformed to our target distributions 1 and 2)
-        n_ref_embed = noise.sample_standard(keys[0], (num_samples, embed_dim))
-        n_refprime_embed = noise.sample_standard(keys[1], (num_samples, embed_dim))
-        n_comparison_embed = noise.sample_standard(keys[2], (num_samples, embed_dim))
+        n_ref_embed = model.noise.sample_standard(keys[0], (num_samples, embed_dim))
+        n_refprime_embed = model.noise.sample_standard(
+            keys[1], (num_samples, embed_dim)
+        )
+        n_comparison_embed = model.noise.sample_standard(
+            keys[2], (num_samples, embed_dim)
+        )
 
         # Sample diagonal noise (independent across dimensions)
-        n_ref_diag = noise.sample_standard(keys[3], (num_samples, input_dim))
-        n_refprime_diag = noise.sample_standard(keys[4], (num_samples, input_dim))
-        n_comparison_diag = noise.sample_standard(keys[5], (num_samples, input_dim))
+        n_ref_diag = model.noise.sample_standard(keys[3], (num_samples, input_dim))
+        n_refprime_diag = model.noise.sample_standard(keys[4], (num_samples, input_dim))
+        n_comparison_diag = model.noise.sample_standard(
+            keys[5], (num_samples, input_dim)
+        )
 
         # =================================================================
         # SAMPLING: Transform standard normals to samples from our 2 distributions

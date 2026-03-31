@@ -65,7 +65,6 @@ class TestNoiseModels:
             params=params,
             data=data,
             model=model_gaussian,
-            noise=model_gaussian.noise,
             key=jr.PRNGKey(0),
         )
 
@@ -74,7 +73,6 @@ class TestNoiseModels:
             params=params,
             data=data,
             model=model_student_t,
-            noise=model_student_t.noise,
             key=jr.PRNGKey(0),
         )
 
@@ -107,7 +105,6 @@ class TestNoiseModels:
             params=params,
             data=data,
             model=model_student_t,
-            noise=model_student_t.noise,
             key=jr.PRNGKey(0),
         )
 

@@ -209,7 +209,7 @@ truth_params = truth_model.init_params(jax.random.PRNGKey(123))
 #
 
 
-# --8<-- [start:simulate_data]
+##### Simulate data
 num_trials_per_ref = NUM_TRIALS_Per_Ref  # (trials per reference point)
 n_ref_grid = 5  # NUM_GRID_PTS
 ref_grid = jnp.linspace(-1, 1, n_ref_grid)  # [-1,1] space
@@ -234,7 +234,7 @@ truth_field = WPPMCovarianceField(truth_model, truth_params)
 Sigmas_ref = truth_field(refs)  # (N, 2, 2)
 
 # Sample unit directions on the circle.
-k_dir, k_pred, k_y = jr.split(key, 3)
+k_dir, k_sim = jr.split(key)
 angles = jr.uniform(k_dir, shape=(num_trials_total,), minval=0.0, maxval=2.0 * jnp.pi)
 unit_dirs = jnp.stack([jnp.cos(angles), jnp.sin(angles)], axis=1)  # (N, 2)
 
@@ -250,30 +250,9 @@ L = jnp.linalg.cholesky(Sigmas_ref)  # (N, 2, 2)
 deltas = MAHAL_RADIUS * jnp.einsum("nij,nj->ni", L, unit_dirs)  # (N, 2)
 comparisons = jnp.clip(refs + deltas, -1.0, 1.0)
 
-# Compute p(correct) in batch. We vmap the single-trial predictor.
-trial_pred_keys = jr.split(k_pred, num_trials_total)
-
-
-# we use task as the generative model to create observations (user responses)
-def _p_correct_one(ref: jnp.ndarray, comp: jnp.ndarray, kk: jnp.ndarray) -> jnp.ndarray:
-    # Task MC settings (num_samples/bandwidth) come from OddityTaskConfig.
-    # Only the randomness is threaded dynamically.
-    return task._simulate_trial_mc(
-        params=truth_params,
-        ref=ref,
-        comparison=comp,
-        model=truth_model,
-        noise=truth_model.noise,
-        num_samples=int(task.config.num_samples),
-        bandwidth=float(task.config.bandwidth),
-        key=kk,
-    )
-
-
-p_correct = jax.vmap(_p_correct_one)(refs, comparisons, trial_pred_keys)
-
-# Sample observed y ~ Bernoulli(p_correct) in batch.
-ys = jr.bernoulli(k_y, p_correct, shape=(num_trials_total,)).astype(jnp.int32)
+# --8<-- [start:simulate_data]
+# Simulate observed responses using the likelihood implied by the task.
+ys, p_correct = task.simulate(truth_params, refs, comparisons, truth_model, key=k_sim)
 
 # Build the canonical batched dataset for compute.
 #

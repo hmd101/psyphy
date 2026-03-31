@@ -69,8 +69,7 @@ For OddityTask, we store trials as (ref, comparison) even though the task involv
 
 Note on data used in this script: here, we simulate data (and hence have a ground truth to compare agains). To how to conveniently simulate data yourself, checkout  the [script](https://github.com/flatironinstitute/psyphy/blob/main/docs/examples/wppm/full_wppm_fit_example.py)
 
-<details>
-<summary>### 2 ways of representing data in `psyphy` (important)</summary>
+### 2 ways of representing data in `psyphy` (important)
 `psyphy` provides two lightweight containers for trial data (defined in [`src/psyphy/data/dataset.py`](https://github.com/flatironinstitute/psyphy/blob/main/src/psyphy/data/dataset.py)):
 
 **`TrialData` (compute-first; used for fitting):**
@@ -96,7 +95,7 @@ Avoid repeatedly converting Python lists -> JAX arrays inside tight loops.
 
 
 Note that here, we simlulate data, for details check out  [`full_wppm_fit_example.py`](full_wppm_fit_example.py) directly resulting in a `TrialData` object.
-</details>
+
 
 ---
 
@@ -109,8 +108,7 @@ The WPPM parameters are basis weights stored as a dict:
 where `W` is a tensor of Chebyshev-basis coefficients.
 
 
-<details>
-  <summary>### Prior distribution over weights:</summary>
+### Prior distribution over weights:
 
 `Prior.sample_params(key)` samples weights `W` from a **zero-mean Gaussian** with a *degree-dependent variance*.
 
@@ -146,7 +144,7 @@ W_{ijde} \sim \mathcal{N}(0, \sigma^2_{ij}).
 \]
 
 This is the  state of the  WPPM: **before any data**, WPPM draws smooth random fields because high-frequency coefficients are shrunk by the decay.
-</details>
+
 
 ---
 
@@ -240,43 +238,14 @@ To see how we generate the covariance field figures, checkout the plotting code 
 ---
 
 ## To recap: Minimal recipe (copy/paste mental model)
+We are Bayesian, so we need to define the Prior and Likelihood and choose an inference method (here MAP) that will hand us the posterior distribution over the parameters.
 
-To use WPPM on your own data, these are the essential calls:
-
-**1. Create** task + noise + prior:
-
-   - `task = OddityTask()`
-
-   - `noise = GaussianNoise(sigma=...)`
-
-   - `prior = Prior(input_dim=..., basis_degree=..., extra_embedding_dims=..., decay_rate=..., variance_scale=...)`
-
-**2. Create** WPPM:
-
-   - `model = WPPM(input_dim=..., prior=prior, task=task, noise=noise, diag_term=...)`
-
-**3. Initialize** parameters:
-
-   - `params0 = model.init_params(jax.random.PRNGKey(...))`  (draws from `Prior.sample_params`)
-
-**4. Load/build** a dataset:
-
-   - `data = TrialData(refs=..., comparisons=..., responses=...)`
-
-**5. Fit**:
-
-   - `map = MAPOptimizer(...).fit(model, data, init_params=params0, ...)`
-
-**6. Inspect** $\Sigma(x)$:
-
-   - `field = WPPMCovarianceField(model, map.params)`
-   - `Sigmas = field(xs)`
-
+For an even more minimal code setup that doesn't require a GPU but will run on your CPU in < 1 min, you may find [`quickstart`](https://flatironinstitute.github.io/psyphy/examples/wppm/quick_start/) helpful.
 ---
 
 ## Notes and pitfalls
 
-- **CPU vs GPU:** this example can be heavy because the oddity likelihood uses Monte Carlo. A GPU can help a lot.
+- **CPU vs GPU:** this example can be heavy because the oddity likelihood uses Monte Carlo. A GPU can help a lot, see [`quickstart`](https://flatironinstitute.github.io/psyphy/examples/wppm/quick_start/) for a CPU friendly version.
 - **Positive definiteness:** `diag_term` is important. If you ever see a non-PD covariance, increase `diag_term` slightly.
 - **MC variance:** optimization stability depends on `MC_SAMPLES`. Too small means noisy gradients.
 
@@ -308,7 +277,7 @@ instead of using relative filesystem paths.
 - MAP fitting: [`src/psyphy/inference/map_optimizer.py`](https://github.com/flatironinstitute/psyphy/blob/main/src/psyphy/inference/map_optimizer.py) (see `MAPOptimizer`)
 - Data container: [`src/psyphy/data/dataset.py`](https://github.com/flatironinstitute/psyphy/blob/main/src/psyphy/data/dataset.py) (see `ResponseData`)
 
-If you want to “follow the call graph”:
+If you want to "follow the call graph":
 
 1. `WPPM.init_params(...)` (defined in [`src/psyphy/model/wppm.py`](https://github.com/flatironinstitute/psyphy/blob/main/src/psyphy/model/wppm.py)) → delegates to the prior’s `Prior.sample_params(...)` (defined in [`src/psyphy/model/prior.py`](https://github.com/flatironinstitute/psyphy/blob/main/src/psyphy/model/prior.py)).
 2. `OddityTask.predict_with_kwargs(...)` / `OddityTask.loglik(...)` (defined in [`src/psyphy/model/likelihood.py`](https://github.com/flatironinstitute/psyphy/blob/main/src/psyphy/model/likelihood.py)) → calls into the model to get $\Sigma(x)$ and then runs the task’s decision rule (Monte Carlo in the full model).
