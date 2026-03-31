@@ -47,7 +47,6 @@ class TestThreeStimulusDecisionRule:
             params,
             data,
             model,
-            model.noise,
             key=jr.PRNGKey(42),
         )
 
@@ -90,7 +89,6 @@ class TestThreeStimulusDecisionRule:
             params,
             data,
             model,
-            model.noise,
             key=jr.PRNGKey(42),
         )
 
@@ -126,9 +124,7 @@ class TestThreeStimulusDecisionRule:
         data.add_trial(ref, comparison, resp=1)
 
         # Compute P(correct)
-        loglik = model.likelihood.loglik(
-            params, data, model, model.noise, key=jr.PRNGKey(42)
-        )
+        loglik = model.likelihood.loglik(params, data, model, key=jr.PRNGKey(42))
 
         p_correct = jnp.exp(loglik)
 
@@ -168,7 +164,6 @@ class TestThreeStimulusDecisionRule:
             params,
             data_identical,
             model,
-            model.noise,
             key=jr.PRNGKey(42),
         )
         p_identical = jnp.exp(loglik_identical)
@@ -182,7 +177,6 @@ class TestThreeStimulusDecisionRule:
             params,
             data_distant,
             model,
-            model.noise,
             key=jr.PRNGKey(42),
         )
         p_distant = jnp.exp(loglik_distant)
@@ -312,9 +306,7 @@ class TestEdgeCases:
         comparison = jnp.array([2.0, 2.0])
         data.add_trial(ref, comparison, resp=1)
 
-        loglik = model.likelihood.loglik(
-            params, data, model, model.noise, key=jr.PRNGKey(42)
-        )
+        loglik = model.likelihood.loglik(params, data, model, key=jr.PRNGKey(42))
 
         p_correct = jnp.exp(loglik)
 
@@ -346,9 +338,7 @@ class TestEdgeCases:
         comparison = jnp.array([3.0, 3.0])
         data.add_trial(ref, comparison, resp=1)
 
-        loglik = model.likelihood.loglik(
-            params, data, model, model.noise, key=jr.PRNGKey(42)
-        )
+        loglik = model.likelihood.loglik(params, data, model, key=jr.PRNGKey(42))
 
         p_correct = jnp.exp(loglik)
 
@@ -379,15 +369,12 @@ class TestEdgeCases:
         data.add_trial(ref, comparison, resp=1)
 
         # Compute with two different seeds (same task config)
-        loglik1 = model.likelihood.loglik(
-            params, data, model, model.noise, key=jr.PRNGKey(42)
-        )
+        loglik1 = model.likelihood.loglik(params, data, model, key=jr.PRNGKey(42))
 
         loglik2 = model.likelihood.loglik(
             params,
             data,
             model,
-            model.noise,
             key=jr.PRNGKey(43),  # Different seed
         )
 
@@ -428,7 +415,6 @@ class TestEdgeCases:
             params,
             data_multi,
             model,
-            model.noise,
             key=jr.PRNGKey(42),
         )
 
@@ -440,7 +426,6 @@ class TestEdgeCases:
             params,
             data_single,
             model,
-            model.noise,
             key=jr.PRNGKey(42),
         )
 
@@ -485,7 +470,6 @@ class TestEdgeCases:
             params,
             data,
             model,
-            model.noise,
             key=jr.PRNGKey(42),  # Same seed
         )
 
@@ -493,7 +477,6 @@ class TestEdgeCases:
             params,
             data,
             model,
-            model.noise,
             key=jr.PRNGKey(42),  # Same seed
         )
 
@@ -534,7 +517,6 @@ class TestDecisionRuleSymmetry:
             params,
             data,
             model,
-            model.noise,
             key=jr.PRNGKey(42),
         )
 
@@ -543,7 +525,6 @@ class TestDecisionRuleSymmetry:
             params,
             data,
             model,
-            model.noise,
             key=jr.PRNGKey(100),
         )
 
