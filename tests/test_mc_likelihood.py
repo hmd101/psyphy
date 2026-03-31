@@ -65,7 +65,6 @@ class TestMCLikelihood:
             params=simple_params,
             data=data,
             model=model,
-            noise=model.noise,
             key=jr.PRNGKey(0),
         )
 
@@ -94,7 +93,7 @@ class TestMCLikelihood:
 
         # Analytical likelihood (current implementation)
         ll_analytical = model.likelihood.loglik(
-            params=simple_params, data=data, model=model, noise=model.noise
+            params=simple_params, data=data, model=model
         )
 
         # MC likelihood with many samples: create a separate model instance
@@ -112,7 +111,6 @@ class TestMCLikelihood:
             params=mc_params,
             data=data,
             model=mc_model,
-            noise=mc_model.noise,
             key=jr.PRNGKey(42),
         )
 
@@ -150,7 +148,6 @@ class TestMCLikelihood:
             params=simple_params,
             data=data,
             model=model,
-            noise=model.noise,
             key=jr.PRNGKey(0),
         )
 
@@ -166,7 +163,6 @@ class TestMCLikelihood:
             params=simple_params,
             data=data,
             model=model_1000,
-            noise=model_1000.noise,
             key=jr.PRNGKey(0),
         )
 
@@ -190,7 +186,6 @@ class TestMCLikelihood:
             params=simple_params,
             data=data,
             model=model,
-            noise=model.noise,
             key=jr.PRNGKey(123),
         )
 
@@ -225,7 +220,6 @@ class TestMCLikelihood:
             params=simple_params,
             data=data,
             model=model,
-            noise=model.noise,
             key=jr.PRNGKey(0),
         )
 
@@ -251,7 +245,6 @@ class TestMCLikelihood:
             params=simple_params,
             data=data,
             model=model,
-            noise=model.noise,
             key=jr.PRNGKey(42),
         )
 
@@ -259,7 +252,6 @@ class TestMCLikelihood:
             params=simple_params,
             data=data,
             model=model,
-            noise=model.noise,
             key=jr.PRNGKey(42),
         )
 
@@ -284,7 +276,6 @@ class TestMCLikelihood:
             params=simple_params,
             data=data,
             model=model,
-            noise=model.noise,
             key=jr.PRNGKey(0),
         )
 
@@ -292,7 +283,6 @@ class TestMCLikelihood:
             params=simple_params,
             data=data,
             model=model,
-            noise=model.noise,
             key=jr.PRNGKey(999),
         )
 
@@ -347,7 +337,6 @@ class TestMCLikelihoodEdgeCases:
             params=params,
             data=data,
             model=model,
-            noise=model.noise,
             key=jr.PRNGKey(123),
         )
 
@@ -381,7 +370,6 @@ class TestMCLikelihoodEdgeCases:
             params=params,
             data=data,
             model=model,
-            noise=model.noise,
             key=jr.PRNGKey(42),
         )
 
@@ -411,7 +399,6 @@ class TestMCLikelihoodEdgeCases:
             params=params,
             data=data,
             model=model,
-            noise=model.noise,
             key=jr.PRNGKey(42),
         )
 
@@ -477,7 +464,6 @@ class TestGradientCompatibility:
                 params=p,
                 data=data,
                 model=model,
-                noise=model.noise,
                 key=jr.PRNGKey(0),
             )
 
@@ -524,7 +510,6 @@ class TestGradientCompatibility:
                 params=p,
                 data=data,
                 model=model,
-                noise=model.noise,
                 key=jr.PRNGKey(0),
             )
 
@@ -558,7 +543,6 @@ class TestGradientCompatibility:
                 params=p,
                 data=data,
                 model=model,
-                noise=model.noise,
                 key=jr.PRNGKey(0),
             )
 
@@ -599,7 +583,6 @@ class TestGradientCompatibility:
                 params=p,
                 data=data,
                 model=model,
-                noise=model.noise,
                 key=jr.PRNGKey(0),
             )
 
@@ -653,7 +636,6 @@ class TestProbabilityClipping:
             params=params,
             data=data,
             model=model,
-            noise=model.noise,
             key=jr.PRNGKey(0),
         )
 
@@ -687,7 +669,6 @@ class TestProbabilityClipping:
             params=params,
             data=data,
             model=model,
-            noise=model.noise,
             key=jr.PRNGKey(0),
         )
 
@@ -726,7 +707,6 @@ class TestProbabilityClipping:
                 params=params,
                 data=data,
                 model=model,
-                noise=model.noise,
                 key=jr.PRNGKey(0),
             )
 
@@ -780,7 +760,6 @@ class TestNumericalStability:
             params=params,
             data=data,
             model=model,
-            noise=model.noise,
             key=jr.PRNGKey(0),
         )
 
@@ -818,7 +797,6 @@ class TestNumericalStability:
             params=params,
             data=data,
             model=model,
-            noise=model.noise,
             key=jr.PRNGKey(0),
         )
 
@@ -886,7 +864,6 @@ class TestConvergenceRate:
                     params=params,
                     data=data,
                     model=model_n,
-                    noise=model_n.noise,
                     key=jr.PRNGKey(seed),
                 )
                 lls.append(ll)
@@ -901,6 +878,74 @@ class TestConvergenceRate:
         assert var_1600 < var_100 * 0.5, (
             f"Variance didn't decrease enough: {var_100:.6f} -> {var_1600:.6f} (expected >2x reduction)"
         )
+
+
+class TestSimulate:
+    """Test the public simulate() method on TaskLikelihood."""
+
+    @pytest.fixture
+    def model(self):
+        return WPPM(
+            input_dim=2,
+            prior=Prior(input_dim=2, basis_degree=3),
+            likelihood=OddityTask(
+                config=OddityTaskConfig(num_samples=500, bandwidth=1e-2)
+            ),
+            noise=GaussianNoise(sigma=0.03),
+        )
+
+    @pytest.fixture
+    def simple_params(self, model):
+        return model.init_params(jr.PRNGKey(42))
+
+    def test_simulate_returns_correct_shapes(self, model, simple_params):
+        refs = jnp.array([[0.0, 0.0], [0.3, 0.1]])
+        comparisons = jnp.array([[0.1, 0.1], [0.4, 0.2]])
+        responses, p_correct = model.likelihood.simulate(
+            simple_params, refs, comparisons, model, key=jr.PRNGKey(0)
+        )
+        assert responses.shape == (2,)
+        assert p_correct.shape == (2,)
+        assert responses.dtype == jnp.int32
+
+    def test_simulate_responses_are_binary(self, model, simple_params):
+        refs = jnp.array([[0.0, 0.0]] * 20)
+        comparisons = jnp.array([[0.2, 0.2]] * 20)
+        responses, _ = model.likelihood.simulate(
+            simple_params, refs, comparisons, model, key=jr.PRNGKey(1)
+        )
+        assert jnp.all((responses == 0) | (responses == 1))
+
+    def test_simulate_p_correct_in_range(self, model, simple_params):
+        refs = jnp.array([[0.0, 0.0]])
+        comparisons = jnp.array([[0.3, 0.3]])
+        _, p_correct = model.likelihood.simulate(
+            simple_params, refs, comparisons, model, key=jr.PRNGKey(2)
+        )
+        assert jnp.all(p_correct > 0) and jnp.all(p_correct < 1)
+
+    def test_simulate_reproducible_with_same_key(self, model, simple_params):
+        refs = jnp.array([[0.0, 0.0]] * 5)
+        comparisons = jnp.array([[0.2, 0.2]] * 5)
+        r1, p1 = model.likelihood.simulate(
+            simple_params, refs, comparisons, model, key=jr.PRNGKey(7)
+        )
+        r2, p2 = model.likelihood.simulate(
+            simple_params, refs, comparisons, model, key=jr.PRNGKey(7)
+        )
+        assert jnp.array_equal(r1, r2)
+        assert jnp.allclose(p1, p2)
+
+    def test_simulate_differs_with_different_key(self, model, simple_params):
+        refs = jnp.array([[0.0, 0.0]] * 50)
+        comparisons = jnp.array([[0.2, 0.2]] * 50)
+        r1, _ = model.likelihood.simulate(
+            simple_params, refs, comparisons, model, key=jr.PRNGKey(0)
+        )
+        r2, _ = model.likelihood.simulate(
+            simple_params, refs, comparisons, model, key=jr.PRNGKey(99)
+        )
+        assert not jnp.array_equal(r1, r2)
 
 
 if __name__ == "__main__":

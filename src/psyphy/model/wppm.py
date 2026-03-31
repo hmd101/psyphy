@@ -415,60 +415,13 @@ class WPPM(Model):
                 "Configure likelihood behavior via the TaskLikelihood object itself."
             )
 
-        return self.likelihood.predict(params, stimulus, self, self.noise)
+        ref, comparison = stimulus
+        return self.likelihood.predict(params, ref, comparison, self)
 
     # ----------------------------------------------------------------------
     # LIKELIHOOD (delegates to likelihood component)
     # ----------------------------------------------------------------------
     # TODO: add random key
-    def log_likelihood(
-        self,
-        params: Params,
-        refs: jnp.ndarray,
-        comparisons: jnp.ndarray,
-        responses: jnp.ndarray,
-    ) -> jnp.ndarray:
-        """
-        Compute the log-likelihood for arrays of trials.
-
-        IMPORTANT:
-            We delegate to the TaskLikelihood to avoid duplicating Bernoulli (MPV)
-            or MC likelihood logic in multiple places.
-
-        Parameters
-        ----------
-        params : dict
-            Model parameters.
-        refs : jnp.ndarray, shape (N, input_dim)
-        comparisons : jnp.ndarray, shape (N, input_dim)
-        responses : jnp.ndarray, shape (N,)
-            Typically 0/1; task may support richer encodings.
-
-        Returns
-        -------
-        loglik : jnp.ndarray
-            Scalar log-likelihood (task-only; add prior outside if needed)
-
-                Notes
-                -----
-                This method is intentionally strict and does not accept task-specific
-                runtime kwargs.
-
-                - Configure task behavior (e.g. MC fidelity/smoothing for ``OddityTask``)
-                    via the task instance passed to the model.
-                - If you need reproducible randomness, pass a ``key`` when calling the
-                    task directly.
-        """
-        # Delegate to the task on a batched, JAX-native dataset.
-        from psyphy.data.dataset import TrialData  # local import to avoid cycles
-
-        data = TrialData(
-            refs=jnp.asarray(refs),
-            comparisons=jnp.asarray(comparisons),
-            responses=jnp.asarray(responses),
-        )
-        return self.likelihood.loglik(params, data, self, self.noise)
-
     def log_likelihood_from_data(
         self, params: Params, data: Any, *, key: jax.Array | None = None
     ) -> jnp.ndarray:
@@ -497,7 +450,7 @@ class WPPM(Model):
         loglik : jnp.ndarray
             Scalar log-likelihood (task-only; add prior outside if needed).
         """
-        return self.likelihood.loglik(params, data, self, self.noise, key=key)
+        return self.likelihood.loglik(params, data, self, key=key)
 
     # ----------------------------------------------------------------------
     # POSTERIOR-STYLE CONVENIENCE (OPTIONAL)
