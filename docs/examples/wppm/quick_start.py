@@ -134,7 +134,7 @@ truth_params = truth_model.init_params(jax.random.PRNGKey(123))
 # Step 2 — Simulate data at a *single* reference point
 # ---------------------------------------------------------------------------
 
-# --8<-- [start:simulate_data]
+
 # Single reference point at the centre of the stimulus space.
 ref_point = jnp.array([[0.0, 0.0]])  # shape (1, 2) — kept as a batch for generality
 
@@ -160,7 +160,8 @@ L = jnp.linalg.cholesky(Sigmas_ref)  # (N, 2, 2)
 deltas = MAHAL_RADIUS * jnp.einsum("nij,nj->ni", L, unit_dirs)  # (N, 2)
 comparisons = jnp.clip(refs + deltas, -1.0, 1.0)
 
-# Simulate observed responses using the public API.
+# --8<-- [start:simulate_data]
+# Simulate observed responses using the likelihood implied by the task
 ys, p_correct = task.simulate(truth_params, refs, comparisons, truth_model, key=k_sim)
 # --8<-- [end:simulate_data]
 
