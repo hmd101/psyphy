@@ -209,7 +209,7 @@ truth_params = truth_model.init_params(jax.random.PRNGKey(123))
 #
 
 
-# --8<-- [start:simulate_data]
+##### Simulate data
 num_trials_per_ref = NUM_TRIALS_Per_Ref  # (trials per reference point)
 n_ref_grid = 5  # NUM_GRID_PTS
 ref_grid = jnp.linspace(-1, 1, n_ref_grid)  # [-1,1] space
@@ -250,7 +250,8 @@ L = jnp.linalg.cholesky(Sigmas_ref)  # (N, 2, 2)
 deltas = MAHAL_RADIUS * jnp.einsum("nij,nj->ni", L, unit_dirs)  # (N, 2)
 comparisons = jnp.clip(refs + deltas, -1.0, 1.0)
 
-# Simulate observed responses using the public API.
+# --8<-- [start:simulate_data]
+# Simulate observed responses using the likelihood implied by the task.
 ys, p_correct = task.simulate(truth_params, refs, comparisons, truth_model, key=k_sim)
 
 # Build the canonical batched dataset for compute.
