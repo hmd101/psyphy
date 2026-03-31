@@ -1,5 +1,12 @@
 # Contributing
-![psyphy logo](images/psyphy_logo.png)
+<div align="center">
+    <picture>
+      <source srcset="images/psyphy_logo.png" media="(prefers-color-scheme: light)"/>
+      <source srcset="images/psyphy_logo.png"  media="(prefers-color-scheme: dark)"/>
+      <img alt="psyphy logo" src="docs/images/psyphy_logo.png" width="200">
+    </picture>
+    <h3>Active-learning-driven adaptive experimentation in psychophysics</h3>
+</div>
 
 
 ## Dev setup
