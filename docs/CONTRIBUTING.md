@@ -3,12 +3,11 @@
 
 
 ## Dev setup
-
 ```bash
-python -m venv .venv
-source .venv/bin/activate
-pip install -r requirements.txt
+git clone https://flatironinstitute.github.io/psyphy.git
+cd psyphy
 pip install -e .
+
 ```
 
 ## Code Quality
