@@ -44,6 +44,17 @@ docs = [
   "seaborn>=0.13",
   "jupyterlab>=4.0",
 ]
+sampling = [
+  "blackjax>=1.0",
+]
+diagnostics = [
+  "arviz>=0.16",
+]
+nuts = [
+  "blackjax>=1.0",
+  "arviz>=0.16",
+  "matplotlib>=3.5",
+]
 
 [project.urls]
 Homepage = "https://flatironinstitute.github.io/psyphy"
@@ -81,6 +92,7 @@ ignore = [
 
 [tool.ruff.lint.per-file-ignores]
 "tests/**/*.py" = ["ARG", "S101"]  # Allow unused args and asserts in tests
+"tests/test_nuts_sampler.py" = ["ARG", "S101", "E402"]  # E402: imports after importorskip are intentional (skip guard must run first)
 "__init__.py" = ["F401"]  # Allow unused imports in __init__.py
 "docs/**/*.py" = ["ARG", "T201"]  # Allow print statements in examples
 

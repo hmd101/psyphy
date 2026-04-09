@@ -7,6 +7,7 @@ Posterior representations.
 This subpackage provides:
 - ParameterPosterior: protocol for posteriors over model parameters p(θ | data)
 - MAPPosterior: delta distribution at θ_MAP (point estimate)
+- MCMCPosterior: backend-agnostic container for MCMC chain samples
 
 Two-tier design
 ---------------
@@ -16,9 +17,9 @@ Two-tier design
 Future extensions
 -----------------
 - LaplacePosterior: Gaussian approximation N(θ_MAP, Σ)
-- NumpyroPosterior/BlackjaxPosterior: MCMC samples
 """
 
+from .mcmc_posterior import MCMCPosterior
 from .parameter_posterior import ParameterPosterior
 from .posterior import MAPPosterior
 from .predictive_posterior import PredictivePosterior, WPPMPredictivePosterior
@@ -29,6 +30,7 @@ __all__ = [
     "PredictivePosterior",
     # Parameter posterior implementations
     "MAPPosterior",
+    "MCMCPosterior",
     # Predictive posterior implementations
     "WPPMPredictivePosterior",
 ]
