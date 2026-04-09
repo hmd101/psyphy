@@ -82,6 +82,6 @@ class ParameterPosterior(Protocol):
         Notes
         -----
         - MAP: returns repeated θ_MAP
-        - Numpyro/Blackjax: returns stored samples (may subsample if n differs)
+        - Blackjax: returns stored samples (may subsample if n differs)
         """
         ...

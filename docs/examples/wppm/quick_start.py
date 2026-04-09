@@ -87,9 +87,13 @@ def _ellipse_segments_from_covs(
 # ---------------------------------------------------------------------------
 
 # --8<-- [start:compute_settings]
-MC_SAMPLES = 50  # MC samples per trial in the likelihood (full example: 500)
-NUM_TRIALS = 100  # total simulated trials (full example: 4000 × 25)
-NUM_STEPS = 200  # optimizer steps (full example: 2000)
+# NOTE: MAPOptimizer uses a fresh MC key each gradient step (correct, unbiased
+# stochastic gradient). This requires more steps/samples than a fixed-key
+# (deterministic) approach to converge. The settings below are tuned for
+# a CPU run that still produces a visible MAP ellipse.
+MC_SAMPLES = 100  # MC samples per trial — more → less gradient noise
+NUM_TRIALS = 200  # total simulated trials — more data → stronger signal
+NUM_STEPS = 500  # optimizer steps — more → compensates for stochastic gradients
 
 learning_rate = 5e-4  # full example: 5e-5. The smaller the lr, the more steps
 # are required.
@@ -244,9 +248,15 @@ covs_map = map_cov_field(ref_point)  # (N, 2, 2)
 # here: N=1 for fast computation
 # --8<-- [end:cov_fields]
 
-# Scale ellipses so they are visually readable.
-gt_scale = float(jnp.sqrt(jnp.mean(jnp.linalg.eigvalsh(covs_truth[0]))))
-ellipse_scale = max(0.3, 0.4 * gt_scale / 0.01)  # keep readable on the unit square
+# Scale ellipses so the truth ellipse fills ~80 % of the plot half-range.
+# We compute the longest semi-axis of the truth ellipse at scale=1
+# (= sqrt of the largest eigenvalue of Σ_truth) and set the scale so
+# that semi-axis lands at 80 % of PLOT_HALF_RANGE.  This guarantees the
+# truth ellipse stays within the axes regardless of the actual covariance
+# magnitude, instead of relying on a hardcoded reference magnitude.
+PLOT_HALF_RANGE = 0.6  # must match ax.set_xlim / ax.set_ylim below
+max_eigval_truth = float(jnp.max(jnp.linalg.eigvalsh(covs_truth[0])))
+ellipse_scale = 0.8 * PLOT_HALF_RANGE / float(jnp.sqrt(max_eigval_truth))
 
 fig, ax = plt.subplots(figsize=(6, 6))
 
