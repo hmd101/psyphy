@@ -73,9 +73,9 @@ DIAG_TERM = 1e-4
 BANDWIDTH = 1e-2
 
 # --8<-- [start:compute_settings]
-MC_SAMPLES = 200  # MC samples per likelihood evaluation (≥200 recommended)
-NUM_TRIALS_PER_REF = 200  # trials per reference point (reduce for CPU)
-N_REF_GRID = 4  # 4×4 = 16 reference points
+MC_SAMPLES = 50  # MC samples per likelihood evaluation (≥200 recommended for quality)
+NUM_TRIALS_PER_REF = 50  # trials per reference point (reduce for CPU)
+N_REF_GRID = 3  # 3×3 = 9 reference points
 # --8<-- [end:compute_settings]
 
 # MAP warm-start settings
@@ -85,8 +85,8 @@ MAP_MOMENTUM = 0.9
 
 # NUTS settings
 # --8<-- [start:nuts_settings]
-NUM_WARMUP = 200
-NUM_SAMPLES = 300
+NUM_WARMUP = 100
+NUM_SAMPLES = 150
 NUM_CHAINS = 2
 # --8<-- [end:nuts_settings]
 

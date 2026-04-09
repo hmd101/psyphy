@@ -224,7 +224,7 @@ class NUTSSampler(InferenceEngine):
                 blackjax.nuts,
                 logdensity_fn,
                 target_acceptance_rate=self.target_acceptance_rate,
-                progress_bar=False,
+                progress_bar=self.show_progress,
             )
             (state, parameters), _ = warmup.run(
                 warmup_key, init_position, num_steps=self.num_warmup
