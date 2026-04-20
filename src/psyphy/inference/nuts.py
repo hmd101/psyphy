@@ -170,7 +170,10 @@ class NUTSSampler(InferenceEngine):
         master_key = jax.random.PRNGKey(rng_seed)
         init_key, chain_key = jax.random.split(master_key)
 
-        # initial position: user-supplied or sampled from prior
+        # init_position: dict matching the model's parameter PyTree structure.
+        # For WPPM: {"W": jnp.ndarray of shape (degree+1, degree+1, input_dim, embedding_dim)}
+        # e.g. degree=1, input_dim=2, extra_dims=1 → {"W": shape (2, 2, 2, 3)}
+        # BlackJAX requires this as the starting point for Hamiltonian dynamics.
         init_position = (
             init_params if init_params is not None else model.init_params(init_key)
         )
@@ -179,10 +182,20 @@ class NUTSSampler(InferenceEngine):
         # likelihood deterministic for NUTS gradient evaluations.
         fixed_mc_key = jax.random.PRNGKey(self.logdensity_key_seed)
 
+        # -- BlackJAX API boundary --------------------------------
+        # logdensity_fn is the ONLY thing BlackJAX needs from psyphy.
+        # Contract:
+        #   input:  params  — dict, same structure as init_position
+        #                      e.g. {"W": (2, 2, 2, 3)}
+        #   output: scalar  — log p(θ | data), a JAX float (shape ())
+        #   must be: JAX-differentiable (jax.grad must work on it)
+        #            (nearly) deterministic — hence the fixed_mc_key
+        # -----------------------------------------
         def logdensity_fn(params: dict) -> jnp.ndarray:
             return model.log_posterior_from_data(params, data, key=fixed_mc_key)
 
-        # Per-chain PRNG keys
+        # chain_keys: shape (num_chains, 2) — one PRNGKey per chain,
+        # split further inside each mode into warmup_key and sample_key.
         chain_keys = jax.random.split(chain_key, self.num_chains)
 
         if self.step_size is None:
@@ -194,7 +207,9 @@ class NUTSSampler(InferenceEngine):
                 blackjax, logdensity_fn, init_position, chain_keys
             )
 
-        # positions: dict with each value shaped (n_chains, n_draws, *event)
+        # positions: dict, each value shaped (n_chains, n_draws, *param_shape)
+        #   e.g. {"W": (num_chains, num_samples, 2, 2, 2, 3)}
+        # acc_rates: shape (num_chains, num_samples) — scalar per draw per chain
         sampler_stats = {"acceptance_rate": acc_rates}
         return MCMCPosterior(positions, model, sampler_stats=sampler_stats)
 
@@ -262,8 +277,8 @@ class NUTSSampler(InferenceEngine):
         stacked_acc = jnp.stack(all_acc_rates, axis=0)  # (n_chains, n_draws)
         return stacked_positions, stacked_acc
 
-    # ------------------------------------------------------------------
-    # Mode B: fixed step_size, all chains vmapped
+    # -----------------------------------------------------
+    # mode B: fixed step_size, all chains vmapped
     # ------------------------------------------------------------------
 
     def _run_fixed_stepsize(self, blackjax, logdensity_fn, init_position, chain_keys):

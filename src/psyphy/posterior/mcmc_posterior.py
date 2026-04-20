@@ -55,8 +55,15 @@ class MCMCPosterior:
         *,
         sampler_stats: dict | None = None,
     ):
+        # samples: dict of JAX arrays, each shaped (n_chains, n_draws, *param_shape)
+        # For WPPM: {"W": (n_chains, n_draws, degree+1, degree+1, input_dim, embedding_dim)}
+        # e.g. 4 chains × 1000 draws, degree=1, input_dim=2, extra_dims=1:
+        #      {"W": (4, 1000, 2, 2, 2, 3)}
+        # This is the canonical shape that flows from NUTSSampler -> here -> ArviZ.
         self._samples = samples
         self._model = model
+        # sampler_stats: optional dict of per-chain diagnostics from the sampler.
+        # Typical keys from NUTSSampler: {"acceptance_rate": (n_chains, n_draws)}
         self.sampler_stats = sampler_stats or {}
 
     # ------------------------------------------------------------------
@@ -72,7 +79,10 @@ class MCMCPosterior:
         dict
             Parameter PyTree with the same structure as a single draw.
             For WPPM: ``{"W": ndarray of shape (*W_shape)}``.
+            e.g. {"W": (2, 2, 2, 3)} — mean over axes 0 (chains) and 1 (draws).
         """
+        # _samples["W"]: (n_chains, n_draws, *param_shape)
+        # mean over (0, 1)  ->  (*param_shape)
         return jax.tree.map(lambda x: jnp.mean(x, axis=(0, 1)), self._samples)
 
     @property
@@ -104,7 +114,12 @@ class MCMCPosterior:
             key = jr.PRNGKey(0)
 
         def _subsample(x):
-            # x: (n_chains, n_draws, *event_shape)
+            # x     : (n_chains, n_draws, *param_shape)
+            #           e.g. (4, 1000, 2, 2, 2, 3)
+            # pool  : (n_chains * n_draws, *param_shape)
+            #           e.g. (4000, 2, 2, 2, 3)  — all draws from all chains flattened
+            # output: (n, *param_shape)
+            #           e.g. (100, 2, 2, 2, 3)   — n draws subsampled from pool
             n_chains, n_draws = x.shape[:2]
             event_shape = x.shape[2:]
             pool = x.reshape(n_chains * n_draws, *event_shape)
@@ -171,12 +186,28 @@ class MCMCPosterior:
                 "Install it with: pip install 'psyphy[diagnostics]'"
             ) from e
 
-        # Convert to numpy — ArviZ works with numpy/xarray, not JAX arrays.
-        # ArviZ 1.0 API: az.from_dict(nested_dict) where keys are group names.
-        # Returns xarray.DataTree (not InferenceData as in ArviZ 0.x).
+        # -- ArviZ 1.0 API boundary --------------------------------
+        # az.from_dict(data) where data is a nested dict:
+        #   {
+        #     "posterior":    {var_name: np.ndarray of shape (n_chains, n_draws, *param_shape)},
+        #     "sample_stats": {stat_name: np.ndarray of shape (n_chains, n_draws)},  # optional
+        #   }
+        #
+        # For WPPM with 4 chains, 1000 draws, W shape (2,2,2,3):
+        #   {"posterior": {"W": np.ndarray (4, 1000, 2, 2, 2, 3)}}
+        #
+        # Returns: xarray.DataTree  (ArviZ 1.0 — was InferenceData in ArviZ 0.x)
+        #   idata["posterior"]["W"].values  -> np.ndarray (4, 1000, 2, 2, 2, 3)
+        #   list(idata.children)            -> ["posterior", "sample_stats"]
+        #   az.rhat(idata).ds.data_vars     -> {"W"}  (R-hat per scalar element)
+        #
+        # Note: must convert JAX arrays to numpy — ArviZ uses numpy/xarray internally.
+        # ----------------------------------------------------------------
         data: dict = {"posterior": {k: np.asarray(v) for k, v in self._samples.items()}}
 
         if self.sampler_stats:
+            # sample_stats values shape: (n_chains, n_draws)
+            # e.g. {"acceptance_rate": np.ndarray (4, 1000)}
             data["sample_stats"] = {
                 k: np.asarray(v) for k, v in self.sampler_stats.items()
             }
