@@ -2,7 +2,7 @@ r"""
 nuts.py
 -------
 
-NUTS (No-U-Turn Sampler) inference engine backed by BlackJAX.
+NUTS (No-U-Turn Sampler) inference engine backed by BlackJAX
 
 Uses gradient-based MCMC to draw samples from the full posterior
 p(θ| data), unlike MAP which returns only a point estimate.
@@ -25,7 +25,7 @@ into the logdensity closure so every gradient evaluation uses the same MC
 noise realization. This bias decreases as MC_SAMPLES -> \inf (>=200 recommended).
 
 Alternatives (not implemented here):
-- Fresh key per NUTS *trajectory* (pseudo-marginal / noisy HMC)
+- fresh key per NUTS *trajectory* (pseudo-marginal / noisy HMC)
 - Neural surrogate likelihood
 (exact gradients, see NeuralSurrogateTask, not yet implemented)
 
@@ -170,7 +170,7 @@ class NUTSSampler(InferenceEngine):
         master_key = jax.random.PRNGKey(rng_seed)
         init_key, chain_key = jax.random.split(master_key)
 
-        # Initial position: user-supplied or sampled from prior
+        # initial position: user-supplied or sampled from prior
         init_position = (
             init_params if init_params is not None else model.init_params(init_key)
         )

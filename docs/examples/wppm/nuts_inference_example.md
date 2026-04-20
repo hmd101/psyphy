@@ -92,9 +92,7 @@ Then pass `map_posterior.params` as `init_params` to `NUTSSampler.fit()`.
 ```
 
 **Runtime notes:**
-- The first chain triggers JIT compilation (~30 s on CPU).
-- Subsequent chains reuse the compiled kernel.
-- GPU (A100): ~2 min total. CPU (M-series): ~15–30 min.
+- tbd
 
 #### Two warmup modes
 
@@ -173,7 +171,7 @@ WPPMPredictivePosterior(nuts_posterior, X_test, ...)
 
 ## Limitations and future extensions
 
-- **Fixed MC key bias**: as noted above, using a fixed key introduces a slight bias. Mitigate with larger `MC_SAMPLES` or switch to the neural surrogate likelihood.
+- **Fixed MC key bias**: We introduced a fixed key for the MC-based Oddity-Task likelihood because BlackJAX samplers require a deterministict log denstit.  Using a fixed key introduces a slight bias. Mitigate with larger `MC_SAMPLES` or switch to the neural surrogate likelihood.
 - **Sequential warmup**: adaptive mode runs one chain at a time. For >8 chains, fixed `step_size` mode + vmap is faster.
 - **Other samplers**: any sampler that produces an `MCMCPosterior` plugs into the same downstream pipeline. Future additions: `MALASampler`, `SGLDSampler`, NumPyro integration.
 

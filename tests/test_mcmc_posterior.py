@@ -4,7 +4,7 @@ tests/test_mcmc_posterior.py
 
 Unit tests for MCMCPosterior.
 
-Tests are independent of BlackJAX — fake samples are constructed manually
+the tests are independent of BlackJAX — fake samples are constructed manually
 so this suite runs without any sampling backend installed.
 Integration with ArViz for sampler diagnostics is also tested.
 """
@@ -22,7 +22,7 @@ from psyphy.posterior.parameter_posterior import ParameterPosterior
 
 # ---------------------------------------------------------------------------
 # Helpers
-# ---------------------------------------------------------------------------
+# --------------------------------------------------------------------
 
 
 def _has_arviz() -> bool:
@@ -34,7 +34,7 @@ def _has_arviz() -> bool:
         return False
 
 
-# ---------------------------------------------------------------------------
+# -----------------------------------------------------------------
 # Fixtures
 # ---------------------------------------------------------------------------
 
@@ -54,7 +54,7 @@ def tiny_model():
 @pytest.fixture
 def fake_samples():
     """
-    Manually constructed samples dict.
+    manually constructed samples dict
     W shape: (n_chains=2, n_draws=10, 2, 2, 2, 3)
     """
     key = jr.PRNGKey(0)
@@ -103,7 +103,7 @@ class TestMCMCPosteriorSample:
         assert s["W"].shape == (1, 2, 2, 2, 3)
 
     def test_sample_without_replacement(self, posterior):
-        """n ≤ total (2*10=20): should not error, returns n distinct rows."""
+        """n <= total (2*10=20): should not error, returns n distinct rows."""
         key = jr.PRNGKey(3)
         s = posterior.sample(15, key=key)
         assert s["W"].shape[0] == 15

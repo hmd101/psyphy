@@ -4,7 +4,7 @@ mcmc_posterior.py
 
 MCMCPosterior: backend-agnostic container for MCMC samples.
 
-Satisfies the ParameterPosterior protocol, so it plugs directly into
+Satisfies the ParameterPosterior protocol -->  plugs directly into
 WPPMPredictivePosterior and any future acquisition functions.
 
 Design
@@ -45,7 +45,7 @@ class MCMCPosterior:
 
     Notes
     -----
-    Implements the ParameterPosterior protocol (structural, not inherited).
+    Implements the ParameterPosterior protocol (i.e., structural, not inherited).
     """
 
     def __init__(
@@ -85,7 +85,7 @@ class MCMCPosterior:
 
         Pools all chains and draws into a flat collection of
         ``n_chains * n_draws`` samples, then randomly subsamples ``n``
-        of them (without replacement if n ≤ total, with replacement otherwise).
+        of them (without replacement if n <= total, with replacement otherwise).
 
         Parameters
         ----------
@@ -116,7 +116,7 @@ class MCMCPosterior:
         return jax.tree.map(_subsample, self._samples)
 
     # Convenience properties
-    # ------------------------------------------------------------------
+    # -----------------------------------------------
 
     @property
     def n_chains(self) -> int:
@@ -130,13 +130,13 @@ class MCMCPosterior:
         first = next(iter(self._samples.values()))
         return int(first.shape[1])
 
-    # ------------------------------------------------------------------
+    # -------------------------------------------------------------
     # ArviZ conversion
 
     def to_arviz(self):
         """Convert MCMC samples to an ArviZ InferenceData object.
 
-        Requires ``arviz`` to be installed::
+        Requires `arviz` to be installed::
 
             pip install 'psyphy[diagnostics]'
 
