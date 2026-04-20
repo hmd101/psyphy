@@ -172,7 +172,7 @@ class NUTSSampler(InferenceEngine):
 
         # init_position: dict matching the model's parameter PyTree structure.
         # For WPPM: {"W": jnp.ndarray of shape (degree+1, degree+1, input_dim, embedding_dim)}
-        # e.g. degree=1, input_dim=2, extra_dims=1 → {"W": shape (2, 2, 2, 3)}
+        # e.g. degree=1, input_dim=2, extra_dims=1 -> {"W": shape (2, 2, 2, 3)}
         # BlackJAX requires this as the starting point for Hamiltonian dynamics.
         init_position = (
             init_params if init_params is not None else model.init_params(init_key)
@@ -198,6 +198,11 @@ class NUTSSampler(InferenceEngine):
         # split further inside each mode into warmup_key and sample_key.
         chain_keys = jax.random.split(chain_key, self.num_chains)
 
+        # blackjax is passed as an argument rather than imported again in each
+        # private method. Because it is a soft dependency, the single import
+        # (with its error-handling) lives here in fit(). In Python, modules are
+        # first-class objects — 'import blackjax' just binds the module to a
+        # local variable, which can be passed around like any other value.
         if self.step_size is None:
             positions, acc_rates = self._run_adaptive(
                 blackjax, logdensity_fn, init_position, chain_keys
@@ -215,10 +220,45 @@ class NUTSSampler(InferenceEngine):
 
     # ------------------------------------------------------------------
     # Mode A: adaptive warmup (window_adaptation), sequential chains
+    #
+    # WHY sequential and not vmapped:
+    # window_adaptation adapts two things during warmup:
+    #   1. step_size via dual averaging — after each proposal it checks
+    #      whether acceptance rate is above/below target and nudges ε
+    #      up/down. Converges to the ε that produces target_acceptance_rate.
+    #   2. inverse_mass_matrix via empirical covariance — scales each
+    #      parameter by its marginal posterior variance, so params with very
+    #      different magnitudes (e.g. W at different basis degrees) all move
+    #      at comparable rates.
+    # Both accumulators are plain Python floats updated in a Python for-loop
+    # inside blackJAX — they live outside the JAX computational graph.
+    # jax.vmap requires ALL state to be JAX arrays (so JAX can stack them
+    # along a batch axis). Python floats cannot be stacked -> not vmappable.
+    # Therefore chains run sequentially. Once warmup ends the adapted values
+    # are frozen as JAX scalars and sampling runs as a pure lax.scan.
     # ------------------------------------------------------------------
 
     def _run_adaptive(self, blackjax, logdensity_fn, init_position, chain_keys):
-        """Run adaptive NUTS — one chain at a time (window_adaptation not vmappable)."""
+        """Run adaptive NUTS — one chain at a time (window_adaptation not vmappable).
+
+        BlackJAX inputs per chain
+        -------------------------
+        logdensity_fn   : dict -> scalar   (see fit() for full contract)
+        init_position   : dict             e.g. {"W": (2, 2, 2, 3)}
+        warmup_key      : PRNGKey          shape (2,)
+
+        BlackJAX outputs per chain
+        --------------------------
+        state           : NUTSState       internal HMC state (position + momentum + ...)
+        parameters      : dict            {"step_size": float,
+                                           "inverse_mass_matrix": (n_params,)}
+                                          adapted by dual averaging / empirical cov
+        positions       : dict            {"W": (num_samples, 2, 2, 2, 3)}
+                                          one param dict per draw from lax.scan
+        acc_rates       : (num_samples,)  Metropolis acceptance rate per draw
+        """
+        # all_positions: list of num_chains dicts, each {"W": (num_samples, *param_shape)}
+        # all_acc_rates: list of num_chains arrays, each shape (num_samples,)
         all_positions = []
         all_acc_rates = []
 
@@ -230,17 +270,22 @@ class NUTSSampler(InferenceEngine):
         for i, chain_key in enumerate(chain_keys):
             warmup_key, sample_key = jax.random.split(chain_key)
 
-            # --- Warmup: adapt step_size and inverse_mass_matrix ---
             if pbar is not None:
                 with contextlib.suppress(Exception):
                     pbar.set_description(f"NUTS warmup chain {i + 1}/{self.num_chains}")
 
+            # BlackJAX warmup: runs dual averaging + empirical mass estimation.
+            # NOT vmappable — adaptation state is Python-level, not JAX arrays.
             warmup = blackjax.window_adaptation(
                 blackjax.nuts,
                 logdensity_fn,
                 target_acceptance_rate=self.target_acceptance_rate,
                 progress_bar=self.show_progress,
             )
+            # warmup.run returns: (state, parameters), info
+            #   state.position : dict  — final warmup position (same shape as init_position)
+            #   parameters     : {"step_size": float, "inverse_mass_matrix": (n_params,)}
+            #                    these are now frozen JAX scalars/arrays
             (state, parameters), _ = warmup.run(
                 warmup_key, init_position, num_steps=self.num_warmup
             )
@@ -249,9 +294,20 @@ class NUTSSampler(InferenceEngine):
                 with contextlib.suppress(Exception):
                     pbar.update(self.num_warmup)
 
-            # --- Sampling: lax.scan over adapted kernel ---
+            # Sampling phase: parameters are frozen -> pure lax.scan, fully JIT-compiled.
+            # blackjax.nuts(**parameters).step unpacks to:
+            #   step_size=<float>, inverse_mass_matrix=<(n_params,)>
+            # kernel signature: (PRNGKey, NUTSState) -> (NUTSState, NUTSInfo)
             kernel = blackjax.nuts(logdensity_fn, **parameters).step
 
+            # lax.scan carry : NUTSState
+            # lax.scan xs    : sample_keys shape (num_samples, 2)
+            # lax.scan ys    : (positions dict, acc_rates)
+            #   positions    : {"W": (num_samples, 2, 2, 2, 3)}
+            #   acc_rates    : (num_samples,)
+            # _kernel=kernel : early binding — freezes this chain's kernel in the
+            # closure so the loop variable isn't captured by reference (late binding
+            # would mean the next iteration's kernel is used if scan ran later).
             def one_step(state, rng_key, _kernel=kernel):
                 state, info = _kernel(rng_key, state)
                 return state, (state.position, info.acceptance_rate)
@@ -270,24 +326,53 @@ class NUTSSampler(InferenceEngine):
             with contextlib.suppress(Exception):
                 pbar.close()
 
-        # Stack chains: list of dicts -> dict of (n_chains, n_draws, *shape)
+        # Stack chains: list of num_chains dicts -> dict of (n_chains, n_draws, *shape)
+        # e.g. [{"W": (S,2,2,2,3)}, ...] x C  ->  {"W": (C, S, 2, 2, 2, 3)}
         stacked_positions = jax.tree.map(
             lambda *arrays: jnp.stack(arrays, axis=0), *all_positions
         )
         stacked_acc = jnp.stack(all_acc_rates, axis=0)  # (n_chains, n_draws)
         return stacked_positions, stacked_acc
 
-    # -----------------------------------------------------
-    # mode B: fixed step_size, all chains vmapped
+    # ------------------------------------------------------------------
+    # Mode B: fixed step_size, all chains vmapped
+    #
+    # WHY vmappable (contrast with Mode A):
+    # step_size and inverse_mass_matrix are fixed constants provided upfront.
+    # Every piece of state — NUTSState, step_size, M^-1 — is a JAX array
+    # from the start. jax.vmap can stack these along a new chain axis and
+    # compile all chains into a single XLA kernel (one compiled call).
+    # Trade-off: the user must supply a reasonable step_size manually, and
+    # without mass matrix adaptation chains may mix slowly if parameters
+    # have very different scales (identity M^-1 treats all params equally).
     # ------------------------------------------------------------------
 
     def _run_fixed_stepsize(self, blackjax, logdensity_fn, init_position, chain_keys):
-        """Run NUTS with fixed step_size — all chains vmapped in one call."""
-        # Determine parameter dimension for diagonal mass matrix
+        """Run NUTS with fixed step_size — all chains vmapped in one call.
+
+        BlackJAX inputs
+        ---------------
+        logdensity_fn        : dict -> scalar   (see fit() for full contract)
+        init_position        : dict             e.g. {"W": (2, 2, 2, 3)}
+        step_size            : float            user-supplied; no adaptation
+        inverse_mass_matrix  : (n_params,)      diagonal identity — no per-parameter scaling
+
+        BlackJAX outputs (via jax.vmap over chain_keys)
+        ------------------------------------------------
+        all_positions : dict  e.g. {"W": (num_chains, num_samples, 2, 2, 2, 3)}
+        all_acc_rates : (num_chains, num_samples)
+        """
+        # n_params: total scalar count across all parameter leaves.
+        # For WPPM {"W": (2,2,2,3)}: n_params = 2*2*2*3 = 48.
+        # inverse_mass_matrix shape: (n_params,) — diagonal of M^-1 (identity = no scaling).
         flat_leaves = jax.tree.leaves(init_position)
         n_params = sum(x.size for x in flat_leaves)
-        inverse_mass_matrix = jnp.ones(n_params)
+        inverse_mass_matrix = jnp.ones(n_params)  # shape: (n_params,)
 
+        # blackjax.nuts(...) returns an object with:
+        #   .init(position)             -> NUTSState
+        #   .step(PRNGKey, NUTSState)   -> (NUTSState, NUTSInfo)
+        # All parameters are JAX arrays -> entire run_one_chain is vmappable.
         nuts = blackjax.nuts(
             logdensity_fn,
             step_size=self.step_size,
@@ -295,25 +380,40 @@ class NUTSSampler(InferenceEngine):
         )
 
         def run_one_chain(chain_key):
+            # chain_key: PRNGKey shape (2,) — one per chain, vmapped over
             warmup_key, sample_key = jax.random.split(chain_key)
+
+            # nuts.init: position dict -> NUTSState
+            # NUTSState holds: position (dict), momentum, potential_energy, ...
             state = nuts.init(init_position)
 
+            # lax.scan carry : NUTSState
+            # lax.scan xs    : keys shape (num_steps, 2)
+            # lax.scan ys    : (position dict, scalar acc_rate)
             def one_step(state, rng_key):
                 state, info = nuts.step(rng_key, state)
+                # state.position       : dict  e.g. {"W": (2, 2, 2, 3)}
+                # info.acceptance_rate : scalar float
                 return state, (state.position, info.acceptance_rate)
 
-            # Burn-in (warmup as plain scan)
+            # Burn-in: num_warmup steps, no adaptation, positions discarded.
+            # (contrast Mode A: here there is no step_size tuning, just mixing)
             burn_keys = jax.random.split(warmup_key, self.num_warmup)
             state, _ = jax.lax.scan(one_step, state, burn_keys)
 
-            # Sampling
+            # Sampling: positions kept
+            # positions : dict  e.g. {"W": (num_samples, 2, 2, 2, 3)}
+            # acc_rates : (num_samples,)
             s_keys = jax.random.split(sample_key, self.num_samples)
             _, (positions, acc_rates) = jax.lax.scan(one_step, state, s_keys)
             return positions, acc_rates
 
         pbar = self._make_pbar(total=1, desc="NUTS (fixed step_size, vmapped)")
 
-        # vmap over chains — single compiled call
+        # jax.vmap(run_one_chain)(chain_keys):
+        #   input  : chain_keys shape (num_chains, 2)
+        #   output : positions dict e.g. {"W": (num_chains, num_samples, 2, 2, 2, 3)}
+        #            acc_rates shape (num_chains, num_samples)
         all_positions, all_acc_rates = jax.vmap(run_one_chain)(chain_keys)
 
         if pbar is not None:
