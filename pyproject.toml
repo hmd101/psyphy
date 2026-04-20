@@ -45,7 +45,7 @@ docs = [
   "jupyterlab>=4.0",
 ]
 sampling = [
-  "blackjax>=1.0",
+  "blackjax>=0.0",
 ]
 diagnostics = [
   "arviz>=0.16",
