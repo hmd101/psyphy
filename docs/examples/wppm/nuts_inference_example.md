@@ -33,21 +33,13 @@ In psyphy this is computed by `WPPMPredictivePosterior`, which calls `nuts_poste
 
 ---
 
-## A note on the stochastic likelihood
+## A note on the likelihood
 
-WPPM's likelihood is estimated via Monte Carlo inside `OddityTask.loglik`. NUTS requires a (nearly) deterministic log-density to compute consistent Hamiltonian dynamics.
+In this tutorial, we use the MC-based likelihood which is estimated via Monte Carlo inside `OddityTask.loglik` and expensive.
 
-**Chosen approach:** a single fixed JAX key is baked into the `logdensity_fn` closure at construction time, making the MC noise realization constant throughout sampling:
 
-```python
-fixed_mc_key = jax.random.PRNGKey(logdensity_key_seed)
-logdensity_fn = lambda params: model.log_posterior_from_data(params, data, key=fixed_mc_key)
-```
 
-This means NUTS is sampling from a slightly perturbed posterior. The perturbation decreases as `MC_SAMPLES → ∞`. We recommend `MC_SAMPLES ≥ 200`.
-
-**Alternatives** (not implemented here but worth knowing):
-- *Pseudo-marginal MCMC*: fresh key per HMC *trajectory* (not per leapfrog step) — theoretically correct noisy HMC.
+**Future Alternatives**
 - *Neural surrogate likelihood*: replace the MC estimator with a trained neural network for exact gradients (see `NeuralSurrogateTask`).
 
 ---
