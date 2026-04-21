@@ -405,7 +405,7 @@ class TestEdgeCases:
         # Create multiple trials
         data_multi = ResponseData()
         ref = jnp.array([0.0, 0.0])
-        comparison = jnp.array([1.0, 1.0])
+        comparison = jnp.array([0.1, 0.1])
 
         for _ in range(5):
             data_multi.add_trial(ref, comparison, resp=1)
