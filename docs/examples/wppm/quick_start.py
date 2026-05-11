@@ -87,11 +87,11 @@ def _ellipse_segments_from_covs(
 # ---------------------------------------------------------------------------
 
 # --8<-- [start:compute_settings]
-MC_SAMPLES = 50  # MC samples per trial in the likelihood (full example: 500)
+MC_SAMPLES = 100  # MC samples per trial in the likelihood (full example: 500)
 NUM_TRIALS = 100  # total simulated trials (full example: 4000 × 25)
-NUM_STEPS = 200  # optimizer steps (full example: 2000)
+NUM_STEPS = 500  # optimizer steps (full example: 2000)
 
-learning_rate = 5e-4  # full example: 5e-5. The smaller the lr, the more steps
+learning_rate = 1e-4  # full example: 5e-5. The smaller the lr, the more steps
 # are required.
 # --8<-- [end:compute_settings]
 
@@ -232,7 +232,7 @@ map_cov_field = WPPMCovarianceField(model, map_estimate.params)
 print("[4/5] Plotting covariance ellipses ...")
 
 # --8<-- [start:plot_ellipses]
-_PLOT_JITTER = 0.0
+_PLOT_JITTER = 1e-9  # small regularisation so near-zero covariances pass the PD check
 
 
 # --8<-- [start:cov_fields]
@@ -244,9 +244,6 @@ covs_map = map_cov_field(ref_point)  # (N, 2, 2)
 # --8<-- [end:cov_fields]
 
 # Scale ellipses so they are visually readable.
-gt_scale = float(jnp.sqrt(jnp.mean(jnp.linalg.eigvalsh(covs_truth[0]))))
-ellipse_scale = max(0.3, 0.4 * gt_scale / 0.01)  # keep readable on the unit square
-
 fig, ax = plt.subplots(figsize=(6, 6))
 
 labels = ["Ground Truth", "Prior Sample (init)", "Fitted (MAP)"]
@@ -256,6 +253,10 @@ non_pd_counts = []
 
 for field, color, label in zip(fields, colors, labels):
     covs = field(ref_point)
+    # Scale each ellipse independently so all three are visible regardless of
+    # convergence; mean semi-axis maps to ~0.25 plot units.
+    field_scale = float(jnp.sqrt(jnp.mean(jnp.linalg.eigvalsh(covs[0]))))
+    ellipse_scale = 0.25 / max(field_scale, 1e-8)
     segments, valid = _ellipse_segments_from_covs(
         ref_point,
         covs,

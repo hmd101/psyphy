@@ -148,6 +148,10 @@ class TaskLikelihood(ABC):
         refs = stimuli[:, 0, :]
         comparisons = stimuli[:, 1, :]
         responses = jnp.asarray(data.responses)
+        # TrialData stores responses as (N, R); binary tasks use only channel 0.
+        # Squeeze to (N,) so the jnp.where broadcast below stays (N,) not (N, N).
+        if responses.ndim == 2:
+            responses = responses[:, 0]
         responses = responses.astype(int)
         n_trials = int(refs.shape[0])
 
