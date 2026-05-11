@@ -33,45 +33,89 @@ class TrialData:
 
     Shapes
     ------
-    refs : (N, d)
-    comparisons : (N, d)
-    responses : (N,)
+    stimuli : (N, K, d)
+    responses : (N, R)
+    context : optional (N, C)
+
+    Dimension key
+    -------------
+    N : number of trials (batch dimension)
+    K : number of stimuli per trial (e.g. K=2 for a two-alternative task;
+        K=2 for the oddity task, where the reference is presented twice but
+        only the unique mean is stored — the duplication is encoded in the
+        task likelihood, not here)
+    d : dimensionality of each stimulus coordinate
+    R : number of response channels (R=1 for binary; R=2 for e.g. (choice, RT))
+    C : number of context channels (observer-state covariates that condition the
+        likelihood but are not part of the stimulus space, e.g. fatigue level)
 
     Notes
     -----
     - You can also think of this as a more generic ML-style dataset
-      ``X`` with shape (N, 2, d) plus ``y`` with shape (N,). The explicit
-      field names (refs/comparisons) are currently native to :class:`OddityTask`.
+      ``X`` with shape (N, K, d) plus ``y`` with shape (N, R).
     - This is intended to be JAX-friendly (PyTree of arrays) so likelihood and
       inference code can be JIT-compiled without touching Python containers.
+    - Context is optional. No current inbuilt uses.
     """
 
-    refs: jnp.ndarray  # TODO: references
-    comparisons: jnp.ndarray
+    stimuli: jnp.ndarray
     responses: jnp.ndarray
+    context: jnp.ndarray | None = None
+    stimulus_names: tuple[str, ...] = ()
 
     def __post_init__(self) -> None:
+        # Callers that construct TrialData directly (bypassing ResponseData.add_trial)
+        # may pass responses as a plain 1D array (N,). Expand to
+        # (N, 1) here so strict shape validation below does not break those call sites.
+        # object.__setattr__ is required because the dataclass is frozen; __post_init__
+        # is the only window to mutate fields during construction.
+        if self.responses.ndim == 1:
+            object.__setattr__(self, "responses", self.responses[:, None])
         # Basic shape validation (keep lightweight; raise early for common mistakes).
-        if self.refs.ndim != 2:
-            raise ValueError(f"refs must be 2D (N,d), got shape {self.refs.shape}")
-        if self.comparisons.ndim != 2:
+        if self.stimuli.ndim != 3:
             raise ValueError(
-                f"comparisons must be 2D (N,d), got shape {self.comparisons.shape}"
+                f"stimuli must be 3D (N, K, d), got shape {self.stimuli.shape}"
             )
-        if self.responses.ndim != 1:
+        if self.responses.ndim != 2:
             raise ValueError(
-                f"responses must be 1D (N,), got shape {self.responses.shape}"
+                f"responses must be 2D (N, R), got shape {self.responses.shape}"
             )
-        if self.refs.shape[0] != self.comparisons.shape[0]:
+        if self.stimuli.shape[0] != self.responses.shape[0]:
             raise ValueError(
-                "refs and comparisons must have same first dimension; "
-                f"got {self.refs.shape[0]} vs {self.comparisons.shape[0]}"
+                "stimuli and responses must have same first dimension; "
+                f"got {self.stimuli.shape[0]} vs {self.responses.shape[0]}."
             )
-        if self.refs.shape[0] != self.responses.shape[0]:
+        if self.context is not None and self.context.shape[0] != self.stimuli.shape[0]:
             raise ValueError(
-                "refs and responses must have same first dimension; "
-                f"got {self.refs.shape[0]} vs {self.responses.shape[0]}"
+                "if context is provided, it must share the same first dimension;"
+                f"got {self.context.shape[0]} vs {self.stimuli.shape[0]}."
             )
+
+    def stimulus(self, name: str) -> jnp.ndarray:
+        """Return stimuli[:, k, :] for the slot named `name`.
+
+        Parameters
+        ----------
+        name : str
+            Must match one of the entries in ``stimulus_names``.
+
+        Returns
+        -------
+        jnp.ndarray, shape (N, d)
+            Stimulus coordinates for all trials at the named slot.
+        """
+        if not self.stimulus_names:
+            raise ValueError(
+                "stimulus_names is empty — set it at construction time to use "
+                "named access, e.g. stimulus_names=('ref', 'comp')."
+            )
+        if name not in self.stimulus_names:
+            raise ValueError(
+                f"unknown stimulus name '{name}'. "
+                f"Available names: {self.stimulus_names}."
+            )
+        idx = self.stimulus_names.index(name)  # resolved in Python, not JAX-traced
+        return self.stimuli[:, idx, :]
 
     def __len__(self) -> int:
         """Number of trials (N)."""
@@ -93,144 +137,196 @@ class ResponseData:
     """
 
     def __init__(self) -> None:
-        self.refs: list[Any] = []
-        self.comparisons: list[Any] = []
-        self.responses: list[int] = []
+        self.stimuli: list[np.array] = []
+        self.responses: list[np.array] = []
+        self.stim_shape: tuple | None = None  # set on first add_trial call
+        self.contexts: list[np.array] = []
 
-    def add_trial(self, ref: Any, comparison: Any, resp: int) -> None:
+    def add_trial(self, input: tuple[Any, ...], resp: Any, context: Any = None) -> None:
         """
         append a single trial.
 
         Parameters
         ----------
-        ref : Any
-            Reference stimulus (numpy array, list, etc.)
-        comparison : Any
-            Probe stimulus
-        resp : int
-            Subject response (binary or categorical)
+        input : tuple(Any, ...)
+            Group of presented stimuli each represented in any format (numpy array,
+            list, etc.)
+            Input must contain appropriate number of stimuli of appropriate dimension.
+        resp : Any
+            Subject response
         """
-        self.refs.append(ref)
-        self.comparisons.append(comparison)
-        self.responses.append(resp)
+        input_arr = np.atleast_2d(np.asarray(input))  # (K, d) — 1D input treated as K=1
+        resp_arr = np.atleast_1d(np.asarray(resp))  # (R,)   — scalar treated as R=1
+        if self.stimuli:
+            if self.stim_shape != input_arr.shape:
+                raise ValueError(
+                    f"stimuli must have consistent shape (K, d). Expected {self.stim_shape}, but received {input_arr.shape}"
+                )
+        else:
+            self.stim_shape = input_arr.shape
 
-    def add_batch(self, responses: list[int], trial_batch: TrialBatch) -> None:
+        if context is None:
+            if self.contexts:
+                raise ValueError(
+                    "Context cannot be omitted if it was included in previous trials."
+                    "This ResponseData instance expected context but received none."
+                )
+        else:
+            if self.contexts or self.stimuli == []:
+                self.contexts.append(np.asarray(context))
+            else:
+                raise ValueError(
+                    "Context cannot be accepted if it was excluded from prior trials."
+                    f"This ResponseData instance expected no context, but received {context}"
+                )
+        self.stimuli.append(input_arr)
+        self.responses.append(resp_arr)
+
+    def add_batch(
+        self,
+        responses: list[Any],
+        trial_batch: TrialBatch,
+        contexts: list[Any] | None = None,
+    ) -> None:
         """
         Append responses for a batch of trials.
 
         Parameters
         ----------
-        responses : List[int]
-            Responses corresponding to each (ref, comparison) in the trial batch.
+        responses : List[Any]
+            Responses corresponding to each stimulus group in the trial batch.
         trial_batch : TrialBatch
             The batch of proposed trials.
         """
-        for (ref, comparison), resp in zip(trial_batch.stimuli, responses):
-            self.add_trial(ref, comparison, resp)
+        if contexts is None:
+            for input, resp in zip(trial_batch.stimuli, responses):
+                self.add_trial(input, resp)
+        else:
+            for input, resp, context in zip(trial_batch.stimuli, responses, contexts):
+                self.add_trial(input, resp, context)
 
-    def to_numpy(self) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
-        """Return refs, comparisons, responses as NumPy arrays."""
+    def to_numpy(self) -> tuple[np.ndarray, np.ndarray]:
+        """Return stimuli and responses as NumPy arrays.
+        Will NOT include contexts by default. Output always fixed length of 2.
+        """
         return (
-            np.asarray(self.refs),
-            np.asarray(self.comparisons),
+            np.asarray(self.stimuli),  # shape = (N, K, d)
             np.asarray(self.responses),
         )
 
     def to_trial_data(self) -> TrialData:
         """Convert this log into the canonical JAX batch (:class:`TrialData`)."""
-        refs, comparisons, responses = self.to_numpy()
-        return TrialData(
-            refs=jnp.asarray(refs),
-            comparisons=jnp.asarray(comparisons),
-            responses=jnp.asarray(responses),
-        )
+        stimuli, responses = self.to_numpy()
+        if self.contexts:
+            context = np.asarray(self.contexts)
+            return TrialData(
+                stimuli=jnp.asarray(stimuli),
+                responses=jnp.asarray(responses),
+                context=jnp.asarray(context),
+            )
+        else:
+            return TrialData(
+                stimuli=jnp.asarray(stimuli), responses=jnp.asarray(responses)
+            )
 
     @property
-    def trials(self) -> list[tuple[Any, Any, int]]:
+    def trials(self) -> list[tuple[Any, ...]]:
         """
-        Return list of (ref, comparison, response) tuples.
+        Return list of (stim1, stim2, ... , response) tuples.
+        Does NOT include context information.
 
         Returns
         -------
         list[tuple]
-            Each element is (ref, comparison, resp)
+            Each element is tuple representing all stimuli and the associated
+            response for a given trial.
         """
-        return list(zip(self.refs, self.comparisons, self.responses))
+        return [i + (r,) for i, r in zip(self.stimuli, self.responses)]
 
     def __len__(self) -> int:
         """Return number of trials."""
-        return len(self.refs)
+        return len(self.stimuli)
 
     @classmethod
     def from_arrays(
         cls,
         X: jnp.ndarray | np.ndarray,
         y: jnp.ndarray | np.ndarray,
-        *,
-        comparisons: jnp.ndarray | np.ndarray | None = None,
+        c: jnp.ndarray | np.ndarray | None = None,
     ) -> ResponseData:
         """
         Construct ResponseData from arrays.
 
         Parameters
         ----------
-        X : array, shape (n_trials, 2, input_dim) or (n_trials, input_dim)
-            Stimuli. If 3D, second axis is [reference, comparison].
-            If 2D, comparisons must be provided separately.
-        y : array, shape (n_trials,)
+        X : array, shape (n_trials, n_stimuli, input_dim) or (n_trials, input_dim)
+            Stimuli. If 3D, second axis is input stumili. For OddityTask, this is
+            (ref, comparison)
+        y : array, shape (n_trials, response_dim)
             Responses
-        comparisons : array, shape (n_trials, input_dim), optional
-            Probe stimuli. Only needed if X is 2D.
+        c : optional array, shape (n_trials, context_dim)
+            Context
 
         Returns
         -------
         ResponseData
             Data container
 
-        Examples
+        OddityTask Example
         --------
         >>> # From paired stimuli
         >>> X = jnp.array([[[0, 0], [1, 0]], [[1, 1], [2, 1]]])
+        >>> # X is formed from refs = [[0, 0], [1, 1]], comparisons = [[1, 0], [2, 1]]
         >>> y = jnp.array([1, 0])
         >>> data = ResponseData.from_arrays(X, y)
-
-        >>> # From separate refs and comparisons
-        >>> refs = jnp.array([[0, 0], [1, 1]])
-        >>> comparisons = jnp.array([[1, 0], [2, 1]])
-        >>> data = ResponseData.from_arrays(refs, y, comparisons=comparisons)
         """
         data = cls()
 
         X = np.asarray(X)
         y = np.asarray(y)
 
-        if X.ndim == 3:
-            # X is (n_trials, 2, input_dim)
-            refs = X[:, 0, :]
-            comparisons_arr = X[:, 1, :]
-        elif X.ndim == 2 and comparisons is not None:
-            refs = X
-            comparisons_arr = np.asarray(comparisons)
-        else:
+        if X.ndim == 2:
+            # reshape to ensure appropriate conversion to stimuli groups
+            dims = X.shape
+            new_dims = (dims[0], 1, dims[1])
+            X = np.reshape(X, new_dims)
+        elif X.ndim != 3:
             raise ValueError(
-                "X must be shape (n_trials, 2, input_dim) or "
-                "(n_trials, input_dim) with comparisons argument"
+                "X must be shape (n_trials, n_stimuli, input_dim) or \
+                (n_trials, input_dim)."
             )
+        if y.shape[0] != X.shape[0]:
+            raise ValueError("X and y must contain the same n_trials.")
+        if c is not None and c.shape[0] != X.shape[0]:
+            raise ValueError("c must contain same n_trials as X.")
 
-        for ref, comparison, response in zip(refs, comparisons_arr, y):
-            data.add_trial(ref, comparison, int(response))
+        # X is (n_trials, K, d) — split into per-trial tuples of K stimulus rows
+        stimuli = []
+        for plane in X:
+            stimuli.append(tuple(plane))
+
+        if c is not None:
+            for stim, response, context in zip(stimuli, y, c):
+                data.add_trial(stim, response, context)
+        else:
+            for stim, response in zip(stimuli, y):
+                data.add_trial(stim, response)
 
         return data
 
     @classmethod
     def from_trial_data(cls, data: TrialData) -> ResponseData:
         """Build a ResponseData log from a :class:`TrialData` batch."""
-        refs = np.asarray(data.refs)
-        comps = np.asarray(data.comparisons)
+        stimuli = np.asarray(data.stimuli)
         ys = np.asarray(data.responses)
         out = cls()
-        for r, c, y in zip(refs, comps, ys):
-            out.add_trial(r, c, int(y))
+        if data.context is not None:
+            cs = np.asarray(data.context)
+            for s, y, c in zip(stimuli, ys, cs):
+                out.add_trial(s, y, c)
+        else:
+            for s, y in zip(stimuli, ys):
+                out.add_trial(s, y)
         return out
 
     def merge(self, other: ResponseData) -> None:
@@ -242,9 +338,31 @@ class ResponseData:
         other : ResponseData
             Dataset to merge
         """
-        self.refs.extend(other.refs)
-        self.comparisons.extend(other.comparisons)
+        no_empty = self.stimuli and other.stimuli
+
+        if no_empty and self.stimuli[0].shape != other.stimuli[0].shape:
+            raise ValueError(
+                "Cannot merge ResponseData instances with inconsistent input shapes."
+                f"Received input shapes of {self.stimuli[0].shape} and {other.stimuli[0].shape}"
+            )
+        if no_empty and self.responses[0].shape != other.responses[0].shape:
+            raise ValueError(
+                "Cannot merge ResponseData instances with inconsistent response shapes."
+                f"Received response shapes of {self.responses[0].shape} and {other.responses[0].shape}"
+            )
+
+        self.stimuli.extend(other.stimuli)
         self.responses.extend(other.responses)
+        both_contexts = self.contexts and other.contexts
+
+        if self.contexts == [] and other.contexts == []:
+            pass
+        elif both_contexts and self.contexts[0].shape == other.contexts[0].shape:
+            self.contexts.extend(other.contexts)
+        else:
+            raise ValueError(
+                "Cannot merge ResponseData instances with inconsistent context."
+            )
 
     def tail(self, n: int) -> ResponseData:
         """
@@ -261,9 +379,10 @@ class ResponseData:
             New dataset with last n trials
         """
         new_data = ResponseData()
-        new_data.refs = self.refs[-n:]
-        new_data.comparisons = self.comparisons[-n:]
+        new_data.stimuli = self.stimuli[-n:]
         new_data.responses = self.responses[-n:]
+        if self.contexts is not None:
+            new_data.contexts = self.contexts[-n:]
         return new_data
 
     def copy(self) -> ResponseData:
@@ -276,28 +395,31 @@ class ResponseData:
             New dataset with copied data
         """
         new_data = ResponseData()
-        new_data.refs = list(self.refs)
-        new_data.comparisons = list(self.comparisons)
+        new_data.stimuli = list(self.stimuli)
         new_data.responses = list(self.responses)
+        if self.contexts is not None:
+            new_data.contexts = list(self.contexts)
         return new_data
 
 
 class TrialBatch:
     """
-    Container for a proposed batch of trials
+    Container for a proposed batch of trials.
+    Does NOT include context or responses.
 
     Attributes
     ----------
-    stimuli : List[Tuple[Any, Any]]
-        Each trial is a (reference, comparison) tuple.
+    stimuli : List[Tuple[Any, ...]]
+        Each trial is a tuple of all presented stimuli (stim1, stim2, ...).
+        For OddityTask this is (reference, comparison)
     """
 
-    def __init__(self, stimuli: list[tuple[Any, Any]]) -> None:
+    def __init__(self, stimuli: list[tuple[Any, ...]]) -> None:
         self.stimuli = list(stimuli)
 
     @classmethod
-    def from_stimuli(cls, pairs: list[tuple[Any, Any]]) -> TrialBatch:
+    def from_stimuli(cls, groups: list[tuple[Any, ...]]) -> TrialBatch:
         """
-        Construct a TrialBatch from a list of stimuli (ref, comparison) pairs.
+        Construct a TrialBatch from a list of stimuli (stim1, stim2, ...) groups.
         """
-        return cls(pairs)
+        return cls(groups)

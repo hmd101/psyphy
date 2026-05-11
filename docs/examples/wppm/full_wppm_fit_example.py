@@ -115,7 +115,7 @@ def _ellipse_segments_from_covs(
     eigvals = jnp.linalg.eigvalsh(covs)
     valid = jnp.all(eigvals > 0, axis=-1)
 
-    # Cholesky is faster than eigendecomposition for SPD matrices.
+    # Cholesky is faster than eigen decomposition for SPD matrices.
     # we only use it for plotting ellipses (shape/orientation), not inference.
     def _cov_to_points(cov: jnp.ndarray, center: jnp.ndarray) -> jnp.ndarray:
         L = jnp.linalg.cholesky(cov)
@@ -257,13 +257,16 @@ ys, p_correct = task.simulate(truth_params, refs, comparisons, truth_model, key=
 # Build the canonical batched dataset for compute.
 #
 # Notes:
-# - This is equivalent to storing X with shape (N, 2, d) and y with shape (N,)
-#   where X[:,0,:]=refs and X[:,1,:]=comparisons.
-# - We keep named fields because it's currently native to OddityTask.
-# - Even though oddity is a 3-item task, we only store (ref, comparison)
+# - This is equivalent to storing X with shape (N, K, d) and y with shape (N, R)
+#   where N is trials, K is number of distinct stimuli per trial, d is stimulus
+#   dimensionality, and R is number of response channels.
+# - For OddityTask, X[:,0,:]=refs and X[:,1,:]=comparisons.
+# - Note that even though oddity is a 3-item task, we only store (ref, comparison)
 #   because the oddity trial is assumed to be (ref, ref, comparison)
+#
 # --8<-- [start:data]
-data = TrialData(refs=refs, comparisons=comparisons, responses=ys)
+stimuli = jnp.stack([refs, comparisons], axis=1)
+data = TrialData(stimuli=stimuli, responses=ys)
 # --8<-- [end:data]
 
 # --8<-- [end:simulate_data]
