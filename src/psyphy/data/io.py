@@ -6,7 +6,6 @@ I/O utilities for saving and loading psyphy data.
 
 Supports:
 - CSV for human-readable trial logs
-- Pickle (.pkl) for Posterior and ResponseData checkpoints?
 
 Notes
 -----
@@ -69,7 +68,7 @@ def load_responses_csv(path: PathLike) -> TrialData:
     Parameters
     ----------
     path : str or Path
-    - must be of expected format for OddityTask
+    Must be of expected format for OddityTask.
 
     Returns
     -------
