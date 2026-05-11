@@ -68,7 +68,7 @@ def load_responses_csv(path: PathLike) -> TrialData:
     Parameters
     ----------
     path : str or Path
-    Must be of expected format for OddityTask.
+        Must be of expected format for OddityTask.
 
     Returns
     -------
