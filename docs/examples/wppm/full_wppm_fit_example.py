@@ -346,8 +346,8 @@ print("[4/5] Plotting covariance field ellipses ...")
 
 # Visualization-only stabilization: if a covariance is numerically slightly
 # indefinite, we add a small diagonal jitter for plotting.
-_PLOT_JITTER_DEFAULT = 0  # 1e-6
-_PLOT_JITTER_FIT = 0  # 1e-5
+_PLOT_JITTER_DEFAULT = 1e-9
+_PLOT_JITTER_FIT = 1e-9
 
 # Grid for field visualization in [-1,1] space
 n_grid = 12
@@ -399,7 +399,7 @@ avg_scale = float(jnp.mean(gt_scales))
 # We keep this constant across all ellipses so only *shape/orientation* varies.
 # If you want ellipses sized proportionally to local variance, you could multiply by
 # something like jnp.sqrt(jnp.mean(eigvals)) per point instead.
-ellipse_scale = 0.4  # 0.3 * avg_scale   # 0.3
+ellipse_scale = 0.3 / max(avg_scale, 1e-8)  # scale GT mean semi-axis to ~0.3 plot units
 
 fig, ax = plt.subplots(figsize=(7, 7))
 non_pd_counts = [0, 0, 0]
