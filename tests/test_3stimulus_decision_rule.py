@@ -39,7 +39,7 @@ class TestThreeStimulusDecisionRule:
         data = ResponseData()
         ref = jnp.array([0.5, 0.5])
         comparison = ref  # identical!
-        data.add_trial(ref, comparison, resp=1)
+        data.add_trial((ref, comparison), resp=1)
 
         # Compute P(correct) with many samples for accurate estimate
         # loglik = log P(correct | ref, comparison, params)
@@ -82,7 +82,7 @@ class TestThreeStimulusDecisionRule:
         data = ResponseData()
         ref = jnp.array([0.0, 0.0])
         comparison = jnp.array([5.0, 5.0])  # Very far!
-        data.add_trial(ref, comparison, resp=1)
+        data.add_trial((ref, comparison), resp=1)
 
         # Compute P(correct)
         loglik = model.likelihood.loglik(
@@ -121,7 +121,7 @@ class TestThreeStimulusDecisionRule:
         data = ResponseData()
         ref = jnp.array([0.0, 0.0])
         comparison = jnp.array([0.3, 0.3])  # Moderately different
-        data.add_trial(ref, comparison, resp=1)
+        data.add_trial((ref, comparison), resp=1)
 
         # Compute P(correct)
         loglik = model.likelihood.loglik(params, data, model, key=jr.PRNGKey(42))
@@ -155,7 +155,7 @@ class TestThreeStimulusDecisionRule:
         # Test with identical stimuli
         data_identical = ResponseData()
         ref = jnp.array([0.5, 0.5])
-        data_identical.add_trial(ref, ref, resp=1)
+        data_identical.add_trial((ref, ref), resp=1)
 
         model.likelihood = OddityTask(
             config=OddityTaskConfig(num_samples=3000, bandwidth=1e-2)
@@ -171,7 +171,7 @@ class TestThreeStimulusDecisionRule:
         # Test with distant stimuli
         data_distant = ResponseData()
         comparison_far = jnp.array([5.0, 5.0])
-        data_distant.add_trial(ref, comparison_far, resp=1)
+        data_distant.add_trial((ref, comparison_far), resp=1)
 
         loglik_distant = model.likelihood.loglik(
             params,
@@ -304,7 +304,7 @@ class TestEdgeCases:
         data = ResponseData()
         ref = jnp.array([0.0, 0.0])
         comparison = jnp.array([2.0, 2.0])
-        data.add_trial(ref, comparison, resp=1)
+        data.add_trial((ref, comparison), resp=1)
 
         loglik = model.likelihood.loglik(params, data, model, key=jr.PRNGKey(42))
 
@@ -336,7 +336,7 @@ class TestEdgeCases:
         data = ResponseData()
         ref = jnp.array([0.0, 0.0])
         comparison = jnp.array([3.0, 3.0])
-        data.add_trial(ref, comparison, resp=1)
+        data.add_trial((ref, comparison), resp=1)
 
         loglik = model.likelihood.loglik(params, data, model, key=jr.PRNGKey(42))
 
@@ -366,7 +366,7 @@ class TestEdgeCases:
         data = ResponseData()
         ref = jnp.array([0.0, 0.0])
         comparison = jnp.array([3.0, 3.0])
-        data.add_trial(ref, comparison, resp=1)
+        data.add_trial((ref, comparison), resp=1)
 
         # Compute with two different seeds (same task config)
         loglik1 = model.likelihood.loglik(params, data, model, key=jr.PRNGKey(42))
@@ -402,13 +402,13 @@ class TestEdgeCases:
         )
         params = model.init_params(jr.PRNGKey(0))
 
-        # Create multiple trials
-        data_multi = ResponseData()
         ref = jnp.array([0.0, 0.0])
         comparison = jnp.array([1.0, 1.0])
 
+        # Create multiple trials
+        data_multi = ResponseData()
         for _ in range(5):
-            data_multi.add_trial(ref, comparison, resp=1)
+            data_multi.add_trial((ref, comparison), resp=1)
 
         # Compute combined loglik
         loglik_multi = model.likelihood.loglik(
@@ -420,7 +420,7 @@ class TestEdgeCases:
 
         # Single trial loglik
         data_single = ResponseData()
-        data_single.add_trial(ref, comparison, resp=1)
+        data_single.add_trial((ref, comparison), resp=1)
 
         loglik_single = model.likelihood.loglik(
             params,
@@ -433,8 +433,14 @@ class TestEdgeCases:
         # (with some tolerance for MC variance)
         expected_loglik = 5 * loglik_single
 
-        assert (
-            jnp.abs(loglik_multi - expected_loglik) / jnp.abs(expected_loglik) < 0.1
+        # Use combined absolute +relative tolerance (np.allclose pattern) so the
+        # assertion is robust when expected_loglik is near zero, as
+        #  pure relative
+        # tolerance blows up in that regime due to MC variance across key splits.
+        atol = 0.05
+        rtol = 0.1
+        assert jnp.abs(loglik_multi - expected_loglik) <= atol + rtol * jnp.abs(
+            expected_loglik
         ), (
             f"Multi-trial loglik = {loglik_multi:.3f}, "
             f"expected ≈ {expected_loglik:.3f} (5 × single trial). "
@@ -443,7 +449,8 @@ class TestEdgeCases:
 
     def test_zero_samples_raises_error(self):
         """Test that num_samples=0 raises an error."""
-        # Strict API: num_samples comes from task config, so invalid config should fail at construction.
+        # Strict API: num_samples comes from task config, so invalid
+        # config should fail at construction.
         with pytest.raises(ValueError, match="num_samples must be > 0"):
             _ = OddityTask(config=OddityTaskConfig(num_samples=0, bandwidth=1e-2))
 
@@ -463,7 +470,7 @@ class TestEdgeCases:
         params = model.init_params(jr.PRNGKey(0))
 
         data = ResponseData()
-        data.add_trial(jnp.array([0.0, 0.0]), jnp.array([1.0, 1.0]), resp=1)
+        data.add_trial((jnp.array([0.0, 0.0]), jnp.array([1.0, 1.0])), resp=1)
 
         # Compute twice with same seed
         loglik1 = model.likelihood.loglik(
@@ -510,7 +517,7 @@ class TestDecisionRuleSymmetry:
         data = ResponseData()
         ref = jnp.array([0.0, 0.0])
         comparison = jnp.array([1.0, 1.0])
-        data.add_trial(ref, comparison, resp=1)
+        data.add_trial((ref, comparison), resp=1)
 
         # Compute with one seed
         loglik1 = model.likelihood.loglik(
