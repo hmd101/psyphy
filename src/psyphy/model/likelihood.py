@@ -147,7 +147,16 @@ class TaskLikelihood(ABC):
         stimuli = jnp.asarray(data.stimuli)
         refs = stimuli[:, 0, :]
         comparisons = stimuli[:, 1, :]
+        # TrialData stores responses as (N, R) — R=1 for binary tasks.
+        # Extract the single binary channel to get shape (N,).
+        # Without this, jnp.where broadcasts (N, 1) against probs (N,),
+        # treating (N,) as (1, N) and producing an (N, N) result whose
+        # sum scrambles the gradient: every p[j] receives signal from all
+        # N responses instead of only response[j].
+
         responses = jnp.asarray(data.responses)
+        if responses.ndim == 2:  # shape (N, R)
+            responses = responses[:, 0]
         responses = responses.astype(int)
         n_trials = int(refs.shape[0])
 
