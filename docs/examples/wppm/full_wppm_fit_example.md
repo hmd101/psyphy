@@ -250,6 +250,7 @@ For an even more minimal code setup that doesn't require a GPU but will run on y
 - **CPU vs GPU:** this example can be heavy because the oddity likelihood uses Monte Carlo. A GPU can help a lot, see [`quickstart`](https://flatironinstitute.github.io/psyphy/examples/wppm/quick_start/) for a CPU friendly version.
 - **Positive definiteness:** `diag_term` is important. If you ever see a non-PD covariance, increase `diag_term` slightly.
 - **MC variance:** optimization stability depends on `MC_SAMPLES`. Too small means noisy gradients.
+- **Objective scaling:** `MAPOptimizer` defaults to `reduction="mean"`, so the reported loss is a *per-trial* negative log posterior and `learning_rate` transfers across dataset sizes. `WPPM.log_posterior_from_data` still returns the true summed log posterior — the scaling lives in the optimizer. Pass `reduction="sum"` to recover the unnormalized objective, but note that `max_grad_norm=1.0` then saturates on nearly every step (the raw gradient norm grows with the number of trials), which silently turns SGD into fixed-step normalized descent. If you are matching a reference implementation that does no clipping, pass `max_grad_norm=None`.
 
 
 ---

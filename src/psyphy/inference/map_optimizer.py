@@ -17,6 +17,7 @@ Connections
 from __future__ import annotations
 
 import contextlib
+from typing import Literal
 
 import jax
 import optax
@@ -40,6 +41,8 @@ class MAPOptimizer(InferenceEngine):
     -----
     - Loss function = negative log posterior.
     - Gradients computed with jax.grad.
+    - By default the objective is scaled to a *per-trial* quantity
+      (``reduction="mean"``); see the ``reduction`` parameter.
     """
 
     def __init__(
@@ -49,6 +52,7 @@ class MAPOptimizer(InferenceEngine):
         momentum: float = 0.9,
         optimizer: optax.GradientTransformation | None = None,
         *,
+        reduction: Literal["mean", "sum"] = "mean",
         track_history: bool = True,
         log_every: int = 1,
         progress_every: int = 10,
@@ -67,6 +71,42 @@ class MAPOptimizer(InferenceEngine):
             Learning rate for the default optimizer (SGD with momentum).
         momentum : float, optional
             Momentum for the default optimizer (SGD with momentum).
+        reduction : {"mean", "sum"}, optional
+            How to scale the objective before differentiating.
+
+            - ``"mean"`` (default): divide the negative log posterior by the
+              number of trials N, giving a *per-trial* objective.
+              (Hong et al. 2025, elife, used this and no gradient clipping)
+            - ``"sum"``: use the negative log posterior as-is.
+
+            The two objectives differ by the positive constant N, so they have
+            the **same minimizer**, and with no gradient clipping they trace an
+            identical path under ``lr_sum = lr_mean / N``. The choice matters
+            for two practical reasons:
+
+            1. **Learning-rate portability.** Under ``"sum"``, gradient
+               magnitude grows with N, so ``learning_rate`` must be retuned
+               whenever the dataset size changes. Under ``"mean"`` the gradient
+               is an average of per-trial gradients, so a working learning rate
+               transfers across dataset sizes.
+            2. **Gradient clipping.** ``max_grad_norm`` is a fixed threshold.
+               Under ``"sum"`` the raw gradient norm scales with N, so the clip
+               saturates on essentially every step for realistic N — which
+               discards gradient *magnitude* and silently turns SGD into
+               normalized fixed-step descent.
+
+               To disable it entirely (e.g. to match a reference implementation
+               that does no clipping) pass ``max_grad_norm=None``.
+
+            Note that the *model* is unaffected: ``WPPM.log_posterior_from_data``
+            still returns the true (summed) log posterior. Scaling is
+            step-size conditioning and lives here, in the optimizer, so that
+            density-based consumers (e.g. a Laplace approximation taking the
+            Hessian at the mode) keep seeing the unnormalized log posterior.
+
+            Because the recorded loss is per-trial under ``"mean"``, learning
+            curves are not comparable to those produced with ``"sum"``: the
+            values differ by a factor of N.
         track_history : bool, optional
             When True, record loss history during fitting for plotting.
         log_every : int, optional
@@ -86,6 +126,9 @@ class MAPOptimizer(InferenceEngine):
             optimizer updates. This stabilizes optimization when gradients blow up.
         """
         self.steps = steps
+        if reduction not in ("mean", "sum"):
+            raise ValueError(f'reduction must be "mean" or "sum", got {reduction!r}.')
+        self.reduction = reduction
         base_optimizer = optimizer or optax.sgd(
             learning_rate=learning_rate, momentum=momentum
         )
@@ -145,12 +188,25 @@ class MAPOptimizer(InferenceEngine):
         params = init_params if init_params is not None else model.init_params(init_key)
         opt_state = self.optimizer.init(params)
 
+        # Objective scale. Resolved here, outside the jitted step, so it is a
+        # Python float baked in at trace time rather than a traced value.
+        # `model.log_posterior_from_data` always returns the true (summed) log
+        # posterior; "mean" turns it into a per-trial quantity for the gradient
+        # step. See the `reduction` docstring for why this lives here and not
+        # in the model.
+        scale = 1.0
+        if self.reduction == "mean":
+            n_trials = int(jax.numpy.asarray(data.responses).shape[0])
+            if n_trials == 0:
+                raise ValueError('reduction="mean" requires at least one trial.')
+            scale = 1.0 / n_trials
+
         # key is now an explicit argument so each JIT-compiled call receives a
         # distinct random key — a fresh MC noise realization per gradient step.
         @jax.jit
         def step(params, opt_state, key):
             loss, grads = jax.value_and_grad(
-                lambda p: -model.log_posterior_from_data(p, data, key=key)
+                lambda p: -scale * model.log_posterior_from_data(p, data, key=key)
             )(params)
             updates, opt_state = self.optimizer.update(grads, opt_state, params)
             params = optax.apply_updates(params, updates)
