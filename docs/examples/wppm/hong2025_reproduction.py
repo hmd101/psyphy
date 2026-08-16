@@ -2,20 +2,18 @@
 Reproducing Hong et al. (2025) with psyphy
 ------------------------------------------
 
-Every other WPPM example in these docs fits data psyphy generated itself, which
-tests self-consistency rather than correctness. This one fits *published human
-data* and compares against the authors' own published fit.
+This  script fits *published human
+data from Hong et al. (2025)* and compares against the authors' own published fit.
 
 It runs in two stages, deliberately separated:
 
   Stage 1 -- exact check. Feed the paper's published weights into psyphy's
-      covariance field and compare to their published covariances. No optimizer,
-      no Monte Carlo, no randomness. Seconds to run.
+      covariance field and compare to their published covariances.
 
   Stage 2 -- refit. Start from a prior sample and fit psyphy's WPPM to the
       paper's trials, then compare the resulting field to theirs.
 
-Running stage 1 first matters: if stage 2 disagrees, stage 1 tells you whether
+Running stage 1 first tells us: if stage 2 disagrees, stage 1 tells us whether
 the model or the optimizer is at fault.
 
 Usage
@@ -96,7 +94,7 @@ def normalized_bures_similarity(A: np.ndarray, B: np.ndarray) -> float:
 def compare_fields(Sigma_fit: np.ndarray, Sigma_ref: np.ndarray) -> dict[str, float]:
     """Compare two stacks of 2x2 covariances, shape (M, 2, 2).
 
-    Compares Sigma, never W. U -> U Q for orthogonal Q leaves Sigma = U U^T
+    Compares Sigma  (never W ). U -> U Q for orthogonal Q leaves Sigma = U U^T
     unchanged and the prior is isotropic in the embedding axis, so the weights
     are not identifiable while the covariance field is.
     """

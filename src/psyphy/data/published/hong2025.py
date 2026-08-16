@@ -10,18 +10,13 @@ Loaders for the published human colour-discrimination dataset of Hong et al.
     https://doi.org/10.7554/eLife.108943.2
 
 The authors fitted a Wishart Process Psychophysical Model to eight observers and
-published both the trial-level data and the fitted Chebyshev weights. That makes
-this dataset psyphy's external ground truth: every other example in the docs
-fits data psyphy generated itself, which tests self-consistency rather than
-correctness.
+published both the trial-level data and the fitted Chebyshev weights. 
 
 Data availability
 -----------------
 Hosted on OSF node ``k27js`` (https://osf.io/k27js). **psyphy ships no data.**
 :func:`fetch` downloads on request into a user cache directory. At the time of
-writing the OSF node carries no explicit license, so redistributing any part of
-it from this repository would not be appropriate; please cite the paper.
-
+writing the OSF node carries no explicit license, so please always cite paper!
 Typical use
 -----------
 >>> from psyphy.data.published import hong2025
@@ -364,7 +359,7 @@ def load_trials(
     -----
     The oddity task presents three stimuli (reference, reference, comparison)
     but only two *distinct* means, so K=2. The duplication is encoded in the
-    task likelihood, not the data container — the same convention psyphy uses
+    task likelihood, not the data container i.e., the same convention psyphy uses
     elsewhere, and the same one the paper uses (its data tuple is
     ``(y, mref, mprobe)``).
     """
