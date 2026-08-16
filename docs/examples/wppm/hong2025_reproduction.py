@@ -177,12 +177,12 @@ def ellipse_plot_scale(coords: np.ndarray, Sigma_ref: np.ndarray) -> float:
 def plot_comparison(coords, Sigma_fit, Sigma_ref, out_path, title, scale):
     fig, ax = plt.subplots(figsize=(6, 6), dpi=150)
     for covs, color, label in [
-        (Sigma_ref, "black", "published (Hong et al.)"),
+        (Sigma_ref, "black", "published (Hong et al. 2025)"),
         (Sigma_fit, "crimson", "psyphy MAP fit"),
     ]:
         segs, valid = _ellipse_segments(coords, covs, scale)
         ax.add_collection(LineCollection(segs, colors=color, linewidths=1.2, alpha=0.8))
-        ax.plot([], [], color=color, lw=1.2, label=f"{label} ({int(valid.sum())} PD)")
+        ax.plot([], [], color=color, lw=1.2, label=f"{label}")
 
     ax.scatter(coords[:, 0], coords[:, 1], c="gray", s=4, zorder=5)
     ticks = np.linspace(-0.7, 0.7, 5)
