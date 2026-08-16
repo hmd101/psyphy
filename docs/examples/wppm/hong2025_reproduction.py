@@ -226,7 +226,9 @@ def stage1_exact_check(paths: dict[str, Path]) -> None:
 
     print(f"  grid points  : {len(coords)}")
     print(f"  max |diff|   : {max_abs:.3e}")
-    print(f"  mean |diff|  : {float(np.abs(sigma_psyphy - sigma_published).mean()):.3e}")
+    print(
+        f"  mean |diff|  : {float(np.abs(sigma_psyphy - sigma_published).mean()):.3e}"
+    )
     verdict = "PASS" if max_abs < 1e-8 else "FAIL"
     print(f"  {verdict} — the published CSV is rounded to 8 decimals, so this is")
     print("  agreement to the precision the published file can express.")
@@ -239,7 +241,9 @@ def stage2_refit(paths: dict[str, Path], cfg: dict, mode: str, seed: int) -> Non
     # --8<-- [start:load]
     # Only the AEPsych trials were used for the published fit; the MOCS trials
     # in the same file are held-out validation. This is the default.
-    data = hong2025.load_trials(paths["trials"], max_trials=cfg["max_trials"], seed=seed)
+    data = hong2025.load_trials(
+        paths["trials"], max_trials=cfg["max_trials"], seed=seed
+    )
     # --8<-- [end:load]
     print(f"  trials: {data.num_trials} (p_correct={float(data.responses.mean()):.4f})")
 
@@ -278,7 +282,9 @@ def stage2_refit(paths: dict[str, Path], cfg: dict, mode: str, seed: int) -> Non
     coords, _ = hong2025.load_sigma_table(paths["thres_ellipses"])
     W_org = hong2025.load_reference_W(paths["weights"])
 
-    Sigma_ref = np.asarray(WPPMCovarianceField(model, {"W": W_org})(jnp.asarray(coords)))
+    Sigma_ref = np.asarray(
+        WPPMCovarianceField(model, {"W": W_org})(jnp.asarray(coords))
+    )
     Sigma_fit = np.asarray(WPPMCovarianceField(model, params)(jnp.asarray(coords)))
     metrics = compare_fields(Sigma_fit, Sigma_ref)
     # --8<-- [end:compare]
@@ -293,9 +299,9 @@ def stage2_refit(paths: dict[str, Path], cfg: dict, mode: str, seed: int) -> Non
         Sigma_fit,
         Sigma_ref,
         PLOTS_DIR / f"hong2025_{mode}_ellipses.png",
-        f"psyphy MAP fit vs Hong et al. — sub1 (CH), mode={mode}\n"
-        f"N={data.num_trials}, mc={cfg['mc_samples']}, steps={cfg['steps']} — "
-        f"ellipses magnified {scale:.1f}x",
+        f"psyphy MAP fit vs Hong et al. 2025 (subj 1 CH), mode={mode}\n"
+        f"N={data.num_trials}, mc={cfg['mc_samples']}, steps={cfg['steps']} ",
+        # f"— ellipses magnified {scale:.1f}x"
         scale=scale,
     )
 
