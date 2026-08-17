@@ -13,11 +13,12 @@ import pytest
 
 from psyphy.data import TrialData
 from psyphy.inference import MAPOptimizer
-from psyphy.model import WPPM, GaussianNoise, OddityTask, Prior
+from psyphy.model import WPPM, GaussianNoise, OddityTask, OddityTaskConfig, Prior
 from psyphy.posterior import (
     MAPPosterior,
     ParameterPosterior,
     PredictivePosterior,
+    ThresholdConfig,
     WPPMPredictivePosterior,
 )
 
@@ -181,15 +182,142 @@ class TestPredictivePosterior:
             eigvals = jnp.linalg.eigvalsh(Sigma[i])
             assert jnp.all(eigvals >= -1e-6)  # Numerically PSD
 
-    def test_no_probes_raises(self, param_posterior):
-        """Creating predictive posterior with threshold_pred set to True raises NotImplementedError."""
-        X_test = jnp.array([[0.0, 0.0]])
+    def test_threshold_pred_rejects_paired_stimuli_shape(self, param_posterior):
+        """threshold_pred=True expects bare reference points, not (ref, comp) pairs."""
+        X_test = jnp.zeros((2, 2, 2))  # (n_test, k_stimuli, input_dim) -- wrong shape
         pred_post = WPPMPredictivePosterior(
             param_posterior, X_test, threshold_pred=True
         )
-
-        with pytest.raises(NotImplementedError, match="Threshold prediction"):
+        with pytest.raises(ValueError, match="bare reference points"):
             _ = pred_post.mean
+
+    @pytest.fixture
+    def threshold_param_posterior(self):
+        """A MAPPosterior with a fast OddityTaskConfig, for threshold-mode tests.
+
+        No fitting needed -- threshold inversion only consumes params/model,
+        so a prior sample via MAPPosterior is enough and much faster than
+        running MAPOptimizer.
+        """
+        model = WPPM(
+            input_dim=2,
+            prior=Prior(input_dim=2, basis_degree=3),
+            likelihood=OddityTask(config=OddityTaskConfig(num_samples=20)),
+            noise=GaussianNoise(),
+        )
+        params = model.init_params(jr.PRNGKey(0))
+        return MAPPosterior(params, model)
+
+    @pytest.fixture
+    def threshold_predictive_posterior(self, threshold_param_posterior):
+        """Predictive posterior in threshold_pred mode, tiny settings for speed."""
+        X_test = jnp.array([[0.0, 0.0], [0.3, 0.3]])  # bare reference points
+        cfg = ThresholdConfig(n_theta=6, n_length=25, chunk=1000)
+        return WPPMPredictivePosterior(
+            threshold_param_posterior,
+            X_test,
+            n_samples=2,
+            threshold_pred=True,
+            threshold_config=cfg,
+        )
+
+    def test_threshold_mean_shape(self, threshold_predictive_posterior):
+        """threshold mean has shape (n_test, input_dim, input_dim)."""
+        mean = threshold_predictive_posterior.mean
+        assert mean.shape == (2, 2, 2)
+
+    def test_threshold_mean_is_psd(self, threshold_predictive_posterior):
+        """Recovered threshold covariances are positive semi-definite."""
+        mean = threshold_predictive_posterior.mean
+        for i in range(mean.shape[0]):
+            eigvals = jnp.linalg.eigvalsh(mean[i])
+            assert jnp.all(eigvals >= -1e-6)
+
+    def test_threshold_variance_shape_and_nonneg(self, threshold_predictive_posterior):
+        """threshold variance has the same shape as mean and is non-negative."""
+        var = threshold_predictive_posterior.variance
+        assert var.shape == (2, 2, 2)
+        assert jnp.all(var >= 0)
+
+    def test_threshold_rsample_shape(self, threshold_predictive_posterior):
+        """threshold rsample draws one covariance per sample, per test point."""
+        key = jr.PRNGKey(42)
+        samples = threshold_predictive_posterior.rsample(sample_shape=(3,), key=key)
+        assert samples.shape == (3, 2, 2, 2)  # (*sample_shape, n_test, d, d)
+
+    def test_threshold_n_theta_too_small_raises(self, threshold_param_posterior):
+        """n_theta below d*(d+1)/2 (=3 for 2D) makes the ellipsoid fit underdetermined."""
+        X_test = jnp.array([[0.0, 0.0]])
+        cfg = ThresholdConfig(n_theta=2, n_length=10)
+        pred_post = WPPMPredictivePosterior(
+            threshold_param_posterior,
+            X_test,
+            threshold_pred=True,
+            threshold_config=cfg,
+        )
+        with pytest.raises(ValueError, match="too small"):
+            _ = pred_post.mean
+
+
+class TestThresholdPredictionExternalValidity:
+    """Threshold inversion recovers Hong et al. (2025)'s published thresholds.
+
+    Requires the real OSF download; skips otherwise. This is rung 3 of the
+    validation ladder in psyphy-study/elife_data/docs.md -- the first check
+    that exercises the oddity likelihood itself (rung 1 only checks the
+    deterministic covariance-field construction; see
+    tests/test_data_published_hong2025.py for that sibling test).
+
+    Runtime: a handful of grid points at reduced-from-paper MC settings,
+    budgeted to stay under a minute; not the full 49-point, paper-precision
+    sweep (that's docs.md's `threshold_inversion.py` prototype, ~11 CPU min).
+    """
+
+    @staticmethod
+    def _data_paths():
+        from psyphy.data.published import hong2025
+
+        sub1 = hong2025.default_data_dir() / "sub1"
+        return sub1 / "Bestfit_W_sub1.csv", sub1 / "Thres_ellipses_sub1.csv"
+
+    def test_recovers_published_threshold_ellipses(self):
+        from psyphy.data.published import hong2025
+
+        weights_path, thres_path = self._data_paths()
+        if not (weights_path.exists() and thres_path.exists()):
+            pytest.skip(
+                "Published data not downloaded. Run: python -c "
+                "'from psyphy.data.published import hong2025; "
+                "hong2025.fetch(1)'"
+            )
+
+        W_org = hong2025.load_reference_W(weights_path)
+        coords, published = hong2025.load_sigma_table(thres_path)
+        model = hong2025.build_paper_model(mc_samples=500)
+        posterior = MAPPosterior({"W": W_org}, model)
+
+        # A handful of grid points, not all 49 -- keeps this test fast.
+        idx = jnp.linspace(0, len(coords) - 1, 4).astype(int)
+        X_test = jnp.asarray(coords)[idx]
+
+        pred_post = WPPMPredictivePosterior(
+            posterior,
+            X_test,
+            n_samples=1,
+            threshold_pred=True,
+            threshold_config=ThresholdConfig(n_theta=16, n_length=300),
+        )
+        recovered = pred_post.mean  # (4, 2, 2)
+
+        got = jnp.sqrt(jnp.linalg.eigvalsh(recovered))
+        want = jnp.sqrt(jnp.linalg.eigvalsh(jnp.asarray(published)[idx]))
+        rel_err = jnp.abs(got - want) / want
+        # Loose tolerance: this is a stochastic MC inversion (16 directions,
+        # finite MC samples), not the bit-exact rung-1 comparison.
+        assert float(jnp.median(rel_err)) < 0.10, (
+            f"median semi-axis relative error {float(jnp.median(rel_err)):.3f} "
+            "exceeds 10%"
+        )
 
 
 class TestIntegration:

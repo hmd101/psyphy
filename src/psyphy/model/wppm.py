@@ -431,7 +431,7 @@ class WPPM(Model):
                 "updating to handle (mu, sigma) returns."
             )
 
-        stimuli = jnp.stack(stimulus, axis=1)
+        stimuli = jnp.stack(stimulus, axis=0)
         return self.likelihood.predict(params, stimuli, self)[0]
 
     # ----------------------------------------------------------------------

@@ -175,8 +175,8 @@ def ellipse_plot_scale(coords: np.ndarray, Sigma_ref: np.ndarray) -> float:
 def plot_comparison(coords, Sigma_fit, Sigma_ref, out_path, title, scale):
     fig, ax = plt.subplots(figsize=(6, 6), dpi=150)
     for covs, color, label in [
-        (Sigma_ref, "black", "published (Hong et al. 2025)"),
-        (Sigma_fit, "crimson", "psyphy MAP fit"),
+        (Sigma_ref, "black", "published Σ_noise (Hong et al. 2025)"),
+        (Sigma_fit, "crimson", "psyphy Σ_noise (MAP fit)"),
     ]:
         segs, valid = _ellipse_segments(coords, covs, scale)
         ax.add_collection(LineCollection(segs, colors=color, linewidths=1.2, alpha=0.8))
@@ -278,7 +278,7 @@ def stage2_refit(paths: dict[str, Path], cfg: dict, mode: str, seed: int) -> Non
     # Grid coordinates come from the published table, so there is no meshgrid
     # ordering convention to get wrong.
     coords, _ = hong2025.load_sigma_table(paths["thres_ellipses"])
-    W_org = hong2025.load_reference_W(paths["weights"])
+    W_org = hong2025.load_reference_W(paths["weights"]) #original best fit Weights
 
     Sigma_ref = np.asarray(
         WPPMCovarianceField(model, {"W": W_org})(jnp.asarray(coords))
@@ -297,8 +297,9 @@ def stage2_refit(paths: dict[str, Path], cfg: dict, mode: str, seed: int) -> Non
         Sigma_fit,
         Sigma_ref,
         PLOTS_DIR / f"hong2025_{mode}_ellipses.png",
-        f"psyphy MAP fit vs Hong et al. 2025 (subj 1 CH), mode={mode}\n"
-        f"N={data.num_trials}, mc={cfg['mc_samples']}, steps={cfg['steps']} ",
+        f"Σ_noise(x) — psyphy MAP fit vs Hong et al. 2025 (subj 1 CH)\n"
+        f"mode={mode}, N={data.num_trials}, mc={cfg['mc_samples']}, steps={cfg['steps']}"
+        # f"  (not the published threshold contours)",
         # f"— ellipses magnified {scale:.1f}x"
         scale=scale,
     )

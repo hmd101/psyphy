@@ -18,7 +18,6 @@ import jax
 import jax.numpy as jnp
 import numpy as np
 import pytest
-from jax.experimental import enable_x64
 
 from psyphy.data.dataset import TrialData
 from psyphy.data.published import hong2025
@@ -40,7 +39,7 @@ def x64():
     float32 (e.g. ``test_mc_likelihood.py::test_gradients_are_finite_normal_case``),
     and would fail depending on collection order.
     """
-    with enable_x64():
+    with jax.enable_x64():
         yield
 
 # ----------------------------------------------------------------------

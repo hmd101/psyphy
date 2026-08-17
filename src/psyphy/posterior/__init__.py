@@ -21,7 +21,11 @@ Future extensions
 
 from .parameter_posterior import ParameterPosterior
 from .posterior import MAPPosterior
-from .predictive_posterior import PredictivePosterior, WPPMPredictivePosterior
+from .predictive_posterior import (
+    PredictivePosterior,
+    ThresholdConfig,
+    WPPMPredictivePosterior,
+)
 
 __all__ = [
     # Core protocols
@@ -31,4 +35,5 @@ __all__ = [
     "MAPPosterior",
     # Predictive posterior implementations
     "WPPMPredictivePosterior",
+    "ThresholdConfig",
 ]
