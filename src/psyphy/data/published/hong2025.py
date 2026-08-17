@@ -9,8 +9,8 @@ Loaders for the published human colour-discrimination dataset of Hong et al.
     human color discrimination thresholds. eLife, 14:RP108943.
     https://doi.org/10.7554/eLife.108943.2
 
-The authors fitted a Wishart Process Psychophysical Model to eight observers and
-published both the trial-level data and the fitted Chebyshev weights. 
+Hong et al 2025 fitted a Wishart Process Psychophysical Model to eight observers
+ and published both the trial-level data and the fitted Chebyshev weights. 
 
 Data availability
 -----------------
@@ -618,6 +618,10 @@ def _cli() -> int:
     )
     parser.add_argument("--subject", type=int, nargs="+", default=[1])
     parser.add_argument("--data-dir", default=None)
+
+    # Noise_ellipses corresponds to Fig. S3 (Supplements) in Hong et al 2025. 
+    # The internal noise ellipses are larger in file size and are not 
+    # necessary to plot the threshold contours.
     parser.add_argument(
         "--noise-ellipses",
         action="store_true",

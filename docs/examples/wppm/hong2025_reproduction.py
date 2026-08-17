@@ -18,8 +18,8 @@ the model or the optimizer is at fault.
 
 Usage
 -----
-    python hong2025_reproduction.py                # quick mode, ~10 s on CPU
-    python hong2025_reproduction.py --mode full    # paper settings, GPU job
+    python hong2025_reproduction.py    # quick mode, ~10 s on CPU (smoke test only)
+    python hong2025_reproduction.py --mode full    # paper settings, GPU 15 min
 
 Data is downloaded on first run into ~/.cache/psyphy/ (override with
 $PSYPHY_DATA_HOME). psyphy ships no data; see the accompanying markdown page.
