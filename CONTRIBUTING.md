@@ -75,12 +75,17 @@ Include:
 
 Build docs locally:
 ```
-pip install mkdocs mkdocs-material 'mkdocstrings[python]'
+pip install -e '.[docs]'
 mkdocs serve
 ```
-Build static site:
+Build static site — `--strict` is what CI runs, so use it locally too:
 ```
-mkdocs build
+mkdocs build --strict
+```
+To regenerate the figures the docs embed, you also need the example
+dependencies (matplotlib, seaborn, JupyterLab):
+```
+pip install -e '.[examples]'
 ```
 Deploy:
 ```

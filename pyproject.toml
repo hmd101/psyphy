@@ -39,7 +39,22 @@ dev = [
   "mypy>=1.0",
   "pre-commit>=3.0",
 ]
+# Toolchain for `mkdocs build --strict`. Kept separate from `examples` so CI's
+# docs job does not have to install JupyterLab on every push to main.
+#
+# The `<2` bound is deliberate: MkDocs 2.0 removes the plugin system outright
+# (mkdocs-material warns about this at build time, and states there is no
+# migration path). This site depends on the `search` and `mkdocstrings`
+# plugins, so it cannot build under 2.x. Revisit when the ecosystem settles.
 docs = [
+  "mkdocs>=1.6,<2",
+  "mkdocs-material>=9.7",
+  "mkdocstrings[python]>=1.0",
+  "pymdown-extensions>=11.0",
+]
+# Needed only to *run* the example scripts under docs/examples/ and regenerate
+# their figures. The committed plots mean the site builds without these.
+examples = [
   "matplotlib>=3.5",
   "seaborn>=0.13",
   "jupyterlab>=4.0",

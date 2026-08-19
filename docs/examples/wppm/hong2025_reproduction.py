@@ -237,8 +237,8 @@ def plot_comparison(coords, Sigma_fit, Sigma_ref, out_path, title, scale):
     ax.set_xlim(-1.0, 1.0)
     ax.set_ylim(-1.0, 1.0)
     ax.set_aspect("equal")
-    ax.set_xlabel("W dim 1")
-    ax.set_ylabel("W dim 2")
+    ax.set_xlabel("Model Dimension 1")
+    ax.set_ylabel("Model Dimension 2")
     ax.set_title(title, fontsize=9)
     ax.legend(fontsize=8, loc="upper left")
     ax.grid(True, alpha=0.25)
@@ -298,8 +298,8 @@ def plot_threshold_figure(coords, Sigma_psyphy, Sigma_published, out_path, scale
     ax.set_xlim(-0.95, 0.95)
     ax.set_ylim(-0.95, 0.95)
     ax.set_aspect("equal")
-    ax.set_xlabel("W dim 1")
-    ax.set_ylabel("W dim 2")
+    ax.set_xlabel("Model Dimension 1")
+    ax.set_ylabel("Model Dimension 2")
     ax.set_title(
         " 66.7%-correct discrimination thresholds\n"
         f"Figure 2B in Hong et al. 2025 reproduced, subject 1 (CH)",#; {color_note}",
