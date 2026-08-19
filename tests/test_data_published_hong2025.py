@@ -42,6 +42,7 @@ def x64():
     with jax.enable_x64():
         yield
 
+
 # ----------------------------------------------------------------------
 # Synthetic fixtures mimicking the published CSV layout
 # ----------------------------------------------------------------------
@@ -247,12 +248,71 @@ class TestBuildPaperModel:
 
 
 # ----------------------------------------------------------------------
+# Colour transform: load_calibration_matrix / w2d_to_rgb
+# ----------------------------------------------------------------------
+
+#: A deliberately hand-checkable stand-in for the published matrix: doubles
+#: w1, negates w2, and offsets every channel by 0.5.
+_FAKE_M_CSV = """2.0,0.0,0.5
+0.0,-1.0,0.5
+0.0,0.0,0.5
+"""
+
+
+class TestLoadCalibrationMatrix:
+    def test_parses_a_3x3_matrix(self, tmp_path):
+        path = _write(tmp_path, "M.csv", _FAKE_M_CSV)
+        M = hong2025.load_calibration_matrix(path)
+        assert M.shape == (3, 3)
+        np.testing.assert_allclose(M[0], [2.0, 0.0, 0.5])
+
+    def test_wrong_shape_is_rejected(self, tmp_path):
+        path = _write(tmp_path, "M.csv", "1.0,2.0\n3.0,4.0\n")
+        with pytest.raises(ValueError, match="expected a 3x3 matrix"):
+            hong2025.load_calibration_matrix(path)
+
+
+class TestW2dToRgb:
+    @pytest.fixture
+    def M(self, tmp_path):
+        return hong2025.load_calibration_matrix(_write(tmp_path, "M.csv", _FAKE_M_CSV))
+
+    def test_single_coordinate_returns_a_single_rgb(self, M):
+        rgb = hong2025.w2d_to_rgb(np.array([0.1, -0.2]), M)
+        assert rgb.shape == (3,)
+        # R = 2*0.1 + 0.5 = 0.7; G = -1*(-0.2) + 0.5 = 0.7; B = 0.5
+        np.testing.assert_allclose(rgb, [0.7, 0.7, 0.5])
+
+    def test_batch_shape_is_preserved(self, M):
+        coords = np.zeros((5, 2))
+        assert hong2025.w2d_to_rgb(coords, M).shape == (5, 3)
+
+    def test_augmentation_supplies_the_dc_offset(self, M):
+        """The origin maps to the matrix's third column, not to black."""
+        np.testing.assert_allclose(hong2025.w2d_to_rgb(np.zeros(2), M), [0.5, 0.5, 0.5])
+
+    def test_out_of_gamut_values_are_clipped(self, M):
+        # R = 2*10 + 0.5 = 20.5 -> 1.0; G = -1*10 + 0.5 = -9.5 -> 0.0
+        rgb = hong2025.w2d_to_rgb(np.array([10.0, 10.0]), M)
+        np.testing.assert_allclose(rgb, [1.0, 0.0, 0.5])
+
+    def test_bad_coordinate_shape_raises(self, M):
+        with pytest.raises(ValueError, match=r"shape \(2,\) or \(N, 2\)"):
+            hong2025.w2d_to_rgb(np.zeros((4, 3)), M)
+
+
+# ----------------------------------------------------------------------
 # External validity — requires the OSF download
 # ----------------------------------------------------------------------
 
 _SUB1 = hong2025.default_data_dir() / "sub1"
 _WEIGHTS = _SUB1 / "Bestfit_W_sub1.csv"
 _NOISE = _SUB1 / "Noise_ellipses_sub1.csv"
+_CALIBRATION_CSV = (
+    hong2025.default_data_dir()
+    / "calibration"
+    / f"M_2DWToRGB_DELL_{hong2025.CALIBRATION_DATE}_copy.csv"
+)
 
 requires_osf_data = pytest.mark.skipif(
     not (_WEIGHTS.exists() and _NOISE.exists()),
@@ -300,3 +360,34 @@ def test_published_trials_load_with_expected_counts():
     assert fitted.num_trials == 6000  # AEPsych only -- what the paper fitted
     assert everything.num_trials == 12000  # + held-out MOCS validation trials
     assert float(fitted.responses.mean()) == pytest.approx(0.7077, abs=1e-3)
+
+
+@pytest.mark.skipif(
+    not _CALIBRATION_CSV.exists(),
+    reason=(
+        "Calibration matrix not downloaded. Run: python -c "
+        "'from psyphy.data.published import hong2025; "
+        "hong2025.fetch_calibration_matrix()'"
+    ),
+)
+def test_published_calibration_maps_origin_to_neutral_gray():
+    """W-space origin must land on neutral monitor gray.
+
+    The transformation-matrix README on OSF states that 2DW ``[0, 0]`` is the
+    neutral monitor grey ``[0.5, 0.5, 0.5]`` in linear RGB. That single
+    documented anchor pins the whole affine transform: it checks the DC offset
+    (the matrix's third column), the augmentation, and the multiply
+    orientation all at once. A transposed matrix or a missing augmentation
+    would both fail here.
+    """
+    M = hong2025.load_calibration_matrix(_CALIBRATION_CSV)
+    rgb = hong2025.w2d_to_rgb(np.zeros(2), M)
+    np.testing.assert_allclose(rgb, [0.5, 0.5, 0.5], atol=1e-5)
+
+    # Over the paper's own reference grid nothing should clip.
+    grid = np.stack(
+        np.meshgrid(np.linspace(-0.7, 0.7, 7), np.linspace(-0.7, 0.7, 7)), axis=-1
+    ).reshape(-1, 2)
+    colors = hong2025.w2d_to_rgb(grid, M)
+    assert colors.shape == (49, 3)
+    assert np.all((colors > 0.0) & (colors < 1.0)), "unexpected gamut clipping"

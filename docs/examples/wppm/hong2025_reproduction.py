@@ -5,21 +5,55 @@ Reproducing Hong et al. (2025) with psyphy
 This  script fits *published human
 data from Hong et al. (2025)* and compares against the authors' own published fit.
 
-It runs in two stages, deliberately separated:
+It runs in three stages, deliberately separated. The first two are given the
+paper's own fitted weights and check what psyphy *computes* from them; only the
+third asks psyphy to *fit* anything.
 
-  Stage 1 -- exact check. Feed the paper's published weights into psyphy's
-      covariance field and compare to their published covariances.
+  Stage 1 -- covariance field, exact. Feed the paper's published weights into
+      psyphy's covariance field and compare to their published covariances.
+      Deterministic: no optimizer, no Monte Carlo. Seconds.
 
-  Stage 2 -- refit. Start from a prior sample and fit psyphy's WPPM to the
-      paper's trials, then compare the resulting field to theirs.
+  Stage 2 -- threshold contours, reproducing the paper's Figure 2B. Invert the
+      oddity task to turn that noise field into 66.7%-correct discrimination
+      thresholds, and plot them in the paper's own monitor-calibrated colors.
+      Monte Carlo but no optimizer. ~20 s on CPU at the default settings.
 
-Running stage 1 first tells us: if stage 2 disagrees, stage 1 tells us whether
-the model or the optimizer is at fault.
+  Stage 3 -- refit. Start from a prior sample and fit psyphy's WPPM to the
+      paper's trials, then compare the resulting field to theirs. At the
+      paper's settings this is a GPU/cluster job; `--mode quick` is a
+      seconds-long smoke test that does NOT reproduce anything.
+
+The ordering is the point: stages 1-2 hold the model to account with the
+optimizer removed from the picture, so if stage 3 disagrees you already know
+the disagreement is the optimizer's and not the model's.
 
 Usage
 -----
-    python hong2025_reproduction.py    # quick mode, ~10 s on CPU (smoke test only)
-    python hong2025_reproduction.py --mode full    # paper settings, GPU 15 min
+    python hong2025_reproduction.py    # ~1 min CPU; stage 3 is only a smoke test
+    python hong2025_reproduction.py --skip-refit    # stages 1-2 only, no fitting
+    python hong2025_reproduction.py --mode full     # paper settings, GPU/cluster
+    python hong2025_reproduction.py --skip-thresholds   # stages 1 and 3 only
+
+Measured runtimes
+-----------------
+Keep these current when settings change -- they are quoted in the accompanying
+markdown page. CPU figures are from an Apple Silicon laptop with JAX using
+~12 cores; the GPU figure is a single CUDA device.
+
+    Stage 1  covariance check, 10 609 pts, deterministic  CPU   seconds
+    Stage 2  Figure 2B, 49 refs, n_theta=16,
+             n_length=300, mc=500                         CPU   20-23 s
+    Stage 2  at the paper's settings (n_length=1000,
+             mc=2000): 13.4 s per reference point         CPU   ~11 min
+    Stages 1+2 together                                   CPU   24-36 s
+             (spread is CPU scheduling, not workload)
+    Stage 3  quick smoke test, 500 trials, 20 steps,
+             mc=50 -- the fit itself                      CPU   0.8 s
+    Stage 3  full: 6 000 trials, 1 500 steps, mc=2000,
+             3 restarts (3 x ~317 s)                      GPU   ~16 min
+
+For reference, the paper's own SLURM header requests an H100 for 14 h -- but
+that covers the main fit *plus* 120 bootstrap refits, not a single fit.
 
 Data is downloaded on first run into ~/.cache/psyphy/ (override with
 $PSYPHY_DATA_HOME). psyphy ships no data; see the accompanying markdown page.
@@ -55,19 +89,33 @@ from scipy.spatial import cKDTree  # noqa: E402
 from psyphy.data.published import hong2025
 from psyphy.inference import MAPOptimizer
 from psyphy.model import WPPMCovarianceField
+from psyphy.posterior import MAPPosterior, ThresholdConfig, WPPMPredictivePosterior
 
 # --8<-- [end:imports]
 
 PLOTS_DIR = Path(__file__).parent / "plots"
 
 # --8<-- [start:modes]
-# Stage-2 compute settings. "full" is the paper's own configuration; "quick"
+# Stage-3 compute settings. "full" is the paper's own configuration; "quick"
 # exists only to prove the pipeline runs -- it will NOT reproduce the paper.
 MODES = {
     "quick": {"max_trials": 500, "mc_samples": 50, "steps": 20, "restarts": 1},
     "full": {"max_trials": None, "mc_samples": 2000, "steps": 1500, "restarts": 3},
 }
 # --8<-- [end:modes]
+
+# --8<-- [start:threshold_settings]
+# Stage-2 (threshold inversion) settings.
+#
+# The paper uses n_theta=16, n_length=1000, mc_samples=2000, which costs ~13 s
+# per reference point -- about 11 CPU minutes for the whole 7x7 grid. The
+# reduced settings below reproduce the published semi-axes to a median 2.18 %
+# (max 10.78 %) in 20-23 s of CPU wall clock, measured over the full 49-point
+# grid. That is the right trade for a tutorial; raise them toward the paper's
+# for publication figures, where the residual shrinks and the cost grows.
+THRESHOLD_MC_SAMPLES = 500
+THRESHOLD_CONFIG = ThresholdConfig(n_theta=16, n_length=300)
+# --8<-- [end:threshold_settings]
 
 
 # ---------------------------------------------------------------------------
@@ -201,6 +249,74 @@ def plot_comparison(coords, Sigma_fit, Sigma_ref, out_path, title, scale):
     print(f"  saved {out_path.name}")
 
 
+# --8<-- [start:plot_thresholds]
+def plot_threshold_figure(coords, Sigma_psyphy, Sigma_published, out_path, scale, M):
+    """Figure 2B: threshold contours, colored by reference stimulus.
+
+    Each ellipse sits at its reference location and takes that location's own
+    color, which is what makes the paper's version readable as a *color*
+    figure rather than an abstract field of ellipses. ``M`` is the monitor
+    calibration matrix; when it is None the plot falls back to neutral grey and
+    says so in the legend, so the figure is never silently mislabelled.
+    """
+    fig, ax = plt.subplots(figsize=(6.5, 6.5), dpi=150)
+
+    if M is not None:
+        colors = hong2025.w2d_to_rgb(coords, M)
+        color_note = "color = reference stimulus (monitor-calibrated)"
+    else:
+        colors = np.full((len(coords), 3), 0.45)
+        color_note = "neutral grey — calibration matrix not downloaded"
+
+    # Published contours first, as a dashed dark outline underneath, so the
+    # comparison is visible where the two nearly coincide.
+    segs_pub, _ = _ellipse_segments(coords, Sigma_published, scale)
+    ax.add_collection(
+        LineCollection(
+            segs_pub, colors="black", linewidths=2.2, alpha=0.35, linestyles="--"
+        )
+    )
+
+    segs_psy, valid = _ellipse_segments(coords, Sigma_psyphy, scale)
+    ax.add_collection(LineCollection(segs_psy, colors=colors[valid], linewidths=1.6))
+    ax.scatter(coords[:, 0], coords[:, 1], c=colors, s=14, zorder=5, edgecolors="none")
+
+    ax.plot(
+        [],
+        [],
+        color="black",
+        lw=2.2,
+        ls="--",
+        alpha=0.5,
+        label="published (Hong et al. 2025)",
+    )
+    ax.plot([], [], color="0.2", lw=1.6, label="psyphy (oddity inversion)")
+
+    ticks = np.linspace(-0.7, 0.7, 5)
+    ax.set_xticks(ticks)
+    ax.set_yticks(ticks)
+    ax.set_xlim(-0.95, 0.95)
+    ax.set_ylim(-0.95, 0.95)
+    ax.set_aspect("equal")
+    ax.set_xlabel("W dim 1")
+    ax.set_ylabel("W dim 2")
+    ax.set_title(
+        " 66.7%-correct discrimination thresholds\n"
+        f"Figure 2B in Hong et al. 2025 reproduced, subject 1 (CH)",#; {color_note}",
+        fontsize=9,
+    )
+    ax.legend(fontsize=8, loc="upper left", framealpha=0.9)
+    ax.grid(True, alpha=0.2)
+    fig.tight_layout()
+    out_path.parent.mkdir(parents=True, exist_ok=True)
+    fig.savefig(out_path, bbox_inches="tight")
+    plt.close(fig)
+    print(f"  saved {out_path.name}")
+
+
+# --8<-- [end:plot_thresholds]
+
+
 # ---------------------------------------------------------------------------
 # Stages
 # ---------------------------------------------------------------------------
@@ -232,9 +348,70 @@ def stage1_exact_check(paths: dict[str, Path]) -> None:
     print("  agreement to the precision the published file can express.")
 
 
-def stage2_refit(paths: dict[str, Path], cfg: dict, mode: str, seed: int) -> None:
+def stage2_thresholds(paths: dict[str, Path]) -> None:
+    """Reproduce Figure 2B: threshold contours from the paper's own weights."""
+    print("\n=== Stage 2: threshold contours (Figure 2B) from W_org ===")
+
+    # --8<-- [start:thresholds]
+    W_org = hong2025.load_reference_W(paths["weights"])
+    coords, thres_published = hong2025.load_sigma_table(paths["thres_ellipses"])
+
+    # No fitting here -- the paper's weights go straight in, so this isolates
+    # the oddity inversion from the optimizer entirely.
+    model = hong2025.build_paper_model(mc_samples=THRESHOLD_MC_SAMPLES)
+    posterior = MAPPosterior({"W": W_org}, model)
+
+    predictive = WPPMPredictivePosterior(
+        posterior,
+        jnp.asarray(coords),  # bare reference points, not (ref, comparison) pairs
+        n_samples=1,  # MAPPosterior is a point estimate: 1 draw is all there is
+        threshold_pred=True,
+        threshold_config=THRESHOLD_CONFIG,
+    )
+    thres_psyphy = np.asarray(predictive.mean)  # (49, 2, 2)
+    # --8<-- [end:thresholds]
+
+    # --8<-- [start:threshold_error]
+    # Compare semi-axis lengths: sqrt of the covariance eigenvalues.
+    got = np.sqrt(np.linalg.eigvalsh(thres_psyphy))
+    want = np.sqrt(np.linalg.eigvalsh(thres_published))
+    rel_err = np.abs(got - want) / want
+    # --8<-- [end:threshold_error]
+
+    print(f"  reference points : {len(coords)}")
+    print(
+        f"  semi-axis error  : median {np.median(rel_err) * 100:.2f} %, "
+        f"max {rel_err.max() * 100:.2f} %"
+    )
+    print(
+        f"  settings         : n_theta={THRESHOLD_CONFIG.n_theta}, "
+        f"n_length={THRESHOLD_CONFIG.n_length}, mc={THRESHOLD_MC_SAMPLES}"
+    )
+
+    # --8<-- [start:colors]
+    # The paper colors each ellipse by its reference stimulus, via a monitor
+    # calibration matrix published alongside the data. Optional: the figure
+    # falls back to neutral grey when it has not been downloaded.
+    try:
+        M = hong2025.load_calibration_matrix(hong2025.fetch_calibration_matrix())
+    except Exception as exc:  # network, or OSF layout change
+        print(f"  color calibration unavailable ({exc}); plotting in grey")
+        M = None
+    # --8<-- [end:colors]
+
+    plot_threshold_figure(
+        coords,
+        thres_psyphy,
+        thres_published,
+        PLOTS_DIR / "hong2025_thresholds.png",
+        scale=ellipse_plot_scale(coords, thres_published),
+        M=M,
+    )
+
+
+def stage3_refit(paths: dict[str, Path], cfg: dict, mode: str, seed: int) -> None:
     """Fit psyphy's WPPM to the published trials and compare fields."""
-    print(f"\n=== Stage 2: refit from a prior sample (mode={mode}) ===")
+    print(f"\n=== Stage 3: refit from a prior sample (mode={mode}) ===")
 
     # --8<-- [start:load]
     # Only the AEPsych trials were used for the published fit; the MOCS trials
@@ -278,7 +455,7 @@ def stage2_refit(paths: dict[str, Path], cfg: dict, mode: str, seed: int) -> Non
     # Grid coordinates come from the published table, so there is no meshgrid
     # ordering convention to get wrong.
     coords, _ = hong2025.load_sigma_table(paths["thres_ellipses"])
-    W_org = hong2025.load_reference_W(paths["weights"]) #original best fit Weights
+    W_org = hong2025.load_reference_W(paths["weights"])  # original best fit Weights
 
     Sigma_ref = np.asarray(
         WPPMCovarianceField(model, {"W": W_org})(jnp.asarray(coords))
@@ -298,8 +475,8 @@ def stage2_refit(paths: dict[str, Path], cfg: dict, mode: str, seed: int) -> Non
         Sigma_ref,
         PLOTS_DIR / f"hong2025_{mode}_ellipses.png",
         f"Σ_noise(x) — psyphy MAP fit vs Hong et al. 2025 (subj 1 CH)\n"
-        f"mode={mode}, N={data.num_trials}, mc={cfg['mc_samples']}, steps={cfg['steps']}"
-        # f"  (not the published threshold contours)",
+        f"mode={mode}, N={data.num_trials}, mc={cfg['mc_samples']}, steps={cfg['steps']}",
+        # f"  (not the published threshold contours)"
         # f"— ellipses magnified {scale:.1f}x"
         scale=scale,
     )
@@ -339,6 +516,19 @@ def main() -> int:
         action="store_false",
         help="skip stage 1 and the 68 MB download",
     )
+    parser.add_argument(
+        "--skip-thresholds",
+        action="store_true",
+        help="skip stage 2 (the Figure 2B threshold inversion, ~20 s on CPU)",
+    )
+    parser.add_argument(
+        "--skip-refit",
+        action="store_true",
+        help=(
+            "skip stage 3. Stages 1-2 reproduce published results on CPU; the "
+            "stage-3 refit at paper settings is a GPU/cluster job."
+        ),
+    )
     args = parser.parse_args()
 
     print(f"device: {jax.devices()[0]}   x64: {jax.config.read('jax_enable_x64')}")
@@ -348,7 +538,20 @@ def main() -> int:
     # --8<-- [end:fetch]
 
     stage1_exact_check(paths)
-    stage2_refit(paths, MODES[args.mode], args.mode, args.seed)
+    if args.skip_thresholds:
+        print("\n=== Stage 2: skipped (--skip-thresholds) ===")
+    else:
+        stage2_thresholds(paths)
+    if args.skip_refit:
+        print("\n=== Stage 3: skipped (--skip-refit) ===")
+    else:
+        if args.mode == "full" and jax.devices()[0].platform == "cpu":
+            print(
+                "\n  WARNING: --mode full on CPU. The paper's settings are a "
+                "GPU/cluster job\n  (~16 min on one GPU; far longer here). "
+                "Ctrl-C and pass --mode quick to smoke-test."
+            )
+        stage3_refit(paths, MODES[args.mode], args.mode, args.seed)
     return 0
 
 

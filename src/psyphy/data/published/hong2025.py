@@ -10,7 +10,7 @@ Loaders for the published human colour-discrimination dataset of Hong et al.
     https://doi.org/10.7554/eLife.108943.2
 
 Hong et al 2025 fitted a Wishart Process Psychophysical Model to eight observers
- and published both the trial-level data and the fitted Chebyshev weights. 
+ and published both the trial-level data and the fitted Chebyshev weights.
 
 Data availability
 -----------------
@@ -45,6 +45,7 @@ import sys
 import urllib.error
 import urllib.request
 from collections.abc import Mapping, Sequence
+from fnmatch import fnmatch
 from pathlib import Path
 from typing import Any
 
@@ -54,14 +55,18 @@ import numpy as np
 from psyphy.data.dataset import TrialData
 
 __all__ = [
+    "CALIBRATION_DATE",
     "PAPER_HYPERPARAMS",
     "SUBJECT_INITIALS",
     "build_paper_model",
     "default_data_dir",
     "fetch",
+    "fetch_calibration_matrix",
+    "load_calibration_matrix",
     "load_reference_W",
     "load_sigma_table",
     "load_trials",
+    "w2d_to_rgb",
 ]
 
 # ----------------------------------------------------------------------
@@ -71,6 +76,16 @@ __all__ = [
 OSF_NODE = "k27js"
 _OSF_API = "https://api.osf.io/v2"
 _ORGANIZED = "Organized data and model predictions"
+_CALIBRATION = "Calibration and transformation"
+_TRANSFORM_MATRICES = "Transformation matrices"
+
+#: Date stamp of the monitor calibration the published figures used.
+#:
+#: The transformation-matrix CSVs on OSF are named
+#: ``M_<From>To<To>_DELL_<date>_copy.csv``. Only one calibration is published,
+#: so this is effectively a constant; it is exposed as a parameter because the
+#: filenames carry it and a future recalibration would change it.
+CALIBRATION_DATE = "02242025"
 
 #: Subject number -> observer initials, as used in the paper and the OSF tree.
 SUBJECT_INITIALS: Mapping[int, str] = {
@@ -202,6 +217,22 @@ def _find_file(items: Sequence[dict[str, Any]], name: str) -> dict[str, Any] | N
     return None
 
 
+def _match_files(items: Sequence[dict[str, Any]], pattern: str) -> list[dict[str, Any]]:
+    """Return every file entry whose name matches a glob pattern.
+
+    Used for the calibration matrices, whose names carry both a monitor label
+    and a ``_copy`` suffix (``M_2DWToRGB_DELL_02242025_copy.csv``). Matching a
+    pattern rather than constructing the exact name keeps this robust to those
+    incidental parts.
+    """
+    return [
+        item
+        for item in items
+        if item.get("attributes", {}).get("kind") == "file"
+        and fnmatch(str(item.get("attributes", {}).get("name", "")), pattern)
+    ]
+
+
 def _download(
     item: dict[str, Any], dest: Path, ctx: ssl.SSLContext, *, verbose: bool
 ) -> None:
@@ -310,6 +341,168 @@ def fetch(
         _download(item, dest, ctx, verbose=verbose)
         paths[key] = dest
     return paths
+
+
+def fetch_calibration_matrix(
+    data_dir: str | Path | None = None,
+    *,
+    file_date: str = CALIBRATION_DATE,
+    verbose: bool = True,
+) -> Path:
+    """Download the 2-D W space -> RGB transformation matrix from OSF.
+
+    Separate from :func:`fetch` because this file is not per-subject and does
+    not live under the same OSF folder: it sits in
+    ``Calibration and transformation/Transformation matrices/``, alongside the
+    monitor colorimetry matrices, and one copy serves every observer.
+
+    Parameters
+    ----------
+    data_dir : str or Path, optional
+        Destination root. Defaults to :func:`default_data_dir`; the file lands
+        in a ``calibration/`` subdirectory of it.
+    file_date : str, default=:data:`CALIBRATION_DATE`
+        Calibration date stamp embedded in the filename.
+    verbose : bool, default=True
+        Print progress.
+
+    Returns
+    -------
+    Path
+        Local path to ``M_2DWToRGB_DELL_<file_date>_copy.csv``.
+
+    See Also
+    --------
+    load_calibration_matrix : read the downloaded file.
+    w2d_to_rgb : apply it.
+    """
+    root_dir = Path(data_dir) if data_dir is not None else default_data_dir()
+    dest_dir = root_dir / "calibration"
+
+    ctx = _ssl_context()
+    if verbose:
+        print(f"OSF {OSF_NODE} calibration -> {dest_dir}")
+
+    root_items = _list_folder(f"{_OSF_API}/nodes/{OSF_NODE}/files/osfstorage/", ctx)
+    cal_url = _subfolder_url(root_items, _CALIBRATION)
+    if not cal_url:
+        raise RuntimeError(f"'{_CALIBRATION}' not found on OSF node {OSF_NODE}.")
+
+    cal_items = _list_folder(cal_url, ctx)
+    matrices_url = _subfolder_url(cal_items, _TRANSFORM_MATRICES)
+    if not matrices_url:
+        raise RuntimeError(
+            f"'{_TRANSFORM_MATRICES}' not found under '{_CALIBRATION}' "
+            f"on OSF node {OSF_NODE}."
+        )
+
+    matrix_items = _list_folder(matrices_url, ctx)
+    pattern = f"M_2DWToRGB*{file_date}*.csv"
+    matches = _match_files(matrix_items, pattern)
+    if not matches:
+        available = sorted(
+            str(i["attributes"]["name"])
+            for i in matrix_items
+            if i.get("attributes", {}).get("kind") == "file"
+        )
+        raise RuntimeError(
+            f"No file matching '{pattern}' under '{_TRANSFORM_MATRICES}'. "
+            f"Available: {available}"
+        )
+    if len(matches) > 1:
+        names = sorted(str(m["attributes"]["name"]) for m in matches)
+        raise RuntimeError(
+            f"'{pattern}' matched more than one file: {names}. "
+            "Pass a more specific file_date."
+        )
+
+    item = matches[0]
+    dest = dest_dir / str(item["attributes"]["name"])
+    _download(item, dest, ctx, verbose=verbose)
+    return dest
+
+
+def load_calibration_matrix(path: str | Path) -> np.ndarray:
+    """Load a 3x3 transformation matrix CSV.
+
+    Parameters
+    ----------
+    path : str or Path
+        Path to a ``M_*To*_DELL_*.csv`` file from
+        :func:`fetch_calibration_matrix`.
+
+    Returns
+    -------
+    np.ndarray, shape (3, 3)
+        The matrix, oriented to be applied to **column** vectors from the
+        left, exactly as stored.
+
+    Notes
+    -----
+    Header-less, comma-delimited, three rows. The OSF folder's own README
+    documents ``np.loadtxt`` as the intended reader.
+    """
+    M = np.loadtxt(path, delimiter=",", dtype=np.float64)
+    if M.shape != (3, 3):
+        raise ValueError(f"{path}: expected a 3x3 matrix, got shape {M.shape}.")
+    return M
+
+
+def w2d_to_rgb(coords: np.ndarray, M: np.ndarray) -> np.ndarray:
+    """Convert 2-D W space coordinates to linear monitor RGB.
+
+    The transform is affine, handled by augmenting each coordinate with a
+    constant 1 so that the matrix's third column supplies the DC offset
+    between W-space origin and monitor gray::
+
+        rgb = clip(M @ [w1, w2, 1], 0, 1)
+
+    Parameters
+    ----------
+    coords : np.ndarray, shape (2,) or (N, 2)
+        Stimulus coordinates in the paper's 2-D W space.
+    M : np.ndarray, shape (3, 3)
+        Matrix from :func:`load_calibration_matrix`.
+
+    Returns
+    -------
+    np.ndarray, shape (3,) or (N, 3)
+        Linear RGB in [0, 1], matching the input's dimensionality.
+
+    Notes
+    -----
+    **These are linear, non-gamma-corrected RGB values**, which is what the
+    paper's own plotting code produces and passes to matplotlib. Applying an
+    sRGB gamma would give more perceptually even colours but would no longer
+    match the published figures.
+
+    **The matrix is monitor-specific** -- one Dell display, calibrated on the
+    date in :data:`CALIBRATION_DATE`. It reproduces *this paper's* figures; it
+    is not a general W-space-to-RGB conversion, and a different display needs
+    its own calibration.
+
+    Values outside the monitor gamut are clipped, so a returned colour on a
+    channel boundary may not be the exact requested chromaticity. Over the
+    paper's own [-0.7, 0.7] reference grid no clipping occurs.
+
+    Examples
+    --------
+    >>> M = load_calibration_matrix(fetch_calibration_matrix())  # doctest: +SKIP
+    >>> w2d_to_rgb(np.zeros(2), M)  # doctest: +SKIP
+    array([0.5, 0.49999396, 0.5])
+    """
+    xy = np.asarray(coords, dtype=np.float64)
+    single = xy.ndim == 1
+    if single:
+        xy = xy[None, :]
+    if xy.ndim != 2 or xy.shape[-1] != 2:
+        raise ValueError(
+            f"coords must have shape (2,) or (N, 2), got {np.shape(coords)}."
+        )
+
+    augmented = np.concatenate([xy, np.ones((xy.shape[0], 1))], axis=1)  # (N, 3)
+    rgb = np.clip(augmented @ np.asarray(M, dtype=np.float64).T, 0.0, 1.0)
+    return rgb[0] if single else rgb
 
 
 # ----------------------------------------------------------------------
@@ -619,8 +812,8 @@ def _cli() -> int:
     parser.add_argument("--subject", type=int, nargs="+", default=[1])
     parser.add_argument("--data-dir", default=None)
 
-    # Noise_ellipses corresponds to Fig. S3 (Supplements) in Hong et al 2025. 
-    # The internal noise ellipses are larger in file size and are not 
+    # Noise_ellipses corresponds to Fig. S3 (Supplements) in Hong et al 2025.
+    # The internal noise ellipses are larger in file size and are not
     # necessary to plot the threshold contours.
     parser.add_argument(
         "--noise-ellipses",
