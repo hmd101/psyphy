@@ -87,6 +87,20 @@ dependencies (matplotlib, seaborn, JupyterLab):
 ```
 pip install -e '.[examples]'
 ```
+Some example scripts (e.g. `hong2025_reproduction.py --mode full`,
+`full_wppm_fit_example.py`) are GPU jobs. On an NVIDIA machine, including the
+Flatiron cluster, add the `cuda` extra:
+```
+pip install -e '.[cuda]'
+```
+JAX bundles its own CUDA/cuDNN runtime through this extra — do **not** also
+`module load cuda cudnn` on the cluster, since the system libraries then take
+precedence on `LD_LIBRARY_PATH` and break GPU detection; `module load python`
+is enough. **Apple Silicon GPUs are not supported**: JAX's Metal backend
+cannot do `float64`, which these examples require for their
+published-precision comparisons, so Mac users should expect CPU-only
+execution (or `--mode quick`-style smoke tests only).
+
 Deploy:
 ```
 mkdocs gh-deploy --clean
@@ -157,6 +171,14 @@ pre-commit install
 ```
 This project uses automated checks (formatting, linting, type checking) via pre-commit  ￼.
 These run automatically when you commit.
+
+Alternatively, [uv](https://docs.astral.sh/uv/) installs from the committed [`uv.lock`](uv.lock), giving you the exact versions everyone else resolved rather than whatever the loose ranges in `pyproject.toml` allow on the day you install:
+```
+module load uv          # Flatiron cluster only; skip if uv is already installed
+uv sync --extra dev
+uv run pre-commit install
+```
+Use `uv run <command>` instead of manually activating the venv (e.g. `uv run pytest`), or `source .venv/bin/activate` once `uv sync` has created it. Any time you add or bump a dependency in `pyproject.toml`, run `uv lock` and commit the updated `uv.lock` alongside it.
 
 ---
 

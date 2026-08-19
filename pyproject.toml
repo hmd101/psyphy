@@ -59,6 +59,20 @@ examples = [
   "seaborn>=0.13",
   "jupyterlab>=4.0",
 ]
+# GPU (NVIDIA/CUDA) support, e.g. for running the example scripts on the
+# Flatiron cluster. `jax[cuda12]` pulls in jaxlib's CUDA plugin plus matching
+# nvidia-*-cu12 wheels; JAX bundles its own CUDA/cuDNN runtime this way, so no
+# system CUDA/cuDNN module should be loaded alongside it -- doing so puts an
+# older system libcusparse/libcudnn ahead of the bundled ones on
+# LD_LIBRARY_PATH and breaks GPU detection (`module load python` is enough).
+#
+# There is no equivalent extra for Apple Silicon GPUs: JAX's Metal backend
+# does not support float64, which the WPPM examples require for their
+# published-precision comparisons, so Mac users run CPU-only. Third-party
+# Metal backends exist (jax-mps / applejax) but are not wired up here.
+cuda = [
+  "jax[cuda12]>=0.4.28",
+]
 
 [project.urls]
 Homepage = "https://flatironinstitute.github.io/psyphy"
