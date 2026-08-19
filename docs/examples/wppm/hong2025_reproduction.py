@@ -475,7 +475,7 @@ def stage3_refit(paths: dict[str, Path], cfg: dict, mode: str, seed: int) -> Non
         Sigma_ref,
         PLOTS_DIR / f"hong2025_{mode}_ellipses.png",
         f"Σ_noise(x) — psyphy MAP fit vs Hong et al. 2025 (subj 1 CH)\n"
-        f"mode={mode}, N={data.num_trials}, mc={cfg['mc_samples']}, steps={cfg['steps']}",
+        f" N={data.num_trials}, mc={cfg['mc_samples']}, steps={cfg['steps']}",
         # f"  (not the published threshold contours)"
         # f"— ellipses magnified {scale:.1f}x"
         scale=scale,
