@@ -226,12 +226,43 @@ class TestPredictivePosterior:
         mean = threshold_predictive_posterior.mean
         assert mean.shape == (2, 2, 2)
 
-    def test_threshold_mean_is_psd(self, threshold_predictive_posterior):
-        """Recovered threshold covariances are positive semi-definite."""
-        mean = threshold_predictive_posterior.mean
+    def test_threshold_mean_is_psd(self):
+        """Recovered threshold covariances are positive semi-definite.
+
+        Deliberately *not* using the tiny ``threshold_predictive_posterior``
+        fixture, and building its own model with a realistic ``num_samples``.
+
+        The inversion fits Sigma^-1 by least squares through one boundary point
+        per probed direction. When those radii are dominated by Monte Carlo
+        noise the fit is ill-conditioned and can come back indefinite -- the
+        Monte Carlo sample count is the dominant term, not the direction count.
+        At ``num_samples=20`` this fails readily and *inconsistently*: observed
+        eigenvalues of (-0.17, +0.02) under jax 0.4.28 where jax 0.11 passed,
+        then the reverse after raising only n_theta/n_length. Those outcomes
+        differ solely because the PRNG stream differs between versions.
+
+        A PSD assertion under settings too coarse to support one tests the seed,
+        not the implementation, so this uses settings near the tutorial's.
+        """
+        model = WPPM(
+            input_dim=2,
+            prior=Prior(input_dim=2, basis_degree=3),
+            likelihood=OddityTask(config=OddityTaskConfig(num_samples=500)),
+            noise=GaussianNoise(),
+        )
+        posterior = MAPPosterior(model.init_params(jr.PRNGKey(0)), model)
+        X_test = jnp.array([[0.0, 0.0], [0.3, 0.3]])
+        predictive = WPPMPredictivePosterior(
+            posterior,
+            X_test,
+            n_samples=1,
+            threshold_pred=True,
+            threshold_config=ThresholdConfig(n_theta=16, n_length=200, chunk=2000),
+        )
+        mean = predictive.mean
         for i in range(mean.shape[0]):
             eigvals = jnp.linalg.eigvalsh(mean[i])
-            assert jnp.all(eigvals >= -1e-6)
+            assert jnp.all(eigvals >= -1e-6), f"non-PSD at test point {i}: {eigvals}"
 
     def test_threshold_variance_shape_and_nonneg(self, threshold_predictive_posterior):
         """threshold variance has the same shape as mean and is non-negative."""

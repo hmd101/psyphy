@@ -23,6 +23,16 @@ from psyphy.data.dataset import TrialData
 from psyphy.data.published import hong2025
 from psyphy.model.covariance_field import WPPMCovarianceField
 
+# ``enable_x64`` moved from ``jax.experimental`` to the top-level ``jax``
+# namespace. psyphy supports ``jax>=0.4.28``, which spans the move, so resolve
+# it at import time rather than committing to one spelling: 0.4.28 has only the
+# experimental path, recent versions have only the top-level one, and hardcoding
+# either breaks the other.
+try:
+    _enable_x64 = jax.enable_x64
+except AttributeError:  # jax < 0.6-ish
+    from jax.experimental import enable_x64 as _enable_x64
+
 
 @pytest.fixture
 def x64():
@@ -39,7 +49,7 @@ def x64():
     float32 (e.g. ``test_mc_likelihood.py::test_gradients_are_finite_normal_case``),
     and would fail depending on collection order.
     """
-    with jax.enable_x64():
+    with _enable_x64():
         yield
 
 
