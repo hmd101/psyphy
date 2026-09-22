@@ -51,18 +51,24 @@ import jax.numpy as jnp
 from psyphy.data.published import hong2025
 from psyphy.posterior import MAPPosterior, ThresholdConfig, WPPMPredictivePosterior
 
-paths = hong2025.fetch(subject=1)                          # download from OSF
-W_org = hong2025.load_reference_W(paths["weights"])        # the paper's fitted weights
+paths = hong2025.fetch(subject=1)                       # download from OSF
+W_org = hong2025.load_reference_W(paths["weights"])     # the paper's fitted weights
 coords, published = hong2025.load_sigma_table(paths["thres_ellipses"])
 
-model = hong2025.build_paper_model(mc_samples=500)         # the paper's model
+# Model: given weights W, how noisy is perception at each color?
+model = hong2025.build_paper_model(mc_samples=500)
+# Parameter posterior: which W do we believe? (the paper's own)
+posterior = MAPPosterior({"W": W_org}, model)
+# Search settings: how carefully to look for each threshold
+config = ThresholdConfig(n_theta=16, n_length=300)
+# Predictive posterior: given what we believe about W, what do we predict here?
 thresholds = WPPMPredictivePosterior(
-    MAPPosterior({"W": W_org}, model),
-    jnp.asarray(coords),
+    posterior,
+    jnp.asarray(coords),                                # reference points only
     n_samples=1,
-    threshold_pred=True,
-    threshold_config=ThresholdConfig(n_theta=16, n_length=300),
-).mean                                                     # -> (49, 2, 2)
+    threshold_pred=True,                                # ask for thresholds
+    threshold_config=config,
+).mean                                                  # -> (49, 2, 2)
 ```
 
 The rest of this page explains those calls, then refits the model from the raw
@@ -97,9 +103,7 @@ calibrate what "close enough" means.
 The figure's colors need one more file: a 3×3 calibration matrix in a
 different OSF folder, not per-observer, so we need one more  call:
 
-```python title="Color calibration"
---8<-- "docs/examples/wppm/hong2025_reproduction.py:colors"
-```
+
 
 `load_trials` returns psyphy's ordinary `TrialData`, so nothing downstream
 needs an adapter:

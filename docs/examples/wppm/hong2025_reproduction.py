@@ -364,19 +364,23 @@ def stage2_thresholds(paths: dict[str, Path]) -> None:
     W_org = hong2025.load_reference_W(paths["weights"])
     coords, thres_published = hong2025.load_sigma_table(paths["thres_ellipses"])
 
-    # No fitting here -- the paper's weights go straight in, so this isolates
-    # the oddity inversion from the optimizer entirely.
+    # Model: given weights W, how noisy is perception at each color?
     model = hong2025.build_paper_model(mc_samples=THRESHOLD_MC_SAMPLES)
+    # Parameter posterior: which W do we believe? The paper's own -- no fitting,
+    # so any mismatch with Figure 2B comes from the inversion alone.
     posterior = MAPPosterior({"W": W_org}, model)
 
+    # Predictive posterior: given what we believe about W, what do we predict
+    # at these points? In threshold mode: how far a comparison must move from
+    # each reference to be noticed 2/3 of the time.
     predictive = WPPMPredictivePosterior(
         posterior,
-        jnp.asarray(coords),  # bare reference points, not (ref, comparison) pairs
-        n_samples=1,  # MAPPosterior is a point estimate: 1 draw is all there is
+        jnp.asarray(coords),  # reference points only; the search finds comparisons
+        n_samples=1,  # a point estimate has only one draw
         threshold_pred=True,
-        threshold_config=THRESHOLD_CONFIG,
+        threshold_config=THRESHOLD_CONFIG,  # search settings: how carefully to look
     )
-    thres_psyphy = np.asarray(predictive.mean)  # (49, 2, 2)
+    thres_psyphy = np.asarray(predictive.mean)  # (49, 2, 2); runs on first access
     # --8<-- [end:thresholds]
 
     # --8<-- [start:threshold_error]
