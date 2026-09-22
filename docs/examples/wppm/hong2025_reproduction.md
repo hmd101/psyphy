@@ -2,10 +2,11 @@
 
 We reproduce **Figure 2B** of Hong et al. (2025) — human color discrimination
 thresholds — using psyphy and the authors' own data. Two things happen here:
-we recover their published threshold contours from their published model, and
-we refit the model from scratch to check that we land where they landed.
+- we recover their published threshold contours from their published model, 
+- andwe refit the model from scratch to check that we land where they landed.
 
-If you know the paper, this shows how its pipeline maps onto psyphy. If you
+- If you know the paper, this shows how its pipeline maps onto psyphy. 
+- If you
 don't, it is a worked example of psyphy on real data, with an external ground
 truth to check against.
 
@@ -23,7 +24,7 @@ Runnable script:
 
 <div align="center">
     <img src="../plots/hong2025_thresholds.png"
-         alt="Figure 2B reproduced: 66.7%-correct discrimination threshold contours"
+         alt="Paper Figure 2B reproduced: 66.7%-correct discrimination threshold contours"
          width="620"/>
     <p><em>Colored ellipses are the contours we recover with psyphy; dashed gray
     are the published ones. Each ellipse takes the color of its own reference
@@ -32,8 +33,8 @@ Runnable script:
 
 The paper's own caption for this panel:
 
-> Discrimination threshold contours (66.7% correct) read out from the WPPM on a
-> grid of reference stimuli for a representative participant, based [on] fits to
+> Discrimination threshold contours (66.7% correct) read out from the [Wishart Psychophysical Process Model] WPPM on a
+> grid of reference stimuli for a representative participant, based  on fits to
 > the 6,000 AEPsych trials.
 
 Each ellipse says how far a comparison color must move from its reference
@@ -133,17 +134,17 @@ knowing:
 | `variance_scale=3e-4` | same | psyphy's default is `4e-3` |
 | `diag_term=0` | same | psyphy's default is `1e-6`; theirs leaves Σ unregularized |
 | `mc_samples=2000`, `bandwidth=5e-3` | `OddityTaskConfig` | |
-| `learning_rate=1e-4`, `momentum=0.2`, `total_steps=1500`, 3 restarts | `MAPOptimizer` + a loop | refit only |
+| `learning_rate=1e-4`, `momentum=0.2`, `total_steps=1500`, 3 restarts | `MAPOptimizer`  | refit only |
 
 The published weight tensor is `(5, 5, 2, 3)` — exactly psyphy's `params["W"]`
 layout, so it drops straight in with no reshaping.
 
 ---
 
-## Thresholds (Figure 2B)
+## Thresholds (Paper Figure 2B)
 
 The model is parameterized in `Σ_noise(x)`, the covariance of the observer's
-_internal representation_. The paper reports **thresholds**. Those are different
+_internal representation_. The paper reports **thresholds**, i.e. how much do we have to move in stimulus space, until the observer will notice a difference in 66% of the cases. Those are different
 objects! The map between them is as follows:
 
 ```
@@ -171,8 +172,8 @@ root-finder can walk off a noisy plateau.
 --8<-- "docs/examples/wppm/hong2025_reproduction.py:thresholds"
 ```
 
-Note what is absent: no optimizer, no trial data. We feed the paper's own
-weights in via `MAPPosterior`, so the covariance field is identical by
+Note we only feed the paper's own
+weights in via `MAPPosterior` (no data), so the covariance field is identical by
 construction and the only thing that can differ is the inversion itself.
 
 Two API details specific to threshold mode:
@@ -202,10 +203,9 @@ shrinks it, at ~30× the runtime.
 ---
 
 ## Exact check
-### does psyphy build the same covariance field they published?
+### does psyphy build the same covariance field Hong et al published?
 
-A narrower question with a sharper answer: given the paper's weights, does
-psyphy build the same covariance field they published? This is fully
+This is fully
 deterministic. 
 
 ```python title="Published weights through psyphy's covariance field"
@@ -227,29 +227,13 @@ This runs as a test (`test_covariance_field_matches_published_sigma_noise`),
 skipped automatically when the data has not been downloaded, so CI stays
 network-free.
 
-!!! note "Why float64 — and where it actually matters"
-    ```python
-    --8<-- "docs/examples/wppm/hong2025_reproduction.py:x64"
-    ```
-    We use float64 because the paper does, and because it is the safe default
-    for the refit, where gradients accumulate over 6,000 × 2,000 × 1,500 and
-    `diag_term=0` leaves Σ unregularized.
-
-    It is **not required for this check or for the thresholds**. Measured:
-    float32 gives max |diff| 6.86e-9 and median threshold error 1.77%, against
-    float64's 6.78e-9 and 2.18% — both pass, and the threshold gap is Monte
-    Carlo noise. float32's epsilon is *relative* (~1.2e-7) and Σ entries are
-    ~1e-3, so float32 resolves them to ~5e-10 absolute, finer than the file's
-    own 1e-8 rounding. Separately, at this point,  `jax-metal` has no float64, so Apple GPUs
-    are out for the refit regardless.
-
 ---
 
 ## Refit
 ### Does psyphy's fit find the paper's covariance field?
 
 Everything above started from the paper's weights. The stronger question: given
-only their **trials**, does psyphy's fit find their field?
+only their **trials**, does psyphy's fit find their covariance field?
 
 ```python title="MAP fit with the paper's optimizer settings"
 --8<-- "docs/examples/wppm/hong2025_reproduction.py:fit"
@@ -260,9 +244,7 @@ Two settings make the paper's `learning_rate=1e-4` mean the same thing here:
 `max_grad_norm=None` (they do no clipping, psyphy clips at 1.0 by default,
 which would silently rescale the effective learning rate).
 
-We compare **Σ, never W**: `U -> UQ` for orthogonal `Q` leaves `Σ = UUᵀ`
-unchanged and the prior is isotropic in the embedding axis, so the weights are
-not identifiable while the field is.
+
 
 ```python title="Comparison"
 --8<-- "docs/examples/wppm/hong2025_reproduction.py:compare"
@@ -298,6 +280,7 @@ The authors refit their own model 120 times on resampled data. This table shows 
 
 
 
+
 <div align="center">
     <img src="../plots/hong2025_full_ellipses.png"
          alt="Sigma_noise: published field vs a full-settings psyphy fit"
@@ -316,9 +299,7 @@ Three restarts from independent prior draws ended at losses 0.550 / 0.512 /
     paper for this subject," not as a general guarantee.
 
 `--mode quick` exists only to prove the code path runs on a laptop: 500 trials
-and 20 steps leave the fit essentially at its prior (`nbs_median` 0.950, which
-looks like a pass in isolation and is a decisive failure against the envelope
-above). Never quote a similarity score without a calibrated reference.
+and 20 steps leave the fit essentially at its prior 
 
 ---
 
@@ -331,18 +312,9 @@ CPU figures are an Apple Silicon laptop (~12 cores); GPU is one CUDA device.
 | Thresholds (Figure 2B) | CPU | **20–23 s** | 49 refs, `n_theta=16`, `n_length=300`, `mc=500` |
 | Thresholds at paper settings | CPU | ~11 min | `n_length=1000`, `mc=2000` (13.4 s per ref) |
 | Exact covariance check | CPU | seconds | 10,609 points, deterministic |
-| Refit — quick smoke test | CPU | 0.8 s | 500 trials, 20 steps |
 | **Refit — full** | 1 GPU | **~16 min** | 6,000 trials, 1,500 steps, `mc=2000`, 3 restarts |
 | Paper's SLURM request | H100 | 14 h | main fit **+ 120 bootstraps** |
 
-**The published figure is a ~20-second laptop computation.** "GPU job" applies
-to the refit alone, and the paper's 14-hour budget is dominated by bootstraps,
-not by the single fit.
-
-If the refit runs out of memory: `OddityTask.loglik` vmaps over all trials at
-once with no chunking, so budget several GB. Lower `mc_samples` first — it
-divides memory linearly and only adds gradient noise, whereas cutting trials
-discards data.
 
 ---
 

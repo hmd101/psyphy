@@ -113,12 +113,11 @@ MODES = {
 # --8<-- [start:threshold_settings]
 # Stage-2 (threshold inversion) settings.
 #
-# The paper uses n_theta=16, n_length=1000, mc_samples=2000, which costs ~13 s
+# Hong 2025 uses n_theta=16, n_length=1000, mc_samples=2000, which costs ~13 s
 # per reference point -- about 11 CPU minutes for the whole 7x7 grid. The
 # reduced settings below reproduce the published semi-axes to a median 2.18 %
 # (max 10.78 %) in 20-23 s of CPU wall clock, measured over the full 49-point
-# grid. That is the right trade for a tutorial; raise them toward the paper's
-# for publication figures, where the residual shrinks and the cost grows.
+# grid. 
 THRESHOLD_MC_SAMPLES = 500
 THRESHOLD_CONFIG = ThresholdConfig(n_theta=16, n_length=300)
 # --8<-- [end:threshold_settings]
@@ -397,7 +396,7 @@ def stage2_thresholds(paths: dict[str, Path]) -> None:
         f"n_length={THRESHOLD_CONFIG.n_length}, mc={THRESHOLD_MC_SAMPLES}"
     )
 
-    # --8<-- [start:colors]
+    
     # The paper colors each ellipse by its reference stimulus, via a monitor
     # calibration matrix published alongside the data. Optional: the figure
     # falls back to neutral grey when it has not been downloaded.
@@ -406,7 +405,7 @@ def stage2_thresholds(paths: dict[str, Path]) -> None:
     except Exception as exc:  # network, or OSF layout change
         print(f"  color calibration unavailable ({exc}); plotting in grey")
         M = None
-    # --8<-- [end:colors]
+   
 
     plot_threshold_figure(
         coords,
