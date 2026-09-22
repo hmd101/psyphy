@@ -69,9 +69,15 @@ from pathlib import Path
 # --8<-- [start:x64]
 import jax
 
-# float64 must be enabled before the first JAX array exists. The paper's code
-# requires it throughout; without it the stage-1 comparison floors at ~1e-7
-# instead of resolving the ~1e-9 agreement that is actually there.
+# float64 must be enabled before the first JAX array exists (a JAX constraint,
+# not ours). We use it because the paper does, and because it is the safe
+# default for the stage-3 refit, where gradients accumulate over
+# 6000 x 2000 x 1500 and diag_term=0 leaves Sigma unregularised.
+#
+# Stages 1-2 do NOT require it: measured on the full grid, float32 gives
+# max|diff| 6.86e-9 vs float64's 6.78e-9, both inside the 1e-8 gate. Sigma
+# entries are ~1e-3, so float32's *relative* 1.2e-7 epsilon resolves them to
+# ~5e-10 absolute -- below the published CSV's own 1e-8 rounding.
 jax.config.update("jax_enable_x64", True)
 # --8<-- [end:x64]
 
@@ -263,10 +269,13 @@ def plot_threshold_figure(coords, Sigma_psyphy, Sigma_published, out_path, scale
 
     if M is not None:
         colors = hong2025.w2d_to_rgb(coords, M)
-        color_note = "color = reference stimulus (monitor-calibrated)"
+        # Colours speak for themselves; no annotation needed.
+        fallback_note = ""
     else:
         colors = np.full((len(coords), 3), 0.45)
-        color_note = "neutral grey — calibration matrix not downloaded"
+        # Say so on the figure itself -- otherwise a grey fallback is
+        # indistinguishable from a correctly coloured one.
+        fallback_note = "\nneutral grey — calibration matrix not downloaded"
 
     # Published contours first, as a dashed dark outline underneath, so the
     # comparison is visible where the two nearly coincide.
@@ -302,7 +311,7 @@ def plot_threshold_figure(coords, Sigma_psyphy, Sigma_published, out_path, scale
     ax.set_ylabel("Model Dimension 2")
     ax.set_title(
         " 66.7%-correct discrimination thresholds\n"
-        f"Figure 2B in Hong et al. 2025 reproduced, subject 1 (CH)",#; {color_note}",
+        "Figure 2B in Hong et al. 2025 reproduced, subject 1 (CH)" + fallback_note,
         fontsize=9,
     )
     ax.legend(fontsize=8, loc="upper left", framealpha=0.9)
