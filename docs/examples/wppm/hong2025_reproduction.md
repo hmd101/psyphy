@@ -2,8 +2,10 @@
 
 We reproduce **Figure 2B** of Hong et al. (2025) — human color discrimination
 thresholds — using psyphy and the authors' own data. Two things happen here:
+
 - we recover their published threshold contours from their published model, 
-- andwe refit the model from scratch to check that we land where they landed.
+
+- and we refit the model from scratch to check that we land where they landed.
 
 - If you know the paper, this shows how its pipeline maps onto psyphy. 
 - If you
@@ -99,10 +101,6 @@ on request into `~/.cache/psyphy/`
 
 All three result files also carry all 120 bootstrap fits, which we use to
 calibrate what "close enough" means.
-
-The figure's colors need one more file: a 3×3 calibration matrix in a
-different OSF folder, not per-observer, so we need one more  call:
-
 
 
 `load_trials` returns psyphy's ordinary `TrialData`, so nothing downstream
