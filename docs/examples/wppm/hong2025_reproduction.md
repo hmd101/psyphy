@@ -1,5 +1,12 @@
 # Reproducing Hong et al. (2025)
 
+You might find this tutorial of interest
+- to see  a worked example of `psyphy` on real data, with an external ground
+truth to check against 
+- or, if you know the Hong et al paper, this shows how `psyphy` can be used to reproduce its results.
+
+---
+
 We reproduce **Figure 2B** of Hong et al. (2025) — human color discrimination
 thresholds — using psyphy and the authors' own data. Two things happen here:
 
@@ -7,10 +14,6 @@ thresholds — using psyphy and the authors' own data. Two things happen here:
 
 - and we refit the model from scratch to check that we land where they landed.
 
-- If you know the paper, this shows how its pipeline maps onto psyphy. 
-- If you
-don't, it is a worked example of psyphy on real data, with an external ground
-truth to check against.
 
 > Hong, F., Bouhassira, R., Chow, J., Sanders, C., Shvartsman, M., Guan, P.,
 > Williams, A. H., & Brainard, D. H. (2026). *Comprehensive characterization of
@@ -40,8 +43,7 @@ The paper's own caption for this panel:
 > the 6,000 AEPsych trials.
 
 Each ellipse says how far a comparison color must move from its reference
-before this observer distinguishes the two 66.7% of the time. We match the
-published contours to a **median 2.2% semi-axis error in ~20 s on a laptop**.
+before this observer distinguishes the two 66.7% of the time. 
 
 ## The whole recipe
 
@@ -126,8 +128,7 @@ distinct means, and the duplication lives in the likelihood.
 
 ## Model
 
-`build_paper_model()` assembles a WPPM from `PAPER_HYPERPARAMS`, transcribed
-from the paper's fitting script. Most settings map one-to-one. The ones worth
+`build_paper_model()` assembles a WPPM from `PAPER_HYPERPARAMS`. Most settings map one-to-one. The ones worth
 knowing:
 
 | Paper | psyphy | Note |
@@ -166,9 +167,7 @@ first place. So we invert numerically, the same way they do:
 
 Step 3 is closed-form: a point at radius `r` in direction `u` satisfies
 `uᵀΣ⁻¹u = 1/r²`, which is **linear** in the three free entries of `Σ⁻¹`. Least
-squares, then one inverse — no optimizer. Step 2 uses a dense sweep rather than
-bisection because `P(correct)` is monotone only up to Monte Carlo noise, and a
-root-finder can walk off a noisy plateau.
+squares, then one inverse. 
 
 ```python title="Threshold inversion at every published reference point"
 --8<-- "docs/examples/wppm/hong2025_reproduction.py:thresholds"
@@ -296,9 +295,9 @@ Three restarts from independent prior draws ended at losses 0.550 / 0.512 /
 0.505, with no sign of a multimodal landscape.
 
 !!! warning "Scope"
-    One subject (CH, 1 of 8), one run, one GPU. Not repeated for seed stability,
-    not run for the other seven. Read it as "the fitting pipeline reproduces the
-    paper for this subject," not as a general guarantee.
+    One subject (CH, 1 of 8), 1 run, 1 GPU. Not repeated for seed stability and 
+    not run for the other seven. Read this purely as "the fitting pipeline reproduces the
+    paper for this subject,".
 
 `--mode quick` exists only to prove the code path runs on a laptop: 500 trials
 and 20 steps leave the fit essentially at its prior 

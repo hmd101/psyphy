@@ -366,11 +366,10 @@ def stage2_thresholds(paths: dict[str, Path]) -> None:
 
     # Model: given weights W, how noisy is perception at each color?
     model = hong2025.build_paper_model(mc_samples=THRESHOLD_MC_SAMPLES)
-    # Parameter posterior: which W do we believe? The paper's own -- no fitting,
-    # so any mismatch with Figure 2B comes from the inversion alone.
+    # Parameter posterior: which W do we believe? ,
     posterior = MAPPosterior({"W": W_org}, model)
 
-    # Predictive posterior: given what we believe about W, what do we predict
+    # Posterior Predictive: given what we believe about W, what do we predict
     # at these points? In threshold mode: how far a comparison must move from
     # each reference to be noticed 2/3 of the time.
     predictive = WPPMPredictivePosterior(
