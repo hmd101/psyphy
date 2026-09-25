@@ -219,9 +219,7 @@ squares, then one inverse.
 --8<-- "docs/examples/wppm/hong2025_reproduction.py:thresholds"
 ```
 
-Note we only feed the paper's own
-weights in via `MAPPosterior` (no data), so the covariance field is identical by
-construction and the only thing that can differ is the inversion itself.
+
 
 Two API details specific to threshold mode:
 
@@ -338,7 +336,7 @@ CPU figures are an Apple Silicon laptop (~12 cores); GPU is one CUDA device.
 
 ## Watch out for
 
-- **`Σ_noise` and `Σ_thres` are different objects.** The thresholds above are
+- **`Σ_noise` and `Σ_thres` are different things.** The thresholds above are
   Figure 2B; the exact check and the refit compare the noise field, which is
   supplementary Figure S3. Both arrive as `(49, 2, 2)` stacks on the same grid,
   which makes them easy to conflate.
