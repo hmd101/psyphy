@@ -1,8 +1,7 @@
 # Reproducing Hong et al. (2025)
-
-Runnable script:
+This tutorial is accompanied by av
+** runnable script: **
 [`hong2025_reproduction.py`](https://github.com/flatironinstitute/psyphy/blob/main/docs/examples/wppm/hong2025_reproduction.py).
-
 
 ```bash
 python hong2025_reproduction.py --skip-refit   # everything except the refit, <1 min CPU
@@ -20,6 +19,8 @@ truth to check against
 
 ---
 
+This Tutorial shows how to reproduce the key finding shown by Hong et al 2025. They introduce the Wishart Pyschophysical Process Model 
+
 We reproduce **Figure 2B** of Hong et al. (2025) — human color discrimination
 thresholds — using psyphy and the authors' own data. Two things happen here:
 
@@ -33,6 +34,36 @@ thresholds — using psyphy and the authors' own data. Two things happen here:
 > human color discrimination thresholds.* eLife 14:RP108943.
 > <https://doi.org/10.7554/eLife.108943.2>
 
+---
+
+## Background — what the Whishart Psychophysical Process Model (WPPM) is
+
+Measuring a discrimination threshold the usual way means fixing one color and
+asking, over many trials, how far a second color has to move before someone
+notices the difference. That tells you about one color. Repeating it across a
+whole plane of colors is impractical — too many locations, far too many trials.
+
+The WPPM takes a different route. It assumes the observer's internal noise
+changes *smoothly* across color space: nearby colors are confusable in similar
+ways. That lets us fit one smooth field over the entire space instead of many
+separate measurements, so every trial informs the whole picture. Once fit, we
+can ask the model about any pair of colors — including pairs nobody was ever
+shown.
+
+The picture that comes out: discrimination is finest near gray and gets coarser
+for more saturated colors, and the threshold ellipses point outward from gray,
+so sensitivity depends on direction as well as position.
+
+The authors checked this by holding back trials the model never saw and
+measuring thresholds at those points. The two agreed, which is
+good evidence that assuming smoothness didn't smooth away real structure.
+
+**What psyphy adds.** psyphy implements the WPPM in general form: any number of
+stimulus dimensions, any task you can write a likelihood for. The color setup
+here is only one configuration of it, which is why this page doubles as an external
+check on psyphy and a worked example of the general machinery. As the authors
+already mention in the paper, the approach carries beyond color to any domain where the noise
+limiting performance varies smoothly across stimulus space.
 
 ---
 
