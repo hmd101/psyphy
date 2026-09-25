@@ -171,20 +171,19 @@ distinct means, and the duplication lives in the likelihood.
 We match the paper's hyper parameters. 
 
 
-`build_paper_model()` assembles a WPPM from `PAPER_HYPERPARAMS`. 
+`build_paper_model()` assembles a WPPM from `PAPER_HYPERPARAMS`.
 
+??? note "Paper → psyphy parameter mapping"
 
-Toggle down for hyperparameter details:
+    Most settings map one to one. The ones worth knowing:
 
-TODO: Wrap in toggle
-
-| Paper | psyphy | Note |
-|---|---|---|
-| `degree=5` | `basis_degree=4` | **Off-by-one.** Theirs counts basis *functions* (T₀…T₄); ours is the *maximum degree*. Same 5×5 grid. |
-| `variance_scale=3e-4` | same | psyphy's default is `4e-3` |
-| `diag_term=0` | same | psyphy's default is `1e-6`; theirs leaves Σ unregularized |
-| `mc_samples=2000`, `bandwidth=5e-3` | `OddityTaskConfig` | |
-| `learning_rate=1e-4`, `momentum=0.2`, `total_steps=1500`, 3 restarts | `MAPOptimizer`  | refit only |
+    | Paper | psyphy | Note |
+    |---|---|---|
+    | `degree=5` | `basis_degree=4` | **Off-by-one.** Theirs counts basis *functions* (T₀…T₄); ours is the *maximum degree*. Same 5×5 grid. |
+    | `variance_scale=3e-4` | same | psyphy's default is `4e-3` |
+    | `diag_term=0` | same | psyphy's default is `1e-6`; theirs leaves Σ unregularized |
+    | `mc_samples=2000`, `bandwidth=5e-3` | `OddityTaskConfig` | |
+    | `learning_rate=1e-4`, `momentum=0.2`, `total_steps=1500`, 3 restarts | `MAPOptimizer` | refit only |
 
 The published weight tensor is `(5, 5, 2, 3)` — exactly psyphy's `params["W"]`
 layout, so it drops straight in with no reshaping.
