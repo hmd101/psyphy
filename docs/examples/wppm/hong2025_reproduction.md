@@ -1,5 +1,18 @@
 # Reproducing Hong et al. (2025)
 
+Runnable script:
+[`hong2025_reproduction.py`](https://github.com/flatironinstitute/psyphy/blob/main/docs/examples/wppm/hong2025_reproduction.py).
+
+
+```bash
+python hong2025_reproduction.py --skip-refit   # everything except the refit, <1 min CPU
+python hong2025_reproduction.py --mode full    # add the refit; wants a GPU
+```
+
+---
+
+### For who this is
+
 You might find this tutorial of interest
 - to see  a worked example of `psyphy` on real data, with an external ground
 truth to check against 
@@ -20,8 +33,6 @@ thresholds — using psyphy and the authors' own data. Two things happen here:
 > human color discrimination thresholds.* eLife 14:RP108943.
 > <https://doi.org/10.7554/eLife.108943.2>
 
-Runnable script:
-[`hong2025_reproduction.py`](https://github.com/flatironinstitute/psyphy/blob/main/docs/examples/wppm/hong2025_reproduction.py).
 
 ---
 
@@ -47,6 +58,7 @@ before this observer distinguishes the two 66.7% of the time.
 
 ## The whole recipe
 
+
 ```python title="Published data to threshold contours"
 import jax
 jax.config.update("jax_enable_x64", True)   # the authors used float64
@@ -61,9 +73,11 @@ coords, published = hong2025.load_sigma_table(paths["thres_ellipses"])
 
 # Model: given weights W, how noisy is perception at each color?
 model = hong2025.build_paper_model(mc_samples=500)
-# Parameter posterior: which W do we believe? (the paper's own)
+
+# Parameter posterior: which W do we believe? 
 posterior = MAPPosterior({"W": W_org}, model)
 # Search settings: how carefully to look for each threshold
+
 config = ThresholdConfig(n_theta=16, n_length=300)
 # Predictive posterior: given what we believe about W, what do we predict here?
 thresholds = WPPMPredictivePosterior(
@@ -75,13 +89,9 @@ thresholds = WPPMPredictivePosterior(
 ).mean                                                  # -> (49, 2, 2)
 ```
 
-The rest of this page explains those calls, then refits the model from the raw
-trials.
 
-```bash
-python hong2025_reproduction.py --skip-refit   # everything except the refit, <1 min CPU
-python hong2025_reproduction.py --mode full    # add the refit; wants a GPU
-```
+The sections below will dive deeper into details, such as how to load the data or how to compute the thresholds. 
+
 
 ---
 
@@ -101,8 +111,7 @@ on request into `~/.cache/psyphy/`
 | `Thres_ellipses_sub1.csv` | 320 KB | the 7×7 grid and published thresholds |
 | `Noise_ellipses_sub1.csv` | 68 MB | published Σ_noise on a 103×103 grid |
 
-All three result files also carry all 120 bootstrap fits, which we use to
-calibrate what "close enough" means.
+
 
 
 `load_trials` returns psyphy's ordinary `TrialData`, so nothing downstream
@@ -128,8 +137,15 @@ distinct means, and the duplication lives in the likelihood.
 
 ## Model
 
-`build_paper_model()` assembles a WPPM from `PAPER_HYPERPARAMS`. Most settings map one-to-one. The ones worth
-knowing:
+We match the paper's hyper parameters. 
+
+
+`build_paper_model()` assembles a WPPM from `PAPER_HYPERPARAMS`. 
+
+
+Toggle down for hyperparameter details:
+
+TODO: Wrap in toggle
 
 | Paper | psyphy | Note |
 |---|---|---|
@@ -144,7 +160,7 @@ layout, so it drops straight in with no reshaping.
 
 ---
 
-## Thresholds (Paper Figure 2B)
+## Thresholds (as in Paper Figure 2B)
 
 The model is parameterized in `Σ_noise(x)`, the covariance of the observer's
 _internal representation_. The paper reports **thresholds**, i.e. how much do we have to move in stimulus space, until the observer will notice a difference in 66% of the cases. Those are different
@@ -187,7 +203,7 @@ Two API details specific to threshold mode:
   — one threshold covariance per reference point.
 
 ```python title="Compute settings"
---8<-- "docs/examples/wppm/hong2025_reproduction.py:threshold_settings"
+--8<-- "docs/examples/wppm/hong2025_reproduction.py:threshold_settings
 ```
 
 ```
@@ -233,7 +249,7 @@ network-free.
 ## Refit
 ### Does psyphy's fit find the paper's covariance field?
 
-Everything above started from the paper's weights. The stronger question: given
+Everything above started from the paper's weights. The stronger question is: given
 only their **trials**, does psyphy's fit find their covariance field?
 
 ```python title="MAP fit with the paper's optimizer settings"
@@ -250,25 +266,6 @@ which would silently rescale the effective learning rate).
 ```python title="Comparison"
 --8<-- "docs/examples/wppm/hong2025_reproduction.py:compare"
 ```
-
-Four metrics, each blind to something different, so together they say *how* a
-fit is wrong rather than only *that* it is:
-
-| Metric | Sensitive to | Blind to |
-|---|---|---|
-| Relative Frobenius | everything at once | — |
-| Area ratio `√(det Σ_fit / det Σ_ref)` | size | shape, orientation |
-| Major-axis angle error, folded to [0°, 90°] | orientation | size, shape |
-| Normalized Bures Similarity (the paper's own) | shape + orientation | **size, exactly** |
-
-
-
-**What counts as good.** Rather than invent a tolerance, we use the authors'
-own run-to-run spread: each of their 120 bootstraps against their main fit, on
-the same 49 points.
-
-The authors refit their own model 120 times on resampled data. This table shows how much those refits disagree with their main fit. That's the disagreement you get from finite data alone. If our refit disagrees less than that, it's as good as the data allows. Ours disagrees less on every metric, which makes sense because we didn't resample
-
 
 
 
@@ -320,11 +317,8 @@ CPU figures are an Apple Silicon laptop (~12 cores); GPU is one CUDA device.
   We have seen `rel_frobenius_median` of 2.39 and 2.65 for the same quick-mode
   configuration on different machines.
 - **Loss values are not comparable to the paper's.** psyphy's `Prior.log_prob`
-  drops a constant the paper keeps — identical gradients, different printed
-  numbers.
-- **Figure 2C is not reproduced here.** It aggregates the same readout across
-  all 8 subjects; we do one. That is a matter of repeating the steps per
-  subject, not new machinery.
+  drops a constant, which the paper keeps — still  identical gradients but different numbers
+
 
 ---
 
