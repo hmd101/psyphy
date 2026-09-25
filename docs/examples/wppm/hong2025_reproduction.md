@@ -270,16 +270,6 @@ the same 49 points.
 The authors refit their own model 120 times on resampled data. This table shows how much those refits disagree with their main fit. That's the disagreement you get from finite data alone. If our refit disagrees less than that, it's as good as the data allows. Ours disagrees less on every metric, which makes sense because we didn't resample
 
 
-| Metric | p5 | median | p95 | Our full refit |
-|---|---|---|---|---|
-| `rel_frobenius_median` | 0.144 | 0.197 | 0.263 | **0.096** |
-| `rel_frobenius_max` | 0.347 | 0.581 | 1.110 | **0.277** |
-| `area_ratio_median` | 0.928 | 0.988 | 1.068 | **0.987** |
-| `angle_err_deg_median` | 3.47° | 5.30° | 7.75° | **1.41°** |
-| `nbs_median` | 0.9945 | 0.9964 | 0.9982 | **0.9995** |
-| `nbs_min` | 0.912 | 0.968 | 0.986 | **0.9911** |
-
-
 
 
 <div align="center">
