@@ -70,8 +70,8 @@ def main() -> int:
     centers, covs = example_field()
 
     # --8<-- [start:single]
-    # One field. The default scale=1.0 draws true size -- ellipses are small
-    # relative to the grid, which is the honest picture.
+    # One field. The default scale=1.0 draws true size. ellipses are small
+    # relative to the grid.
     fig, ax = plt.subplots(figsize=(5, 5), dpi=150)
     plot_ellipses(centers, covs, ax=ax, colors="C0", show_centers=True)
     # --8<-- [end:single]
@@ -102,7 +102,7 @@ def main() -> int:
 
     # --8<-- [start:samples]
     # A (n_samples, n_points, 2, 2) stack draws one translucent field per
-    # sample -- what posterior draws look like once a sampling posterior exists.
+    # sample. This is what posterior draws would look like.
     samples = covs[None] * RNG.normal(1.0, 0.12, size=(12, len(centers), 1, 1)) ** 2
     fig, ax = plt.subplots(figsize=(5, 5), dpi=150)
     plot_ellipses(centers, samples, ax=ax, scale="auto", colors="C3", alpha=0.25)
