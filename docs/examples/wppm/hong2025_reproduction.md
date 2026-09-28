@@ -75,7 +75,7 @@ before this observer distinguishes the two 66.7% of the time, determining the si
          width="620"/>
     <p><em>Colored ellipses are the contours we recover with psyphy; dashed gray
     are the published ones. Each ellipse takes the color of its own reference
-    stimulus (center dot), via the monitor calibration matrix published with the data. The model </em></p>
+    stimulus (center dot), via the monitor calibration matrix published with the data. The dimensions of the figure here are called model dimensions and are arbitrary in that they can result from any affine transformation of the input space, here RGB from the isoluminant plane. </em></p>
 </div>
 
 
@@ -238,6 +238,21 @@ The ~2% residual is the 16-direction fan plus Monte Carlo noise, not anything
 structural; raising `n_theta` and `mc_samples` toward the paper's settings
 shrinks it, at ~30× the runtime.
 
+### Drawing it
+
+Both contour fields go on one axes in a single
+[`plot_ellipses`](../../reference/viz.md) call: published dashed underneath, ours on
+top colored by reference stimulus:
+
+```python title="The plotting call"
+--8<-- "docs/examples/wppm/hong2025_reproduction.py:plot_call"
+```
+
+`scale` comes from `auto_scale(coords, thres_published)` and `colors` from
+`hong2025.w2d_to_rgb(coords, M)`. Passing **one** `scale` for both fields is the
+point. Independently scaled fields cannot be compared by eye. `plot_ellipses` draws into an axes
+and returns it, and never saves or shows.
+
 
 ---
 
@@ -356,4 +371,5 @@ and that is **~16 min**.
 
 - [Full WPPM fit (simulated data)](full_wppm_fit_example.md) — same machinery with ground truth available.
 - [Quick start](quick_start.md) — the minimal version.
+- [Plotting ellipse fields](../viz/ellipse_plots.md) — `plot_ellipses` on its own, with synthetic data.
 - `psyphy.data.published.hong2025` in [Data](../../reference/data.md); `WPPMPredictivePosterior` and `ThresholdConfig` in [Posterior](../../reference/posterior.md).

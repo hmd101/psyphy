@@ -241,6 +241,7 @@ def plot_threshold_figure(coords, Sigma_psyphy, Sigma_published, out_path, scale
 
     # Published contours underneath as a dashed outline, ours on top colored by
     # stimulus. One scale for both, so the comparison stays honest.
+    # --8<-- [start:plot_call]
     plot_ellipses(
         coords,
         [Sigma_published, Sigma_psyphy],
@@ -253,6 +254,7 @@ def plot_threshold_figure(coords, Sigma_psyphy, Sigma_published, out_path, scale
         labels=["published (Hong et al. 2025)", "psyphy (oddity inversion)"],
         show_centers=True,
     )
+    # --8<-- [end:plot_call]
 
     ticks = np.linspace(-0.7, 0.7, 5)
     ax.set_xticks(ticks)
