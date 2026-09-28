@@ -14,17 +14,17 @@ python hong2025_reproduction.py --mode full    # add the refit; wants a GPU
 
 You might find this tutorial of interest
 - to see  a worked example of `psyphy` on real data, with an external ground
-truth to check against 
+truth to check against
 - or, if you know the Hong et al paper, this shows how `psyphy` can be used to reproduce its results.
 
 ---
 
-This Tutorial shows how to reproduce the key finding shown by Hong et al 2025. They introduce the Wishart Pyschophysical Process Model 
+This Tutorial shows how to reproduce the key finding shown by Hong et al 2025. They introduce the Wishart Pyschophysical Process Model
 
 We reproduce **Figure 2B** of Hong et al. (2025) — human color discrimination
 thresholds — using psyphy and the authors' own data. Two things happen here:
 
-- we recover their published threshold contours from their published model, 
+- we recover their published threshold contours from their published model,
 
 - and we refit the model from scratch to check that we land where they landed.
 
@@ -48,7 +48,7 @@ changes *smoothly* across color space: nearby colors are confusable in similar
 ways. That lets us fit one smooth field over the entire space instead of many
 separate measurements, so every trial informs the whole picture. Once fit, we
 can evaluate the model at any pair of colors, including pairs nobody was ever
-shown. This now enables 
+shown. This now enables
 
 What they find is that discrimination is finest near gray and gets coarser
 for more saturated colors, and the threshold ellipses point outward from gray,
@@ -98,7 +98,7 @@ coords, published = hong2025.load_sigma_table(paths["thres_ellipses"])
 # Model: given weights W, how noisy is perception at each color?
 model = hong2025.build_paper_model(mc_samples=500)
 
-# Parameter posterior: which W do we believe? 
+# Parameter posterior: which W do we believe?
 posterior = MAPPosterior({"W": W_org}, model)
 # Search settings: how carefully to look for each threshold
 
@@ -114,7 +114,7 @@ thresholds = WPPMPredictivePosterior(
 ```
 
 
-The sections below will dive deeper into details, such as how to load the data or how to compute the thresholds. 
+The sections below will dive deeper into details, such as how to load the data or how to compute the thresholds.
 
 
 ---
@@ -122,7 +122,7 @@ The sections below will dive deeper into details, such as how to load the data o
 ## Data
 
 psyphy ships no data. The OSF node carries no explicit license, so we download
-on request into `~/.cache/psyphy/` 
+on request into `~/.cache/psyphy/`
 
 ```python title="Download one observer's files"
 --8<-- "docs/examples/wppm/hong2025_reproduction.py:fetch"
@@ -161,7 +161,7 @@ distinct means, and the duplication lives in the likelihood.
 
 ## Model
 
-We match the paper's hyper parameters. 
+We match the paper's hyper parameters.
 
 
 `build_paper_model()` assembles a WPPM from `PAPER_HYPERPARAMS`.
@@ -206,7 +206,7 @@ first place. So we invert numerically, the same way they do:
 
 Step 3 is closed-form: a point at radius `r` in direction `u` satisfies
 `uᵀΣ⁻¹u = 1/r²`, which is **linear** in the three free entries of `Σ⁻¹`. Least
-squares, then one inverse. 
+squares, then one inverse.
 
 ```python title="Threshold inversion at every published reference point"
 --8<-- "docs/examples/wppm/hong2025_reproduction.py:thresholds"
@@ -244,7 +244,7 @@ shrinks it, at ~30× the runtime.
 ### does psyphy build the same covariance field Hong et al published?
 
 This is fully
-deterministic. 
+deterministic.
 
 ```python title="Published weights through psyphy's covariance field"
 --8<-- "docs/examples/wppm/hong2025_reproduction.py:stage1"
@@ -303,12 +303,12 @@ Three restarts from independent prior draws ended at losses 0.550 / 0.512 /
 0.505, with no sign of a multimodal landscape.
 
 !!! warning "Scope"
-    One subject (CH, 1 of 8), 1 run, 1 GPU. Not repeated for seed stability and 
+    One subject (CH, 1 of 8), 1 run, 1 GPU. Not repeated for seed stability and
     not run for the other seven. Read this purely as "the fitting pipeline reproduces the
     paper for this subject,".
 
 `--mode quick` exists only to prove the code path runs on a laptop: 500 trials
-and 20 steps leave the fit essentially at its prior 
+and 20 steps leave the fit essentially at its prior
 
 ---
 

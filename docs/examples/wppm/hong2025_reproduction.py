@@ -90,11 +90,15 @@ if not os.environ.get("DISPLAY") and os.name != "nt":
 import matplotlib.pyplot as plt  # noqa: E402
 
 # --8<-- [start:imports]
-from psyphy.data.published import hong2025
-from psyphy.inference import MAPOptimizer
-from psyphy.model import WPPMCovarianceField
-from psyphy.posterior import MAPPosterior, ThresholdConfig, WPPMPredictivePosterior
-from psyphy.viz import auto_scale, plot_ellipses
+from psyphy.data.published import hong2025  # noqa: E402
+from psyphy.inference import MAPOptimizer  # noqa: E402
+from psyphy.model import WPPMCovarianceField  # noqa: E402
+from psyphy.posterior import (  # noqa: E402
+    MAPPosterior,
+    ThresholdConfig,
+    WPPMPredictivePosterior,
+)
+from psyphy.viz import auto_scale, plot_ellipses  # noqa: E402
 
 # --8<-- [end:imports]
 
@@ -116,7 +120,7 @@ MODES = {
 # per reference point -- about 11 CPU minutes for the whole 7x7 grid. The
 # reduced settings below reproduce the published semi-axes to a median 2.18 %
 # (max 10.78 %) in 20-23 s of CPU wall clock, measured over the full 49-point
-# grid. 
+# grid.
 THRESHOLD_MC_SAMPLES = 500
 THRESHOLD_CONFIG = ThresholdConfig(n_theta=16, n_length=300)
 # --8<-- [end:threshold_settings]
@@ -195,7 +199,10 @@ def plot_comparison(coords, Sigma_fit, Sigma_ref, out_path, title, scale):
         ax=ax,
         scale=scale,
         colors=["black", "crimson"],
-        labels=["published \u03a3_noise (Hong et al. 2025)", "psyphy \u03a3_noise (MAP fit)"],
+        labels=[
+            "published \u03a3_noise (Hong et al. 2025)",
+            "psyphy \u03a3_noise (MAP fit)",
+        ],
         alpha=0.8,
         show_centers=True,
     )
@@ -344,7 +351,6 @@ def stage2_thresholds(paths: dict[str, Path]) -> None:
         f"n_length={THRESHOLD_CONFIG.n_length}, mc={THRESHOLD_MC_SAMPLES}"
     )
 
-    
     # The paper colors each ellipse by its reference stimulus, via a monitor
     # calibration matrix published alongside the data. Optional: the figure
     # falls back to neutral grey when it has not been downloaded.
@@ -353,7 +359,6 @@ def stage2_thresholds(paths: dict[str, Path]) -> None:
     except Exception as exc:  # network, or OSF layout change
         print(f"  color calibration unavailable ({exc}); plotting in grey")
         M = None
-   
 
     plot_threshold_figure(
         coords,
