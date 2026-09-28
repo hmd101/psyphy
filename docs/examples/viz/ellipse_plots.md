@@ -36,7 +36,7 @@ eigenvalues, in the units of your stimulus space.
     <img src="../plots/viz_single_field.png" alt="One covariance field at true size" width="420"/>
 </div>
 
-Nothing is saved or shown for you — the function draws into an `Axes` and
+Nothing is saved or shown for you. Instead, the function draws into an `Axes` and
 returns it, so the figure stays yours to title, style, and save.
 
 ---
@@ -58,14 +58,14 @@ figure that shows up throughout the WPPM examples.
 one value for all fields or a list with one entry per field. A legend appears
 only if you pass `labels`.
 
-!!! note "`scale='auto'` sizes ellipses to the grid — and shares one factor"
+!!! note "`scale='auto'` sizes ellipses to the grid and shares one factor"
     True size is honest but can be hard to read: on a dense grid the ellipses
     shrink to specks, and on a coarse one they float in white space.
     `scale="auto"` sets the *median* ellipse to a fixed fraction of the median
     spacing between centers, so the same call works on a 7×7 grid and a
     103×103 one.
 
-    Two things follow. **It is not always a magnification** — on a dense grid
+    Two things follow. **It is not always a magnification**: on a dense grid
     the factor drops below 1, shrinking ellipses so they do not overlap. And
     when several fields are drawn, the factor is computed from the **first**
     one and applied to all of them; independently scaled fields could not be
@@ -76,7 +76,7 @@ only if you pass `labels`.
 
 ## Posterior draws
 
-A `(n_samples, n_points, 2, 2)` array draws one translucent field per sample —
+A `(n_samples, n_points, 2, 2)` array draws one translucent field per sample;
 the natural way to show parameter uncertainty.
 
 ```python
@@ -89,8 +89,7 @@ the natural way to show parameter uncertainty.
 
 This is the shape `WPPMPredictivePosterior.rsample()` returns. With a
 `MAPPosterior` every draw is identical (a point estimate has no spread), so the
-band collapses to a single field — but the same call gives real error bars once
-a sampling posterior is available.
+band collapses to a single field.
 
 ---
 
@@ -118,7 +117,7 @@ UserWarning: 3 non-positive-definite covariance(s) were not drawn;
 the plotted field is incomplete.
 ```
 
-Silence is the wrong default here — a field quietly missing a few ellipses is
+Silence is the wrong default here, a field quietly missing a few ellipses is
 hard to spot by eye, and it usually means something upstream went wrong, such
 as an ill-conditioned threshold inversion. Pass `skip_non_pd=False` to raise
 instead.

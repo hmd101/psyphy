@@ -196,7 +196,8 @@ inverse  (what Figure 2B plots): P(correct) = 2/3             ->  x_1
 
 There is no closed form for the inverse. `P(correct)` for the 3-alternative
 oddity task is the probability that `min(d_02, d_12) > d_01` over three correlated
-quadratic forms, which is why the paper estimates it by Monte Carlo in the
+quadratic forms, which is why the paper estimates it by
+[Monte Carlo](https://en.wikipedia.org/wiki/Monte_Carlo_method) in the
 first place. So we invert numerically, the same way they do:
 
 1. Probe `n_theta` directions around each reference point.
