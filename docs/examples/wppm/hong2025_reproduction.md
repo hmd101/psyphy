@@ -178,8 +178,9 @@ We match the paper's hyper parameters.
     | `mc_samples=2000`, `bandwidth=5e-3` | `OddityTaskConfig` | |
     | `learning_rate=1e-4`, `momentum=0.2`, `total_steps=1500`, 3 restarts | `MAPOptimizer` | refit only |
 
-The published weight tensor is `(5, 5, 2, 3)` — exactly psyphy's `params["W"]`
-layout, so it drops straight in with no reshaping.
+    The published weight tensor is `(5, 5, 2, 3)` , which is exactly psyphy's `params["W"]` layout.
+
+
 
 ---
 
@@ -189,16 +190,24 @@ The model is parameterized in `Σ_noise(x)`, the covariance of the observer's
 _internal representation_. The paper reports **thresholds**, i.e. how much do we have to move in stimulus space, until the observer will notice a difference in 66% of the cases. Those are different
 objects! The map between them is as follows:
 
-```
-forward  (psyphy's OddityTask):  Σ_noise(x_ref), Σ_noise(x_1)  ->  P(correct)
-inverse  (what Figure 2B plots): P(correct) = 2/3             ->  x_1
-```
+
+$$
+\begin{aligned}
+\text{forward (psyphy's OddityTask)}:\qquad
+  & \Sigma_{\text{noise}}(x_{\text{ref}}),\ \Sigma_{\text{noise}}(x_{1})
+  && \longrightarrow\ P(\text{correct}) \\[4pt]
+\text{inverse (what Figure 2B plots)}:\qquad
+  & P(\text{correct}) = \tfrac{2}{3}
+  && \longrightarrow\ x_{1}
+\end{aligned}
+$$
+
 
 There is no closed form for the inverse. `P(correct)` for the 3-alternative
 oddity task is the probability that `min(d_02, d_12) > d_01` over three correlated
 quadratic forms, which is why the paper estimates it by
 [Monte Carlo](https://en.wikipedia.org/wiki/Monte_Carlo_method) in the
-first place. So we invert numerically, the same way they do:
+first place. So we invert numerically:
 
 1. Probe `n_theta` directions around each reference point.
 2. Along each, evaluate `P(correct)` at `n_length` distances and keep the one
@@ -225,7 +234,7 @@ Two API details specific to threshold mode:
   — one threshold covariance per reference point.
 
 ```python title="Compute settings"
---8<-- "docs/examples/wppm/hong2025_reproduction.py:threshold_settings
+--8<-- "docs/examples/wppm/hong2025_reproduction.py:threshold_settings"
 ```
 
 ```
@@ -238,7 +247,7 @@ The ~2% residual is the 16-direction fan plus Monte Carlo noise, not anything
 structural; raising `n_theta` and `mc_samples` toward the paper's settings
 shrinks it, at ~30× the runtime.
 
-### Drawing it
+### Plotting it
 
 Both contour fields go on one axes in a single
 [`plot_ellipses`](../../reference/viz.md) call: published dashed underneath, ours on
@@ -251,7 +260,8 @@ top colored by reference stimulus:
 `scale` comes from `auto_scale(coords, thres_published)` and `colors` from
 `hong2025.w2d_to_rgb(coords, M)`. Passing **one** `scale` for both fields is the
 point. Independently scaled fields cannot be compared by eye. `plot_ellipses` draws into an axes
-and returns it, and never saves or shows.
+and returns it. It never saves or shows *for* you, so you style the figure
+first and then `fig.savefig(...)` when you're ready.
 
 
 ---
@@ -266,14 +276,16 @@ deterministic.
 --8<-- "docs/examples/wppm/hong2025_reproduction.py:stage1"
 ```
 
+
+Plain elementwise subtraction over all 42,436 entries. The
+published CSV stores 8 decimals (the differences are tiny!):
+
 ```
-grid points  : 10609
 max |diff|   : 6.778e-09
 mean |diff|  : 2.538e-09
 ```
 
-Plain elementwise subtraction over all 42,436 entries. The
-published CSV stores 8 decimals; our values round to theirs exactly in 96% of
+ Our values round to theirs exactly in 96% of
 cases and agree to within one unit in the last printed digit in 100%. **This is
 agreement to the precision the file can express.**
 
@@ -287,18 +299,46 @@ network-free.
 ### Does psyphy's fit find the paper's covariance field?
 
 Everything above started from the paper's weights. The stronger question is: given
-only their **trials**, does psyphy's fit find their covariance field?
+only the paper's **trials**, does psyphy's fit find the paper's covariance field?
+
+Looking at the alignment of the ellipses in the figure below, the answer to that question is yes.
 
 ```python title="MAP fit with the paper's optimizer settings"
 --8<-- "docs/examples/wppm/hong2025_reproduction.py:fit"
 ```
 
-Two settings make the paper's `learning_rate=1e-4` mean the same thing here:
-`reduction="mean"` (they minimize a per-trial objective) and
-`max_grad_norm=None` (they do no clipping, psyphy clips at 1.0 by default,
-which would silently rescale the effective learning rate).
+One override is required: **`max_grad_norm=None`**. psyphy clips gradients at
+1.0 by default, the paper does not, and with clipping on the paper's
+`learning_rate=1e-4` does not mean what it means there.
 
+??? note "Optimizer specifics — why clipping has to go off"
 
+    Only one of the two settings in the call above is actually a change.
+
+    | | paper | psyphy default | |
+    |---|---|---|---|
+    | objective scaling | per-trial | per-trial (`reduction="mean"`) | already the same |
+    | gradient clipping | none | clip at 1.0 | **must be disabled** |
+
+    **`reduction="mean"` matches psyphy's default**, so passing it changes
+    nothing. It is in the call for the record: the model always returns the
+    *summed* log posterior, and `"mean"` divides by the trial count `N` to give
+    the per-trial objective the paper minimizes. Two objectives differing by the
+    constant `N` have the same minimizer, so this alone would be harmless.
+
+    **`max_grad_norm=None` is the real override**, and it is not marginal.
+    Measured on subject 1 at initialization, N = 6,000 trials:
+
+    ```
+    global grad norm, reduction="sum"  = 1,478,188.6
+    global grad norm, reduction="mean" =       246.4
+    clip threshold (psyphy default)    =         1.0
+    ```
+
+    246 ≫ 1, so the clip would saturate on **every** step even under `"mean"`.
+    That discards gradient *magnitude* and turns SGD into fixed-step normalized
+    descent: `learning_rate=1e-4` would mean "move 1e-4 along the gradient
+    *direction*" rather than the paper's "move 1e-4 × gradient".
 
 ```python title="Comparison"
 --8<-- "docs/examples/wppm/hong2025_reproduction.py:compare"
@@ -330,12 +370,12 @@ and 20 steps leave the fit essentially at its prior
 
 ## Runtimes
 
-Reproducing the figure takes **~20 s on a laptop**; only the refit needs a GPU,
-and that is **~16 min**.
+The full refit refit needs a GPU,
+and that is **~16 min** but there's quick mode available to check the whether the script runs.
 
 ??? note "Measured runtimes, step by step"
 
-    CPU figures are an Apple Silicon laptop (~12 cores); GPU is one CUDA device.
+    CPU figures are an Apple Silicon laptop (M5); GPU is one A100 unless otherwise noted.
 
     | Step | Hardware | Wall clock | Settings |
     |---|---|---|---|
