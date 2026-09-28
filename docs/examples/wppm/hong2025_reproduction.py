@@ -88,14 +88,13 @@ import numpy as np  # noqa: E402
 if not os.environ.get("DISPLAY") and os.name != "nt":
     matplotlib.use("Agg")
 import matplotlib.pyplot as plt  # noqa: E402
-from matplotlib.collections import LineCollection  # noqa: E402
-from scipy.spatial import cKDTree  # noqa: E402
 
 # --8<-- [start:imports]
 from psyphy.data.published import hong2025
 from psyphy.inference import MAPOptimizer
 from psyphy.model import WPPMCovarianceField
 from psyphy.posterior import MAPPosterior, ThresholdConfig, WPPMPredictivePosterior
+from psyphy.viz import auto_scale, plot_ellipses
 
 # --8<-- [end:imports]
 
@@ -187,65 +186,27 @@ def compare_fields(Sigma_fit: np.ndarray, Sigma_ref: np.ndarray) -> dict[str, fl
 # ---------------------------------------------------------------------------
 # Plotting
 # ---------------------------------------------------------------------------
-_THETA = np.linspace(0, 2 * np.pi, 100)
-_UNIT_CIRCLE = np.vstack([np.cos(_THETA), np.sin(_THETA)])
-
-
-def _ellipse_segments(centers, covs, scale):
-    """Batched covariances -> polyline segments, plus a positive-definite mask.
-
-    One LineCollection instead of hundreds of Line2D artists, as in
-    full_wppm_fit_example.py.
-    """
-    valid = np.all(np.linalg.eigvalsh(covs) > 0, axis=-1)
-    segs = [
-        (c[:, None] + scale * (np.linalg.cholesky(S) @ _UNIT_CIRCLE)).T
-        for c, S, ok in zip(centers, covs, valid, strict=True)
-        if ok
-    ]
-    return segs, valid
-
-
-def ellipse_plot_scale(coords: np.ndarray, Sigma_ref: np.ndarray) -> float:
-    """Magnification that makes ellipses visible without colliding.
-
-    Thresholds are ~0.05 in W units against a grid spacing of ~0.23, so drawn at
-    true size they are legible but tiny, while any fixed magnification would be
-    wrong for a different grid. Size the median ellipse to a set fraction of the
-    nearest-neighbour spacing instead. Purely cosmetic -- the same scale applies
-    to both fields, so the comparison is unaffected.
-
-    Uses a KD-tree rather than a full pairwise distance matrix: the matrix is
-    Theta(M^2) in time and space, which is nothing at M=49 but ~1.8 GB at the
-    M=10609 of the fine noise grid.
-    """
-    dists, _ = cKDTree(coords).query(coords, k=2)  # k=2: [0] is the point itself
-    spacing = float(np.median(dists[:, 1]))
-    typical_radius = float(np.median(np.sqrt(np.linalg.eigvalsh(Sigma_ref).mean(-1))))
-    return 0.35 * spacing / typical_radius
-
-
 def plot_comparison(coords, Sigma_fit, Sigma_ref, out_path, title, scale):
+    """Two noise fields overlaid, published vs fitted."""
     fig, ax = plt.subplots(figsize=(6, 6), dpi=150)
-    for covs, color, label in [
-        (Sigma_ref, "black", "published Σ_noise (Hong et al. 2025)"),
-        (Sigma_fit, "crimson", "psyphy Σ_noise (MAP fit)"),
-    ]:
-        segs, valid = _ellipse_segments(coords, covs, scale)
-        ax.add_collection(LineCollection(segs, colors=color, linewidths=1.2, alpha=0.8))
-        ax.plot([], [], color=color, lw=1.2, label=f"{label}")
-
-    ax.scatter(coords[:, 0], coords[:, 1], c="gray", s=4, zorder=5)
+    plot_ellipses(
+        coords,
+        [Sigma_ref, Sigma_fit],
+        ax=ax,
+        scale=scale,
+        colors=["black", "crimson"],
+        labels=["published \u03a3_noise (Hong et al. 2025)", "psyphy \u03a3_noise (MAP fit)"],
+        alpha=0.8,
+        show_centers=True,
+    )
     ticks = np.linspace(-0.7, 0.7, 5)
     ax.set_xticks(ticks)
     ax.set_yticks(ticks)
     ax.set_xlim(-1.0, 1.0)
     ax.set_ylim(-1.0, 1.0)
-    ax.set_aspect("equal")
     ax.set_xlabel("Model Dimension 1")
     ax.set_ylabel("Model Dimension 2")
     ax.set_title(title, fontsize=9)
-    ax.legend(fontsize=8, loc="upper left")
     ax.grid(True, alpha=0.25)
     fig.tight_layout()
     out_path.parent.mkdir(parents=True, exist_ok=True)
@@ -258,54 +219,39 @@ def plot_comparison(coords, Sigma_fit, Sigma_ref, out_path, title, scale):
 def plot_threshold_figure(coords, Sigma_psyphy, Sigma_published, out_path, scale, M):
     """Figure 2B: threshold contours, colored by reference stimulus.
 
-    Each ellipse sits at its reference location and takes that location's own
-    color, which is what makes the paper's version readable as a *color*
-    figure rather than an abstract field of ellipses. ``M`` is the monitor
-    calibration matrix; when it is None the plot falls back to neutral grey and
-    says so in the legend, so the figure is never silently mislabelled.
+    ``M`` is the monitor calibration matrix; when it is None the plot falls
+    back to neutral gray and says so, so a gray figure cannot pass for a
+    correctly colored one.
     """
     fig, ax = plt.subplots(figsize=(6.5, 6.5), dpi=150)
 
     if M is not None:
         colors = hong2025.w2d_to_rgb(coords, M)
-        # Colours speak for themselves; no annotation needed.
         fallback_note = ""
     else:
         colors = np.full((len(coords), 3), 0.45)
-        # Say so on the figure itself -- otherwise a grey fallback is
-        # indistinguishable from a correctly coloured one.
-        fallback_note = "\nneutral grey — calibration matrix not downloaded"
+        fallback_note = "\nneutral gray \u2014 calibration matrix not downloaded"
 
-    # Published contours first, as a dashed dark outline underneath, so the
-    # comparison is visible where the two nearly coincide.
-    segs_pub, _ = _ellipse_segments(coords, Sigma_published, scale)
-    ax.add_collection(
-        LineCollection(
-            segs_pub, colors="black", linewidths=2.2, alpha=0.35, linestyles="--"
-        )
+    # Published contours underneath as a dashed outline, ours on top colored by
+    # stimulus. One scale for both, so the comparison stays honest.
+    plot_ellipses(
+        coords,
+        [Sigma_published, Sigma_psyphy],
+        ax=ax,
+        scale=scale,
+        colors=["black", colors],
+        linestyles=["--", "solid"],
+        linewidths=[2.2, 1.6],
+        alpha=[0.35, None],
+        labels=["published (Hong et al. 2025)", "psyphy (oddity inversion)"],
+        show_centers=True,
     )
-
-    segs_psy, valid = _ellipse_segments(coords, Sigma_psyphy, scale)
-    ax.add_collection(LineCollection(segs_psy, colors=colors[valid], linewidths=1.6))
-    ax.scatter(coords[:, 0], coords[:, 1], c=colors, s=14, zorder=5, edgecolors="none")
-
-    ax.plot(
-        [],
-        [],
-        color="black",
-        lw=2.2,
-        ls="--",
-        alpha=0.5,
-        label="published (Hong et al. 2025)",
-    )
-    ax.plot([], [], color="0.2", lw=1.6, label="psyphy (oddity inversion)")
 
     ticks = np.linspace(-0.7, 0.7, 5)
     ax.set_xticks(ticks)
     ax.set_yticks(ticks)
     ax.set_xlim(-0.95, 0.95)
     ax.set_ylim(-0.95, 0.95)
-    ax.set_aspect("equal")
     ax.set_xlabel("Model Dimension 1")
     ax.set_ylabel("Model Dimension 2")
     ax.set_title(
@@ -313,7 +259,6 @@ def plot_threshold_figure(coords, Sigma_psyphy, Sigma_published, out_path, scale
         "Figure 2B in Hong et al. 2025 reproduced, subject 1 (CH)" + fallback_note,
         fontsize=9,
     )
-    ax.legend(fontsize=8, loc="upper left", framealpha=0.9)
     ax.grid(True, alpha=0.2)
     fig.tight_layout()
     out_path.parent.mkdir(parents=True, exist_ok=True)
@@ -415,7 +360,7 @@ def stage2_thresholds(paths: dict[str, Path]) -> None:
         thres_psyphy,
         thres_published,
         PLOTS_DIR / "hong2025_thresholds.png",
-        scale=ellipse_plot_scale(coords, thres_published),
+        scale=auto_scale(coords, thres_published),
         M=M,
     )
 
@@ -479,7 +424,7 @@ def stage3_refit(paths: dict[str, Path], cfg: dict, mode: str, seed: int) -> Non
     for key, value in metrics.items():
         print(f"    {key:24s} {value: .4f}")
 
-    scale = ellipse_plot_scale(coords, Sigma_ref)
+    scale = auto_scale(coords, Sigma_ref)
     plot_comparison(
         coords,
         Sigma_fit,

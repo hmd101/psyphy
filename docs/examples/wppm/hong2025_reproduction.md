@@ -1,6 +1,6 @@
 # Reproducing Hong et al. (2025)
-This tutorial is accompanied by av
-** runnable script: **
+This tutorial is accompanied by a
+**runnable script: **
 [`hong2025_reproduction.py`](https://github.com/flatironinstitute/psyphy/blob/main/docs/examples/wppm/hong2025_reproduction.py).
 
 ```bash
@@ -41,33 +41,33 @@ thresholds — using psyphy and the authors' own data. Two things happen here:
 Measuring a discrimination threshold the usual way means fixing one color and
 asking, over many trials, how far a second color has to move before someone
 notices the difference. That tells you about one color. Repeating it across a
-whole plane of colors is impractical — too many locations, far too many trials.
+whole plane of colors is impractical: too many locations, far too many trials, so we run into the curse of dimensionality.
 
 The WPPM takes a different route. It assumes the observer's internal noise
 changes *smoothly* across color space: nearby colors are confusable in similar
 ways. That lets us fit one smooth field over the entire space instead of many
 separate measurements, so every trial informs the whole picture. Once fit, we
-can ask the model about any pair of colors — including pairs nobody was ever
-shown.
+can evaluate the model at any pair of colors, including pairs nobody was ever
+shown. This now enables 
 
-The picture that comes out: discrimination is finest near gray and gets coarser
+What they find is that discrimination is finest near gray and gets coarser
 for more saturated colors, and the threshold ellipses point outward from gray,
-so sensitivity depends on direction as well as position.
+so sensitivity depends on direction (angle) as well as position.
 
-The authors checked this by holding back trials the model never saw and
-measuring thresholds at those points. The two agreed, which is
-good evidence that assuming smoothness didn't smooth away real structure.
 
-**What psyphy adds.** psyphy implements the WPPM in general form: any number of
-stimulus dimensions, any task you can write a likelihood for. The color setup
+**What psyphy adds.** psyphy implements the Wishart Psychophysical Process MOdel (WPPM) in general form: any number of
+stimulus dimensions (doesn't have to be color), any task you can write a likelihood for. The color setup
 here is only one configuration of it, which is why this page doubles as an external
-check on psyphy and a worked example of the general machinery. As the authors
-already mention in the paper, the approach carries beyond color to any domain where the noise
-limiting performance varies smoothly across stimulus space.
+check on psyphy and a worked example of the general machinery. The WPPM approach carries beyond color to any domain where the noise
+limiting performance varies smoothly across input space.
 
 ---
 
 ## The result
+
+Each ellipse can be thought of as a *Just-Noticable Distance (JND)* around a reference color (center): the smallest difference in a color a person can detect. Here, it's operationalized as
+ how far a comparison color must move from its reference
+before this observer distinguishes the two 66.7% of the time, determining the size of the ellipse.
 
 <div align="center">
     <img src="../plots/hong2025_thresholds.png"
@@ -75,17 +75,10 @@ limiting performance varies smoothly across stimulus space.
          width="620"/>
     <p><em>Colored ellipses are the contours we recover with psyphy; dashed gray
     are the published ones. Each ellipse takes the color of its own reference
-    stimulus, via the monitor calibration matrix published with the data.</em></p>
+    stimulus (center dot), via the monitor calibration matrix published with the data. The model </em></p>
 </div>
 
-The paper's own caption for this panel:
 
-> Discrimination threshold contours (66.7% correct) read out from the [Wishart Psychophysical Process Model] WPPM on a
-> grid of reference stimuli for a representative participant, based  on fits to
-> the 6,000 AEPsych trials.
-
-Each ellipse says how far a comparison color must move from its reference
-before this observer distinguishes the two 66.7% of the time. 
 
 ## The whole recipe
 
@@ -321,15 +314,23 @@ and 20 steps leave the fit essentially at its prior
 
 ## Runtimes
 
-CPU figures are an Apple Silicon laptop (~12 cores); GPU is one CUDA device.
+Reproducing the figure takes **~20 s on a laptop**; only the refit needs a GPU,
+and that is **~16 min**.
 
-| Step | Hardware | Wall clock | Settings |
-|---|---|---|---|
-| Thresholds (Figure 2B) | CPU | **20–23 s** | 49 refs, `n_theta=16`, `n_length=300`, `mc=500` |
-| Thresholds at paper settings | CPU | ~11 min | `n_length=1000`, `mc=2000` (13.4 s per ref) |
-| Exact covariance check | CPU | seconds | 10,609 points, deterministic |
-| **Refit — full** | 1 GPU | **~16 min** | 6,000 trials, 1,500 steps, `mc=2000`, 3 restarts |
-| Paper's SLURM request | H100 | 14 h | main fit **+ 120 bootstraps** |
+??? note "Measured runtimes, step by step"
+
+    CPU figures are an Apple Silicon laptop (~12 cores); GPU is one CUDA device.
+
+    | Step | Hardware | Wall clock | Settings |
+    |---|---|---|---|
+    | Thresholds (Figure 2B) | CPU | **20–23 s** | 49 refs, `n_theta=16`, `n_length=300`, `mc=500` |
+    | Thresholds at paper settings | CPU | ~11 min | `n_length=1000`, `mc=2000` (13.4 s per ref) |
+    | Exact covariance check | CPU | seconds | 10,609 points, deterministic |
+    | **Refit — full** | 1 GPU | **~16 min** | 6,000 trials, 1,500 steps, `mc=2000`, 3 restarts |
+    | Paper's SLURM request | H100 | 14 h | main fit **+ 120 bootstraps** |
+
+    The paper's 14-hour budget covers the main fit *plus* 120 bootstrap refits,
+    not a single fit.
 
 
 ---

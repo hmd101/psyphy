@@ -52,6 +52,11 @@ docs = [
   "mkdocstrings[python]>=1.0",
   "pymdown-extensions>=11.0",
 ]
+# Plotting backend for psyphy.viz. Kept separate from `examples` so a user who
+# only wants to draw covariance ellipses does not also install JupyterLab.
+viz = [
+  "matplotlib>=3.5",
+]
 # Needed only to *run* the example scripts under docs/examples/ and regenerate
 # their figures. The committed plots mean the site builds without these.
 examples = [
