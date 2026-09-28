@@ -13,8 +13,7 @@ This tutorial explains the example that can be found and run
 Runtime depends heavily on your device and on a few computation-driving hyperparameters (see below).
 - GPU (A100 40GB): With the default settings below, the script runs in ~3 minutes.
 - CPU: To make the script practical on CPU, reduce `MC_SAMPLES` aggressively (e.g., to 5–20 and `NUM_TRIALS_Per_Ref`) and shorten the **optimizer** run (reduce `num_steps`). These two knobs usually give the biggest speedups.
-- Apple Silicon / MPS: With the current configuration, the script takes 1h 45 min on  CPU (M4 Max, 64 GB)
-- JAX-accelearion on MPS limitation (`jax-metal`): At the moment, JAX on MPS does not support some operations we rely on (e.g., Cholesky decomposition), hence CPU is the only
+- Apple Silicon / MPS: With the current configuration, the script takes 1h 45 min on  CPU (M5 Max, 64 GB)
 
 #### Default compute settings (GPU)
 ```python
@@ -42,9 +41,9 @@ WPPM defines a *covariance matrix field* $\Sigma(x)$ over stimulus space (e.g. c
 
 The model represents $\Sigma(x)$ as
 
-\[
+$$
 \Sigma(x) = U(x)U(x)^\top + \varepsilon I,
-\]
+$$
 
 where $U(x)$ is a smooth, basis-expanded matrix-valued function and $\varepsilon$ is a small diagonal “jitter” (`diag_term`) to avoid numerical issues. Alternatively, in Gaussian Process (GP) terms, you can think of $U(x)$ defining a GP in weight space, i.e., a "Bayesian linear model".
 
