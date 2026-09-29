@@ -17,6 +17,7 @@ Connections
 from __future__ import annotations
 
 import contextlib
+import warnings
 from typing import Literal
 
 import jax
@@ -24,6 +25,12 @@ import optax
 
 from psyphy.inference.base import InferenceEngine
 from psyphy.posterior.posterior import MAPPosterior
+
+
+def _global_norm(tree) -> jax.Array:
+    """L2 norm over all leaves of a gradient PyTree."""
+    leaves = jax.tree_util.tree_leaves(tree)
+    return jax.numpy.sqrt(sum(jax.numpy.sum(jax.numpy.square(x)) for x in leaves))
 
 
 class MAPOptimizer(InferenceEngine):
@@ -57,7 +64,7 @@ class MAPOptimizer(InferenceEngine):
         log_every: int = 1,
         progress_every: int = 10,
         show_progress: bool = False,
-        max_grad_norm: float | None = 1.0,
+        max_grad_norm: float | None = None,
     ):
         """Create a MAP optimizer.
 
@@ -123,7 +130,33 @@ class MAPOptimizer(InferenceEngine):
             fitting proceeds without a progress bar.
         max_grad_norm : float | None, optional
             If set, clip gradients by global norm to this value before applying
-            optimizer updates. This stabilizes optimization when gradients blow up.
+            optimizer updates: ``g <- g * min(1, max_grad_norm / ||g||)``.
+
+            **Off by default.** Clipping is a guard rail against rare gradient
+            spikes, and only behaves as one when the threshold sits *above* the
+            typical gradient norm so that it binds on a small fraction of steps.
+            A threshold below the typical norm binds on every step, which fixes
+            the step length at ``learning_rate * max_grad_norm`` regardless of
+            gradient magnitude -- that is normalized gradient descent, a
+            different algorithm, and it makes ``learning_rate`` non-transferable
+            (only the product of the two matters).
+
+            The typical norm is model- and data-dependent, so there is no safe
+            universal default; for the WPPM it is O(10^2)-O(10^3). Choose a
+            threshold from the observed distribution rather than a convention
+            borrowed from deep-learning recipes, and check
+            :attr:`clip_rate` after :meth:`fit` to confirm which regime you are
+            in. Note this is orthogonal to ``reduction``: under ``"sum"`` the
+            norm additionally scales with the trial count N, but a mis-set
+            threshold saturates under ``"mean"`` too.
+
+        Attributes
+        ----------
+        clip_rate : float | None
+            Fraction of steps on which gradient clipping bound, populated after
+            :meth:`fit`. ``None`` when ``max_grad_norm`` is ``None``. A value
+            near 1.0 means clipping is not acting as a guard rail but as a
+            change of optimizer.
         """
         self.steps = steps
         if reduction not in ("mean", "sum"):
@@ -148,6 +181,9 @@ class MAPOptimizer(InferenceEngine):
         # Exposed after fit() when tracking is enabled
         self.loss_steps: list[int] = []
         self.loss_history: list[float] = []
+        # Exposed after fit(); None when clipping is off. See `max_grad_norm`.
+        self.clip_rate: float | None = None
+        self.n_clipped_steps: int = 0
 
     def fit(
         self,
@@ -203,19 +239,33 @@ class MAPOptimizer(InferenceEngine):
 
         # key is now an explicit argument so each JIT-compiled call receives a
         # distinct random key — a fresh MC noise realization per gradient step.
+        clip_at = self.max_grad_norm
+
         @jax.jit
         def step(params, opt_state, key):
             loss, grads = jax.value_and_grad(
                 lambda p: -scale * model.log_posterior_from_data(p, data, key=key)
             )(params)
+            # Measured before the update, so it is the norm the clip actually saw.
+            # Accumulated on device and read once after the loop, to avoid adding
+            # a host sync per step.
+            clipped = (
+                jax.numpy.zeros((), dtype=jax.numpy.int32)
+                if clip_at is None
+                else (_global_norm(grads) > clip_at).astype(jax.numpy.int32)
+            )
             updates, opt_state = self.optimizer.update(grads, opt_state, params)
             params = optax.apply_updates(params, updates)
-            return params, opt_state, loss
+            return params, opt_state, loss, clipped
 
         # clear any previous history
         if self.track_history:
             self.loss_steps.clear()
             self.loss_history.clear()
+        self.clip_rate = None
+        self.n_clipped_steps = 0
+        n_clipped = jax.numpy.zeros((), dtype=jax.numpy.int32)
+        steps_run = 0
 
         # Optional progress bar.
         #
@@ -243,7 +293,9 @@ class MAPOptimizer(InferenceEngine):
             # Split a fresh subkey for each step so the MC likelihood sees a
             # different noise realization on every gradient evaluation.
             opt_key, subkey = jax.random.split(opt_key)
-            params, opt_state, loss = step(params, opt_state, subkey)
+            params, opt_state, loss, clipped = step(params, opt_state, subkey)
+            n_clipped = n_clipped + clipped
+            steps_run = i + 1
 
             # Non-finite guard: if loss becomes NaN/Inf, optimization has diverged.
             # Stop early so downstream plots don’t look “truncated” due to NaNs.
@@ -292,6 +344,26 @@ class MAPOptimizer(InferenceEngine):
         if pbar is not None:
             with contextlib.suppress(Exception):
                 pbar.close()
+
+        # Clipping regime. Read once, after the loop, so the counter costs no
+        # per-step host sync. A rate near 1.0 means the threshold sits below the
+        # model's typical gradient norm, so every step is rescaled to
+        # `max_grad_norm` and the effective algorithm is no longer plain SGD.
+        if self.max_grad_norm is not None and steps_run > 0:
+            self.n_clipped_steps = int(n_clipped)
+            self.clip_rate = self.n_clipped_steps / steps_run
+            if self.clip_rate > 0.5:
+                warnings.warn(
+                    f"Gradient clipping bound on {self.clip_rate:.0%} of steps "
+                    f"({self.n_clipped_steps}/{steps_run}) at "
+                    f"max_grad_norm={self.max_grad_norm}. At this rate clipping "
+                    "is not a guard rail: the step length is fixed at "
+                    "learning_rate * max_grad_norm regardless of gradient "
+                    "magnitude, so `learning_rate` no longer means what it would "
+                    "without clipping. Raise max_grad_norm above the typical "
+                    "gradient norm, or pass max_grad_norm=None.",
+                    stacklevel=2,
+                )
 
         return MAPPosterior(params=params, model=model)
 
