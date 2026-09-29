@@ -118,12 +118,14 @@ on request into `~/.cache/psyphy/`
 --8<-- "docs/examples/wppm/hong2025_reproduction.py:fetch"
 ```
 
-| File | Size | Used for |
-|---|---|---|
-| `trial_data_pooled_by_type_sub1.csv` | 1 MB | trials, for the refit |
-| `Bestfit_W_sub1.csv` | 212 KB | fitted weights, plus 120 bootstraps |
-| `Thres_ellipses_sub1.csv` | 320 KB | the 7×7 grid and published thresholds |
-| `Noise_ellipses_sub1.csv` | 68 MB | published Σ_noise on a 103×103 grid |
+??? note "What each data file is, and how big"
+
+    | File | Size | Used for |
+    |---|---|---|
+    | `trial_data_pooled_by_type_sub1.csv` | 1 MB | trials, for the refit |
+    | `Bestfit_W_sub1.csv` | 212 KB | fitted weights, plus 120 bootstraps |
+    | `Thres_ellipses_sub1.csv` | 320 KB | the 7×7 grid and published thresholds |
+    | `Noise_ellipses_sub1.csv` | 68 MB | published Σ_noise on a 103×103 grid |
 
 
 
@@ -177,9 +179,8 @@ We match the paper's hyper parameters.
 ## Thresholds (as in Paper Figure 2B)
 
 The model is parameterized in `Σ_noise(x)`, the covariance of the observer's
-_internal representation_. The paper reports **thresholds**, i.e. how much do we have to move in stimulus space, until the observer will notice a difference in 66% of the cases. Those are different
+_internal representation_. The paper reports **thresholds**, i.e., how much do we have to move in stimulus space, until the observer will notice a difference in 66% of the cases. Those are different
 objects! The map between them is as follows:
-
 
 $$
 \begin{aligned}
@@ -205,23 +206,23 @@ first place. So we invert numerically:
 3. Fit an ellipse to those points.
 
 Step 3 is closed-form: a point at radius `r` in direction `u` satisfies
-`uᵀΣ⁻¹u = 1/r²`, which is **linear** in the three free entries of `Σ⁻¹`. Least
-squares, then one inverse.
+$u^TΣ^{-1}u = 1/r^2$, which is **linear** in the three free entries of $Σ^-1$. (solve via least
+squares, then one inverse.)
 
 ```python title="Threshold inversion at every published reference point"
 --8<-- "docs/examples/wppm/hong2025_reproduction.py:thresholds"
 ```
 
 
+??? note "Two API details specific to threshold mode"
 
-Two API details specific to threshold mode:
-
-- **`X` is bare reference points**, `(n_test, input_dim)` — not the paired
-  `(n_test, k_stimuli, input_dim)` shape the class takes otherwise. Threshold
-  mode generates its own comparisons. Passing the paired shape raises
-  `ValueError`.
-- **`mean` and `variance` are matrix-valued**, `(n_test, input_dim, input_dim)`
-  — one threshold covariance per reference point.
+    - **`X` is bare reference points**, `(n_test, input_dim)` — not the paired
+      `(n_test, k_stimuli, input_dim)` shape the class takes otherwise.
+      Threshold mode generates its own comparisons. Passing the paired shape
+      raises `ValueError`.
+    - **`mean` and `variance` are matrix-valued**,
+      `(n_test, input_dim, input_dim)` — one threshold covariance per
+      reference point.
 
 ```python title="Compute settings"
 --8<-- "docs/examples/wppm/hong2025_reproduction.py:threshold_settings"
@@ -256,7 +257,16 @@ first and then `fig.savefig(...)` when you're ready.
 
 ---
 
-Now that we've seen how to reproduce we the key findings from the paper, we
+That reproduces the published figure, but agreement by eye is the weakest
+evidence on this page. Getting there involved a numerical inversion,
+[Monte Carlo](https://en.wikipedia.org/wiki/Monte_Carlo_method) sampling and a
+shared plotting scale, so a mismatch could have come from any of them.
+
+The next two sections take those away in order. First a fully deterministic
+check: published weights straight through psyphy's covariance field, with no
+optimizer and no sampling anywhere. Then the refit, with both back in; so that
+if *that* disagrees, you already know the disagreement is the optimizer's and
+not the model's.
 
 
 ## Exact check
@@ -357,8 +367,6 @@ and that is **~16 min** but there's quick mode available to check the whether th
   which makes them easy to conflate.
 - **Monte Carlo results are not bit-reproducible across platforms.** The exact
   check is exact anywhere; thresholds and refits reproduce to a neighborhood.
-  We have seen `rel_frobenius_median` of 2.39 and 2.65 for the same quick-mode
-  configuration on different machines.
 - **Loss values are not comparable to the paper's.** psyphy's `Prior.log_prob`
   drops a constant, which the paper keeps — still  identical gradients but different numbers
 
