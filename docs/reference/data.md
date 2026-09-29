@@ -19,3 +19,14 @@
 ::: psyphy.data.io
 
 ---
+
+## Published Datasets
+---
+
+::: psyphy.data.published
+
+---
+
+::: psyphy.data.published.hong2025
+
+---

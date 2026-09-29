@@ -5,7 +5,7 @@ RUFF := $(shell [ -d $(VENV) ] && echo $(VENV)/bin/ruff || echo ruff)
 MYPY := $(shell [ -d $(VENV) ] && echo $(VENV)/bin/mypy || echo mypy)
 PYTEST := $(shell [ -d $(VENV) ] && echo $(VENV)/bin/pytest || echo pytest)
 PRE_COMMIT := $(shell [ -d $(VENV) ] && echo $(VENV)/bin/pre-commit || echo pre-commit)
-PIP := $(shell [ -d $(VENV) ] && echo $(VENV)/bin/pip || echo pip)
+PIP := $(PYTHON) -m pip
 
 .PHONY: help install lint lint-fix format format-check type-check test clean all pre-commit
 
@@ -25,8 +25,7 @@ help:
 	@echo "Note: Commands automatically use .venv if it exists"
 
 install:
-	$(PIP) install -r requirements.txt
-	$(PIP) install -e .
+	$(PIP) install -e ".[dev]"
 
 pre-commit:
 	$(PRE_COMMIT) install

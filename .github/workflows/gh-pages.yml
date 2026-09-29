@@ -28,16 +28,16 @@ jobs:
         uses: actions/cache@v4
         with:
           path: ~/.cache/pip
-          key: ${{ runner.os }}-pip-${{ hashFiles('**/requirements.txt') }}
+          key: ${{ runner.os }}-pip-${{ hashFiles('pyproject.toml') }}
           restore-keys: |
             ${{ runner.os }}-pip-
 
       - name: Install dependencies
         run: |
           python -m pip install --upgrade pip
-          if [ -f requirements.txt ]; then pip install -r requirements.txt; fi
-          pip install -e .
-          pip install mkdocs mkdocs-material mkdocstrings[python]
+          # The docs toolchain is declared in pyproject.toml's `docs` extra, so
+          # local builds and CI install the same, version-bounded set.
+          pip install -e ".[docs]"
 
       - name: Log versions
         run: |

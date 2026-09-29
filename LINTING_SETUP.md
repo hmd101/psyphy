@@ -27,8 +27,6 @@ This document summarizes the linting, formatting, and code quality setup we use 
 
 - `pyproject.toml`
     - Added Ruff, mypy, and pytest configuration
-- `requirements.txt`
-    - Replaced `black` with `mypy`
 - `docs/CONTRIBUTING.md`
     - now also inlcudeds  linting guidelines
 - All Python files in `src/` and `tests/`

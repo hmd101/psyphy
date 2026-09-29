@@ -38,6 +38,17 @@ cd psyphy
 pip install -e .
 
 ```
+Contributors can also use [uv](https://docs.astral.sh/uv/), which installs from the committed `uv.lock` for a reproducible environment instead of resolving the loose ranges above fresh each time; see [CONTRIBUTING.md](CONTRIBUTING.md) for the uv-based workflow.
+
+### GPU support
+The commands above install a **CPU-only** `jax`. For an NVIDIA/CUDA GPU (including the Flatiron cluster), install the `cuda` extra instead:
+```bash
+pip install "psyphy[cuda]"     # from PyPI
+pip install -e ".[cuda]"       # from a clone
+```
+This pulls in JAX's own `cuda12` extra, which bundles a matching CUDA/cuDNN runtime as pip packages — no system CUDA module needs to be loaded alongside it.
+
+**Apple Silicon (M-series) GPUs are not supported.** JAX's Metal backend cannot do `float64`, which some `psyphy` examples require for published-precision comparisons (Apple/Google's own `jax-metal` package is also no longer maintained). On a Mac, `psyphy` runs on CPU.
 
 ## [Quickstart](https://flatironinstitute.github.io/psyphy/examples/wppm/quick_start/)
 - Go [here](https://flatironinstitute.github.io/psyphy/examples/wppm/quick_start/) for a light-weight tutorial that demonstrates how to instantiate, evaluate and fit a model quickly. You should be able to run the underlying [script](https://github.com/flatironinstitute/psyphy/blob/main/docs/examples/wppm/quick_start.py) on your CPU.

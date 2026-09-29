@@ -39,10 +39,44 @@ dev = [
   "mypy>=1.0",
   "pre-commit>=3.0",
 ]
+# Toolchain for `mkdocs build --strict`. Kept separate from `examples` so CI's
+# docs job does not have to install JupyterLab on every push to main.
+#
+# The `<2` bound is deliberate: MkDocs 2.0 removes the plugin system outright
+# (mkdocs-material warns about this at build time, and states there is no
+# migration path). This site depends on the `search` and `mkdocstrings`
+# plugins, so it cannot build under 2.x. Revisit when the ecosystem settles.
 docs = [
+  "mkdocs>=1.6,<2",
+  "mkdocs-material>=9.7",
+  "mkdocstrings[python]>=1.0",
+  "pymdown-extensions>=11.0",
+]
+# Plotting backend for psyphy.viz. Kept separate from `examples` so a user who
+# only wants to draw covariance ellipses does not also install JupyterLab.
+viz = [
+  "matplotlib>=3.5",
+]
+# Needed only to *run* the example scripts under docs/examples/ and regenerate
+# their figures. The committed plots mean the site builds without these.
+examples = [
   "matplotlib>=3.5",
   "seaborn>=0.13",
   "jupyterlab>=4.0",
+]
+# GPU (NVIDIA/CUDA) support, e.g. for running the example scripts on the
+# Flatiron cluster. `jax[cuda12]` pulls in jaxlib's CUDA plugin plus matching
+# nvidia-*-cu12 wheels; JAX bundles its own CUDA/cuDNN runtime this way, so no
+# system CUDA/cuDNN module should be loaded alongside it -- doing so puts an
+# older system libcusparse/libcudnn ahead of the bundled ones on
+# LD_LIBRARY_PATH and breaks GPU detection (`module load python` is enough).
+#
+# There is no equivalent extra for Apple Silicon GPUs: JAX's Metal backend
+# does not support float64, which the WPPM examples require for their
+# published-precision comparisons, so Mac users run CPU-only. Third-party
+# Metal backends exist (jax-mps / applejax) but are not wired up here.
+cuda = [
+  "jax[cuda12]>=0.4.28",
 ]
 
 [project.urls]
@@ -61,6 +95,12 @@ include = ["src/psyphy", "README.md", "LICENSE.md", "tests"]
 line-length = 88
 target-version = "py39"
 src = ["src", "tests"]
+# Ruff >=0.16 formats Python code blocks inside Markdown. The docs pages embed
+# snippets from docs/examples/*.py via mkdocs-material's `--8<--` includes, so
+# the code is already formatted at its source; letting the formatter rewrite the
+# rendered copies would only churn the prose files and desync them from CI,
+# which lints src/ and tests/ only.
+extend-exclude = ["*.md"]
 
 [tool.ruff.lint]
 select = [

@@ -13,8 +13,7 @@ This tutorial explains the example that can be found and run
 Runtime depends heavily on your device and on a few computation-driving hyperparameters (see below).
 - GPU (A100 40GB): With the default settings below, the script runs in ~3 minutes.
 - CPU: To make the script practical on CPU, reduce `MC_SAMPLES` aggressively (e.g., to 5–20 and `NUM_TRIALS_Per_Ref`) and shorten the **optimizer** run (reduce `num_steps`). These two knobs usually give the biggest speedups.
-- Apple Silicon / MPS: With the current configuration, the script takes 1h 45 min on  CPU (M4 Max, 64 GB)
-- JAX-accelearion on MPS limitation (`jax-metal`): At the moment, JAX on MPS does not support some operations we rely on (e.g., Cholesky decomposition), hence CPU is the only
+- Apple Silicon / MPS: With the current configuration, the script takes 1h 45 min on  CPU (M5 Max, 64 GB)
 
 #### Default compute settings (GPU)
 ```python
@@ -42,9 +41,9 @@ WPPM defines a *covariance matrix field* $\Sigma(x)$ over stimulus space (e.g. c
 
 The model represents $\Sigma(x)$ as
 
-\[
+$$
 \Sigma(x) = U(x)U(x)^\top + \varepsilon I,
-\]
+$$
 
 where $U(x)$ is a smooth, basis-expanded matrix-valued function and $\varepsilon$ is a small diagonal “jitter” (`diag_term`) to avoid numerical issues. Alternatively, in Gaussian Process (GP) terms, you can think of $U(x)$ defining a GP in weight space, i.e., a "Bayesian linear model".
 
@@ -250,6 +249,7 @@ For an even more minimal code setup that doesn't require a GPU but will run on y
 - **CPU vs GPU:** this example can be heavy because the oddity likelihood uses Monte Carlo. A GPU can help a lot, see [`quickstart`](https://flatironinstitute.github.io/psyphy/examples/wppm/quick_start/) for a CPU friendly version.
 - **Positive definiteness:** `diag_term` is important. If you ever see a non-PD covariance, increase `diag_term` slightly.
 - **MC variance:** optimization stability depends on `MC_SAMPLES`. Too small means noisy gradients.
+- **Objective scaling:** `MAPOptimizer` defaults to `reduction="mean"`, so the reported loss is a *per-trial* negative log posterior and `learning_rate` transfers across dataset sizes. `WPPM.log_posterior_from_data` still returns the true summed log posterior — the scaling lives in the optimizer. Pass `reduction="sum"` to recover the unnormalized objective, but note that `max_grad_norm=1.0` then saturates on nearly every step (the raw gradient norm grows with the number of trials), which silently turns SGD into fixed-step normalized descent. If you are matching a reference implementation that does no clipping, pass `max_grad_norm=None`.
 
 
 ---
