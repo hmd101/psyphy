@@ -10,23 +10,19 @@ python hong2025_reproduction.py --mode full    # add the refit; wants a GPU
 
 ---
 
-### For who this is
+This tutorial shows how to reproduce the key finding shown by Hong et al 2025. They introduce the Wishart Pyschophysical Process Model, which allows for a comprehensive characterization of human color discrimination thresholds.
 
-You might find this tutorial of interest
+More specifically, we reproduce **Figure 2B** of Hong et al. (2025) — the human color discrimination
+thresholds — using psyphy and the authors' own data. Two things happen here:
+
+- we recover their published threshold contours
+
+- and we refit the model from scratch to check that we land where they landed.
+
+To that end, you might find this tutorial of interest
 - to see  a worked example of `psyphy` on real data, with an external ground
 truth to check against
 - or, if you know the Hong et al paper, this shows how `psyphy` can be used to reproduce its results.
-
----
-
-This Tutorial shows how to reproduce the key finding shown by Hong et al 2025. They introduce the Wishart Pyschophysical Process Model
-
-We reproduce **Figure 2B** of Hong et al. (2025) — human color discrimination
-thresholds — using psyphy and the authors' own data. Two things happen here:
-
-- we recover their published threshold contours from their published model,
-
-- and we refit the model from scratch to check that we land where they landed.
 
 
 > Hong, F., Bouhassira, R., Chow, J., Sanders, C., Shvartsman, M., Guan, P.,
