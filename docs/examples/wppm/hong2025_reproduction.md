@@ -308,8 +308,9 @@ Looking at the alignment of the ellipses in the figure below, the answer to that
          alt="Sigma_noise: published field vs a full-settings psyphy fit"
          width="560"/>
     <p><em>Σ_noise(x): published (black) vs our full-settings MAP fit (red),
-    subject 1 (CH). This is the internal noise field — the paper's
-    supplementary Figure S3 — not the threshold contours above.</em></p>
+    subject 1 (CH). This is the internal noise field \Sigma(X), not to be confused with
+     the threshold contours above! (This figure reproduces the paper's
+    supplementary Figure S3).</em></p>
 </div>
 
 Three restarts from independent prior draws ended at losses 0.550 / 0.512 /
