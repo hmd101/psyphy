@@ -58,20 +58,27 @@ print("DEVICE USED:", jax.devices()[0])
 
 # --8<-- [start:compute_settings]
 MC_SAMPLES = 50  # MC samples per trial in the likelihood (full example: 500)
-NUM_TRIALS = 400  # total simulated trials (full example: 4000 × 25)
+NUM_TRIALS = 1000  # total simulated trials (full example: 4000 × 25)
 NUM_STEPS = 600  # optimizer steps (full example: 2000)
 
 learning_rate = 1e-4  # full example: 5e-5. The smaller the lr, the more steps
 # are required.
 #
-# These four are not free choices -- they were swept, and the defaults below are
-# the cheapest setting that recovers the ground truth robustly across seeds
-# (fitted/true ellipse area ratio 1.02 +/- 0.02 over five init seeds, ~4 s CPU):
+# These four are not free choices -- they were swept (across both the jax
+# version floor CI pins, jax==0.4.28, and a current jax, and across several
+# seeds each) for the cheapest setting that recovers the ground truth reliably:
+# fitted/true ellipse area ratio within roughly [0.6, 1.6] and no sign of
+# collapse or divergence, ~4-13 s CPU depending on jax version.
 #
 #   * NUM_TRIALS is the binding constraint. All trials sit at a *single*
-#     reference point, so the likelihood is weak; at 100 trials the prior wins
-#     and the fit collapses to zero covariance (area ratio 0.01). 200 is the
-#     floor, 400 is comfortable.
+#     reference point, so the likelihood is weak, and the outcome at low
+#     trial counts is not a clean "collapses to zero" failure -- it is
+#     chaotic: depending on the exact random draw (which differs across jax
+#     versions for the same PRNGKey, not just across seeds) the same trial
+#     count can collapse toward zero, overshoot by several times, or blow up
+#     numerically. Below ~500 trials this instability shows up often enough
+#     to make the fit unreliable; 1000 clears it with margin on every
+#     jax/seed combination tested.
 #   * NUM_STEPS below ~600 overshoots rather than under-fits.
 #   * learning_rate above ~2e-3 diverges to a non-finite loss within 25 steps.
 #

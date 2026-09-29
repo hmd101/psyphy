@@ -8,14 +8,27 @@ to data simulated from a known WPPM recovers the ground-truth covariance.
 This exists because the tutorial's committed figure once showed a good fit that
 the committed code could not reproduce -- the fit had silently collapsed to zero
 covariance and nothing caught it, because "the script ran without error" was the
-only check. The failure mode is specific and worth naming: with all trials at a
-*single* reference point the likelihood is weak, and below roughly 200 trials
-the prior's shrinkage wins and drives the weights to zero. That produces a
-plausible-looking run, a monotone learning curve, and a meaningless fit.
+only check.
 
-The settings here mirror ``docs/examples/wppm/quick_start.py``. If that script's
-compute settings change, change them here too -- the point is to pin the
-tutorial's result, not an arbitrary configuration.
+The settings were first calibrated on a local, current jax install, and the
+first version of this test failed immediately on CI. The reason: CI's ``tests``
+job floor-tests against ``jax==0.4.28`` (see ``.github/workflows/lint.yml``),
+which is not just numerically different from a current jax but draws different
+samples from the *same* ``PRNGKey`` -- so ground truth, init and data are a
+different problem instance per jax version, not a noisy variant of the same one.
+At low trial counts (checked from n=10 to n=60) the outcome is not a clean
+"collapses to zero" failure either; it is chaotic across both seed and jax
+version, landing anywhere from near-zero to a several-times overshoot to a
+numerical blow-up. There is no trial count in that range where a specific
+failure shape is portable, so this file does not try to pin one -- see
+``test_too_few_trials_is_not_pinned_here`` below.
+
+The settings here (1000 trials, not the tutorial's original 100) mirror
+``docs/examples/wppm/quick_start.py``, calibrated to recover the ground truth
+with margin across both the jax version floor CI pins to and a current jax,
+each over several seeds. If that script's compute settings change, change them
+here too -- the point is to pin the tutorial's result, not an arbitrary
+configuration.
 """
 
 import jax.numpy as jnp
@@ -35,7 +48,7 @@ from psyphy.model import (
 
 # Kept in sync with docs/examples/wppm/quick_start.py.
 MC_SAMPLES = 50
-NUM_TRIALS = 400
+NUM_TRIALS = 1000
 NUM_STEPS = 600
 LEARNING_RATE = 1e-4
 
@@ -43,12 +56,14 @@ REF_POINT = jnp.array([[0.0, 0.0]])
 MAHAL_RADIUS = 2.8
 NOISE_SIGMA = 0.1
 
-# Measured over five init seeds: area ratio 1.019 +/- 0.022, worst relative
-# Frobenius error 0.33. The bounds below are wide enough for Monte Carlo and
-# platform variation, but nowhere near wide enough to admit a collapse (which
-# scores ~0.01) or a divergence.
-AREA_RATIO_BOUNDS = (0.7, 1.4)
-MAX_REL_FROBENIUS = 0.6
+# Measured over five seeds each on both jax==0.4.28 (CI's floor pin) and a
+# current jax: area ratio in [0.98, 1.14], worst relative Frobenius error 0.28.
+# The bounds below keep roughly 2x margin over that worst case in each
+# direction -- generous for Monte Carlo and jax-version variation, but nowhere
+# near wide enough to admit a collapse (scores ~0.01-0.1) or a divergence
+# (scores in the thousands or worse; see the module docstring).
+AREA_RATIO_BOUNDS = (0.6, 1.6)
+MAX_REL_FROBENIUS = 0.5
 
 
 def _area_ratio(fitted, truth) -> float:
@@ -151,19 +166,15 @@ def test_tutorial_settings_do_not_trigger_gradient_clipping(fit):
     assert fit["optimizer"].clip_rate is None
 
 
-def test_too_few_trials_collapses_the_fit():
-    """Pins the failure mode itself, so the bound in AREA_RATIO_BOUNDS is meaningful.
-
-    Not a desired behaviour -- a documented one. If this ever stops collapsing,
-    the prior/likelihood balance has changed and the tutorial's trial count can
-    be revisited.
-    """
-    data, task, noise, truth_field = _simulate(n_trials=100)
-    model = WPPM(prior=Prior(), likelihood=task, noise=noise)
-    init_params = model.init_params(jr.PRNGKey(42))
-    opt = MAPOptimizer(steps=200, learning_rate=LEARNING_RATE)
-    est = opt.fit(model, data, init_params=init_params, seed=4)
-    ratio = _area_ratio(
-        WPPMCovarianceField(model, est.params)(REF_POINT)[0], truth_field(REF_POINT)[0]
-    )
-    assert ratio < AREA_RATIO_BOUNDS[0]
+# Deliberately no "too few trials fails predictably" test. An earlier version
+# asserted that 100 trials reliably collapses the fit to near-zero covariance
+# and failed immediately in CI (jax==0.4.28): under that version's draw from
+# the same seeds, the same config *overshot* by 1.35x instead -- see the module
+# docstring for why. A sweep from n=10 to n=60 (both jax pins, three seeds
+# each) found no trial count with a portable failure shape: outcomes ranged
+# from a ~100x collapse to a several-times overshoot to a numerical blow-up
+# (area ratio > 1e6), depending on seed and jax version alike. A version-robust
+# version of that test would need to characterize instability statistically
+# (e.g. dispersion across an ensemble of seeds) rather than pin one seed's
+# outcome -- worth adding if this module regresses again, but heavier than a
+# quick regression script warrants today.
