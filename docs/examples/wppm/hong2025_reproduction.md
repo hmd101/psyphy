@@ -3,10 +3,20 @@ This tutorial is accompanied by a
 **runnable script: **
 [`hong2025_reproduction.py`](https://github.com/flatironinstitute/psyphy/blob/main/docs/examples/wppm/hong2025_reproduction.py).
 
+
 ```bash
 python hong2025_reproduction.py --skip-refit   # everything except the refit, <1 min CPU
 python hong2025_reproduction.py --mode full    # add the refit; wants a GPU
 ```
+
+For a quick test to see wether the code runs ona your laptop you can run
+
+```bash
+python hong2025_reproduction.py --mode quick # exists only to prove the code path runs on a laptop
+#  500 trials and 20 steps leave the fit essentially at its prior
+```
+
+
 
 ---
 
@@ -51,13 +61,30 @@ here is only one configuration of it, which is why this page doubles as an exter
 check on psyphy and a worked example of the general machinery. The WPPM approach carries beyond color to any domain where the noise
 limiting performance varies smoothly across input space.
 
+**The task.** Hong et al. collect each judgement from the human subjects with an **oddity task**: on
+every trial the observer sees three stimuli — two identical, one different —
+and picks the odd one out. Chance is therefore 1/3, and the threshold is placed
+at the usual midpoint between chance and perfect performance,
+`P(correct) = 2/3`. That is the 66.7% contour this page reproduces.
+
 ---
 
 ## The result
 
-Each ellipse can be thought of as a *Just-Noticable Distance (JND)* around a reference color (center): the smallest difference in a color a person can detect. Here, it's operationalized as
- how far a comparison color must move from its reference
-before this observer distinguishes the two 66.7% of the time, determining the size of the ellipse.
+Each ellipse is a *Just-Noticeable Difference (JND)* contour around a reference
+color at its center: the smallest color difference this observer can reliably
+detect. Operationally, it is how far a comparison color must move from the
+reference before they pick it out as the odd one 66.7% of the time. It is an
+ellipse rather than a circle because sensitivity depends on *direction* — some
+color changes are easier to see than others of the same physical size. The
+orientation and elongation of each ellipse are exactly what the WPPM estimates.
+
+That sensitivity also scales with the baseline stimulus, which is the
+[Weber–Fechner law](https://en.wikipedia.org/wiki/Weber%E2%80%93Fechner_law).
+psyphy can recover it from simulated data — see
+[Recovering Weber's Law](weber_law.md) for a worked example on a
+one-dimensional stimulus.
+
 
 <div align="center">
     <img src="../plots/hong2025_thresholds.png"
@@ -90,9 +117,10 @@ model = hong2025.build_paper_model(mc_samples=500)
 
 # Parameter posterior: which W do we believe?
 posterior = MAPPosterior({"W": W_org}, model)
-# Search settings: how carefully to look for each threshold
 
+# Search settings: how carefully to look for each threshold
 config = ThresholdConfig(n_theta=16, n_length=300)
+
 # Predictive posterior: given what we believe about W, what do we predict here?
 thresholds = WPPMPredictivePosterior(
     posterior,
@@ -111,7 +139,7 @@ The sections below will dive deeper into details, such as how to load the data o
 
 ## Data
 
-psyphy ships no data. The OSF node carries no explicit license, so we download
+`psyphy` ships no data. The OSF node carries no explicit license, so we download
 on request into `~/.cache/psyphy/`
 
 ```python title="Download one observer's files"
@@ -144,10 +172,14 @@ needs an adapter:
     published one. `load_trials` defaults to `trial_types=("AEPsych",)`.
     For more information on how the authors did adaptive trial placement using the library AEPsych, we refer the reader to the paper.
 
-Two conventions psyphy handles for us: stimulus coordinates are already in the
-Chebyshev domain `[-1, 1]`, so no normalization is needed; and oddity trials
-are stored with `K=2`, not 3 — the observer sees three items but only two
-distinct means, and the duplication lives in the likelihood.
+Two conventions psyphy handles for us:
+
+- **Coordinates are already in the Chebyshev domain** `[-1, 1]`, so no
+  normalization is needed.
+- **Oddity trials are stored with `K=2`, not 3.** The task presents three
+  stimuli — reference, reference, comparison — but only **two distinct** ones,
+  and `K` counts the distinct stimuli. The duplication lives in the likelihood,
+  not in the stored data.
 
 ---
 
@@ -249,10 +281,12 @@ top colored by reference stimulus:
 ```
 
 `scale` comes from `auto_scale(coords, thres_published)` and `colors` from
-`hong2025.w2d_to_rgb(coords, M)`. Passing **one** `scale` for both fields is the
-point. Independently scaled fields cannot be compared by eye. `plot_ellipses` draws into an axes
-and returns it. It never saves or shows *for* you, so you style the figure
-first and then `fig.savefig(...)` when you're ready.
+`hong2025.w2d_to_rgb(coords, M)`. We recommend only passing  **one** `scale` for both fields because otherwise the comparison independently scaled fields cannot be
+compared by eye.
+
+The rest of the API — `scale="auto"`, per-ellipse colors, posterior draws,
+non-positive-definite covariances, and why nothing is saved or shown for you —
+is covered in [Plotting ellipse fields](../viz/ellipse_plots.md).
 
 
 ---
@@ -331,8 +365,6 @@ Three restarts from independent prior draws ended at losses 0.550 / 0.512 /
     not run for the other seven. Read this purely as "the fitting pipeline reproduces the
     paper for this subject,".
 
-`--mode quick` exists only to prove the code path runs on a laptop: 500 trials
-and 20 steps leave the fit essentially at its prior
 
 ---
 
