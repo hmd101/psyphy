@@ -37,21 +37,15 @@ truth to check against
 Measuring a discrimination threshold the usual way means fixing one color and
 asking, over many trials, how far a second color has to move before someone
 notices the difference. That tells you about one color. Repeating it across a
-whole plane of colors is impractical: too many locations, far too many trials, so we run into the curse of dimensionality.
+whole plane of colors is impractical: too many locations and far too many trials, so we run into the curse of dimensionality.
 
-The WPPM takes a different route. It assumes the observer's internal noise
-changes *smoothly* across color space: nearby colors are confusable in similar
+The WPPM takes a different approach. It assumes the observer's internal noise
+changes *smoothly* across color space, or more generally, the input space: nearby colors are confusable in similar
 ways. That lets us fit one smooth field over the entire space instead of many
 separate measurements, so every trial informs the whole picture. Once fit, we
-can evaluate the model at any pair of colors, including pairs nobody was ever
-shown. This now enables
+can evaluate the model at any point in stimulus space.
 
-What they find is that discrimination is finest near gray and gets coarser
-for more saturated colors, and the threshold ellipses point outward from gray,
-so sensitivity depends on direction (angle) as well as position.
-
-
-**What psyphy adds.** psyphy implements the Wishart Psychophysical Process MOdel (WPPM) in general form: any number of
+**What psyphy adds.** psyphy implements the Wishart Psychophysical Process Model (WPPM) in general form: any number of
 stimulus dimensions (doesn't have to be color), any task you can write a likelihood for. The color setup
 here is only one configuration of it, which is why this page doubles as an external
 check on psyphy and a worked example of the general machinery. The WPPM approach carries beyond color to any domain where the noise
@@ -162,7 +156,7 @@ We match the paper's hyper parameters.
 
 `build_paper_model()` assembles a WPPM from `PAPER_HYPERPARAMS`.
 
-??? note "Paper → psyphy parameter mapping"
+??? note "Paper -> psyphy parameter mapping"
 
     Most settings map one to one. The ones worth knowing:
 
@@ -262,6 +256,9 @@ first and then `fig.savefig(...)` when you're ready.
 
 ---
 
+Now that we've seen how to reproduce we the key findings from the paper, we
+
+
 ## Exact check
 ### does psyphy build the same covariance field Hong et al published?
 
@@ -303,42 +300,6 @@ Looking at the alignment of the ellipses in the figure below, the answer to that
 --8<-- "docs/examples/wppm/hong2025_reproduction.py:fit"
 ```
 
-One override is required: **`max_grad_norm=None`**. psyphy clips gradients at
-1.0 by default, the paper does not, and with clipping on the paper's
-`learning_rate=1e-4` does not mean what it means there.
-
-??? note "Optimizer specifics — why clipping has to go off"
-
-    Only one of the two settings in the call above is actually a change.
-
-    | | paper | psyphy default | |
-    |---|---|---|---|
-    | objective scaling | per-trial | per-trial (`reduction="mean"`) | already the same |
-    | gradient clipping | none | clip at 1.0 | **must be disabled** |
-
-    **`reduction="mean"` matches psyphy's default**, so passing it changes
-    nothing. It is in the call for the record: the model always returns the
-    *summed* log posterior, and `"mean"` divides by the trial count `N` to give
-    the per-trial objective the paper minimizes. Two objectives differing by the
-    constant `N` have the same minimizer, so this alone would be harmless.
-
-    **`max_grad_norm=None` is the real override**, and it is not marginal.
-    Measured on subject 1 at initialization, N = 6,000 trials:
-
-    ```
-    global grad norm, reduction="sum"  = 1,478,188.6
-    global grad norm, reduction="mean" =       246.4
-    clip threshold (psyphy default)    =         1.0
-    ```
-
-    246 ≫ 1, so the clip would saturate on **every** step even under `"mean"`.
-    That discards gradient *magnitude* and turns SGD into fixed-step normalized
-    descent: `learning_rate=1e-4` would mean "move 1e-4 along the gradient
-    *direction*" rather than the paper's "move 1e-4 × gradient".
-
-```python title="Comparison"
---8<-- "docs/examples/wppm/hong2025_reproduction.py:compare"
-```
 
 
 

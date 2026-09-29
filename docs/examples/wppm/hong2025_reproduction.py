@@ -388,13 +388,11 @@ def stage3_refit(paths: dict[str, Path], cfg: dict, mode: str, seed: int) -> Non
     # --8<-- [start:fit]
     model = hong2025.build_paper_model(mc_samples=cfg["mc_samples"])
     optimizer = MAPOptimizer(
-        steps=cfg["steps"],
-        learning_rate=hong2025.PAPER_HYPERPARAMS["learning_rate"],
-        momentum=hong2025.PAPER_HYPERPARAMS["momentum"],
-        # The paper's optimizer scales the objective per trial and does no
-        # gradient clipping; both are needed for its learning rate to transfer.
-        reduction="mean",
-        max_grad_norm=None,
+        steps=cfg["steps"],  # number of gradient steps per restart
+        learning_rate=hong2025.PAPER_HYPERPARAMS["learning_rate"],  # 1e-4, step size
+        momentum=hong2025.PAPER_HYPERPARAMS["momentum"],  # 0.2, `heavy-ball` momentum
+        reduction="mean",  # objective / N: a per-trial loss, so lr is independent of N
+        max_grad_norm=None,  # no clipping
     )
 
     # The paper fits from 3 random initializations and keeps the lowest final
