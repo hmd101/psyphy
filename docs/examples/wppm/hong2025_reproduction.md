@@ -382,7 +382,7 @@ Looking at the alignment of the ellipses in the figure below, the answer to that
          width="560"/>
     <p><em>Σ_noise(x): published (black) vs our full-settings MAP fit (red),
     subject 1 (CH). This is the internal noise field — the paper's
-    supplementary Figure S3 — not the threshold contours above.</em></p>
+    supplementary Figure S3 (not to be confused with the threshold contours above).</em></p>
 </div>
 
 Three restarts from independent prior draws ended at losses 0.550 / 0.512 /
@@ -427,10 +427,8 @@ and that is **~16 min** but there's quick mode available to check the whether th
   which makes them easy to conflate.
 - **Monte Carlo results are not bit-reproducible across platforms.** The exact
   check is exact anywhere; thresholds and refits reproduce to a neighborhood.
-  We have seen `rel_frobenius_median` of 2.39 and 2.65 for the same quick-mode
-  configuration on different machines.
 - **Loss values are not comparable to the paper's.** psyphy's `Prior.log_prob`
-  drops a constant, which the paper keeps — still  identical gradients but different numbers
+  drops a constant, which the paper keeps (still  identical gradients but different numbers)
 
 
 ---
