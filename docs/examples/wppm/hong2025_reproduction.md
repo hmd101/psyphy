@@ -28,6 +28,15 @@ This tutorial is accompanied by a
 
 
 
+For a quick test to see wether the code runs ona your laptop you can run
+
+```bash
+python hong2025_reproduction.py --mode quick # exists only to prove the code path runs on a laptop
+#  500 trials and 20 steps leave the fit essentially at its prior
+```
+
+
+
 ---
 
 # Reproducing Hong et al. (2025)
@@ -258,7 +267,14 @@ first place. So we invert numerically:
    closest to 2/3. One boundary point per direction.
 3. Fit an ellipse to those points.
 
+Step 3 needs no optimizer — the ellipse fit is closed-form.
 
+??? note "Why the ellipse fit is closed-form"
+
+    A point at radius `r` in direction `u` satisfies $u^TΣ^{-1}u = 1/r^2$, which
+    is **linear** in the three free entries of $Σ^{-1}$. So the fit is least
+    squares over those three unknowns, followed by a single matrix inverse to
+    recover $Σ$ itself. No iteration, and nothing that can fail to converge.
 
 ```python title="Threshold inversion at every published reference point"
 --8<-- "docs/examples/wppm/hong2025_reproduction.py:thresholds"
