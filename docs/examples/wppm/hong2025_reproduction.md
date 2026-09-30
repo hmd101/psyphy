@@ -1,42 +1,56 @@
 # Reproducing Hong et al. (2025)
 This tutorial is accompanied by a
-**runnable script: **
+**runnable script:**
 [`hong2025_reproduction.py`](https://github.com/flatironinstitute/psyphy/blob/main/docs/examples/wppm/hong2025_reproduction.py).
 
 
-```bash
-python hong2025_reproduction.py --skip-refit   # everything except the refit, <1 min CPU
-python hong2025_reproduction.py --mode full    # add the refit; wants a GPU
-```
+??? note "How to run the script"
 
-For a quick test to see wether the code runs ona your laptop you can run
+    Everything on this page comes from one script. Pick a mode by how much
+    compute you want to spend:
 
-```bash
-python hong2025_reproduction.py --mode quick # exists only to prove the code path runs on a laptop
-#  500 trials and 20 steps leave the fit essentially at its prior
-```
+    ```bash
+    # stages 1 and 2 only: the exact check and Figure 2B. <1 min on CPU.
+    python hong2025_reproduction.py --skip-refit
+
+    # add stage 3, the refit at the paper's settings. Wants a GPU.
+    python hong2025_reproduction.py --mode full
+    ```
+
+    To check the code path runs on your laptop before committing to any of
+    that:
+
+    ```bash
+    # a smoke test, not a reproduction: 500 trials and 20 steps
+    # leave the fit essentially at its prior.
+    python hong2025_reproduction.py --mode quick
+    ```
 
 
 
 ---
 
-This tutorial shows how to reproduce the key finding shown by Hong et al 2025. They introduce the Wishart Pyschophysical Process Model, which allows for a comprehensive characterization of human color discrimination thresholds.
+# Reproducing Hong et al. (2025)
 
-More specifically, we reproduce **Figure 2B** of Hong et al. (2025) — the human color discrimination
-thresholds — using psyphy and the authors' own data. Two things happen here:
+Hong et al. measured how finely people can tell colors apart, across a whole
+plane of colors rather than at a handful of points. This page reproduces their
+central figure from their own published data, in three stages: an exact
+check of the model's arithmetic, the threshold contours of Figure 2B, and a
+refit from their raw trials to see whether we land where they landed.
 
-- we recover their published threshold contours
+**Who this is for**
 
-- and we refit the model from scratch to check that we land where they landed.
+- You want a worked example of psyphy on real data, with an external ground
+  truth to check against.
+- You know the paper and want to see how psyphy reproduces it.
 
-To that end, you might find this tutorial of interest
-- to see  a worked example of `psyphy` on real data, with an external ground
-truth to check against
-- or, if you know the Hong et al paper, this shows how `psyphy` can be used to reproduce its results.
+No familiarity with the model is needed to start. The next section introduces it
+at a high level, [the simulated-data tutorial](full_wppm_fit_example.md) goes
+further, and the paper itself is the full reference:
 
 
 > Hong, F., Bouhassira, R., Chow, J., Sanders, C., Shvartsman, M., Guan, P.,
-> Williams, A. H., & Brainard, D. H. (2026). *Comprehensive characterization of
+> Williams, A. H., & Brainard, D. H. (2025). *Comprehensive characterization of
 > human color discrimination thresholds.* eLife 14:RP108943.
 > <https://doi.org/10.7554/eLife.108943.2>
 
@@ -58,7 +72,7 @@ can evaluate the model at any point in stimulus space.
 **What psyphy adds.** psyphy implements the Wishart Psychophysical Process Model (WPPM) in general form: any number of
 stimulus dimensions (doesn't have to be color), any task you can write a likelihood for. The color setup
 here is only one configuration of it, which is why this page doubles as an external
-check on psyphy and a worked example of the general machinery. The WPPM approach carries beyond color to any domain where the noise
+check on psyphy and a worked example of the general pipeline. The WPPM approach carries beyond color to any domain where the noise
 limiting performance varies smoothly across input space.
 
 **The task.** Hong et al. collect each judgement from the human subjects with an **oddity task**: on
@@ -71,7 +85,7 @@ at the usual midpoint between chance and perfect performance,
 
 ## The result
 
-Each ellipse is a *Just-Noticeable Difference (JND)* contour around a reference
+Each ellipse is a *Just-Noticeable Difference (JND)* threshold contour around a reference
 color at its center: the smallest color difference this observer can reliably
 detect. Operationally, it is how far a comparison color must move from the
 reference before they pick it out as the odd one 66.7% of the time. It is an
@@ -177,7 +191,7 @@ Two conventions psyphy handles for us:
 - **Coordinates are already in the Chebyshev domain** `[-1, 1]`, so no
   normalization is needed.
 - **Oddity trials are stored with `K=2`, not 3.** The task presents three
-  stimuli — reference, reference, comparison — but only **two distinct** ones,
+  stimuli, reference, reference, comparison, but only **two distinct** ones,
   and `K` counts the distinct stimuli. The duplication lives in the likelihood,
   not in the stored data.
 
@@ -185,7 +199,7 @@ Two conventions psyphy handles for us:
 
 ## Model
 
-We match the paper's hyper parameters.
+We match the paper's hyperparameters.
 
 
 `build_paper_model()` assembles a WPPM from `PAPER_HYPERPARAMS`.
@@ -211,8 +225,16 @@ We match the paper's hyper parameters.
 ## Thresholds (as in Paper Figure 2B)
 
 The model is parameterized in `Σ_noise(x)`, the covariance of the observer's
-_internal representation_. The paper reports **thresholds**, i.e., how much do we have to move in stimulus space, until the observer will notice a difference in 66% of the cases. Those are different
-objects! The map between them is as follows:
+_internal representation_. The paper reports **thresholds**, i.e., how much do we have to move in stimulus space, until the observer picks it out as the odd one 66.7% of the time. Those are different
+objects! The map between them runs in two directions, and only the forward pass is easy:
+
+- **Forward**: given the noise at two points, how often does the observer get
+  the trial right? That is what the model computes directly.
+- **Inverse**: given that they get it right two-thirds of the time, how far
+  apart were the stimuli? That is what Figure 2B plots and it is the
+  direction with no closed form.
+
+Written out:
 
 $$
 \begin{aligned}
@@ -227,8 +249,7 @@ $$
 
 
 There is no closed form for the inverse. `P(correct)` for the 3-alternative
-oddity task is the probability that `min(d_02, d_12) > d_01` over three correlated
-quadratic forms, which is why the paper estimates it by
+oddity task is the probability that `min(d_02, d_12) > d_01`, where d_ij refers to the Mahalanobis distance between any two stimuli representations, which is why the paper estimates it by
 [Monte Carlo](https://en.wikipedia.org/wiki/Monte_Carlo_method) in the
 first place. So we invert numerically:
 
@@ -237,24 +258,32 @@ first place. So we invert numerically:
    closest to 2/3. One boundary point per direction.
 3. Fit an ellipse to those points.
 
-Step 3 is closed-form: a point at radius `r` in direction `u` satisfies
-$u^TΣ^{-1}u = 1/r^2$, which is **linear** in the three free entries of $Σ^-1$. (solve via least
-squares, then one inverse.)
+
 
 ```python title="Threshold inversion at every published reference point"
 --8<-- "docs/examples/wppm/hong2025_reproduction.py:thresholds"
 ```
 
 
-??? note "Two API details specific to threshold mode"
+??? note "Why threshold mode takes and returns different shapes"
 
-    - **`X` is bare reference points**, `(n_test, input_dim)` — not the paired
-      `(n_test, k_stimuli, input_dim)` shape the class takes otherwise.
-      Threshold mode generates its own comparisons. Passing the paired shape
-      raises `ValueError`.
-    - **`mean` and `variance` are matrix-valued**,
-      `(n_test, input_dim, input_dim)` — one threshold covariance per
-      reference point.
+    `threshold_pred` selects which direction of the map above you are asking
+    for, so both the input and the output change shape with it.
+
+    | | `threshold_pred=False` | `threshold_pred=True` (used here) |
+    |---|---|---|
+    | **Direction** | forward | inverse |
+    | **`X` you pass** | assembled trials, `(n_test, k_stimuli, input_dim)` | bare reference points, `(n_test, input_dim)` |
+    | **`mean`/`variance` you get** | one probability per trial, `(n_test,)` | one covariance per point, `(n_test, input_dim, input_dim)` |
+
+    **Why bare points go in.** Normally you supply the comparison stimulus and
+    the model scores that pair. In threshold mode, *finding* the comparison is
+    what we want: the threshold is the distance at which `P(correct)` reaches
+    2/3. So, supplying one would be handing over the answer. Instead, it generates its own by sweeping `n_theta` directions by `n_length` distances around
+    each reference (that is what `ThresholdConfig` controls).
+
+
+
 
 ```python title="Compute settings"
 --8<-- "docs/examples/wppm/hong2025_reproduction.py:threshold_settings"
@@ -268,7 +297,7 @@ settings         : n_theta=16, n_length=300, mc=500
 
 The ~2% residual is the 16-direction fan plus Monte Carlo noise, not anything
 structural; raising `n_theta` and `mc_samples` toward the paper's settings
-shrinks it, at ~30× the runtime.
+shrinks it, at ca. 30× the runtime.
 
 ### Plotting it
 
@@ -284,8 +313,8 @@ top colored by reference stimulus:
 `hong2025.w2d_to_rgb(coords, M)`. We recommend only passing  **one** `scale` for both fields because otherwise the comparison independently scaled fields cannot be
 compared by eye.
 
-The rest of the API — `scale="auto"`, per-ellipse colors, posterior draws,
-non-positive-definite covariances, and why nothing is saved or shown for you —
+The rest of the API, such as  `scale="auto"`, per-ellipse colors, posterior draws,
+non-positive-definite covariances, and why nothing is saved or shown for you,
 is covered in [Plotting ellipse fields](../viz/ellipse_plots.md).
 
 
@@ -299,7 +328,7 @@ shared plotting scale, so a mismatch could have come from any of them.
 The next two sections take those away in order. First a fully deterministic
 check: published weights straight through psyphy's covariance field, with no
 optimizer and no sampling anywhere. Then the refit, with both back in; so that
-if *that* disagrees, you already know the disagreement is the optimizer's and
+if *that* disagrees, we already know the disagreement is the optimizer's and
 not the model's.
 
 
@@ -398,6 +427,8 @@ and that is **~16 min** but there's quick mode available to check the whether th
   which makes them easy to conflate.
 - **Monte Carlo results are not bit-reproducible across platforms.** The exact
   check is exact anywhere; thresholds and refits reproduce to a neighborhood.
+  We have seen `rel_frobenius_median` of 2.39 and 2.65 for the same quick-mode
+  configuration on different machines.
 - **Loss values are not comparable to the paper's.** psyphy's `Prior.log_prob`
   drops a constant, which the paper keeps — still  identical gradients but different numbers
 

@@ -116,9 +116,8 @@ MODES = {
 # --8<-- [start:threshold_settings]
 # Stage-2 (threshold inversion) settings.
 #
-# Hong 2025 uses n_theta=16, n_length=1000, mc_samples=2000, which costs ~13 s
-# per reference point -- about 11 CPU minutes for the whole 7x7 grid. The
-# reduced settings below reproduce the published semi-axes to a median 2.18 %
+# Hong 2025 uses n_theta=16, n_length=1000, mc_samples=2000
+# The reduced settings below reproduce the published semi-axes to a median 2.18 %
 # (max 10.78 %) in 20-23 s of CPU wall clock, measured over the full 49-point
 # grid.
 THRESHOLD_MC_SAMPLES = 500
