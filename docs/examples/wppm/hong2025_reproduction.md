@@ -74,7 +74,7 @@ Hong et al. collect each judgement from the human subjects with an **oddity task
 every trial the observer sees three stimuli — two identical, one different —
 and picks the odd one out. Chance is therefore 1/3, and the threshold is placed
 at the usual midpoint between chance and perfect performance,
-`P(correct) = 2/3`. That is the 66.7% contour this page reproduces.
+$P(\text{correct}) = \tfrac{2}{3}$. That is the 66.7% contour this page reproduces.
 
 ---
 
@@ -122,13 +122,14 @@ W_org = hong2025.load_reference_W(paths["weights"])     # the paper's fitted wei
 coords, published = hong2025.load_sigma_table(paths["thres_ellipses"])
 
 # Model: given weights W, how noisy is perception at each color?
-model = hong2025.build_paper_model(mc_samples=500)
+model = hong2025.build_paper_model(mc_samples=2000)
 
 # Parameter posterior: which W do we believe?
 posterior = MAPPosterior({"W": W_org}, model)
 
-# Search settings: how carefully to look for each threshold
-config = ThresholdConfig(n_theta=16, n_length=300)
+# Search settings: how carefully to look for each threshold.
+# These are the paper's own: 16 directions, 1000 distances along each.
+config = ThresholdConfig(n_theta=16, n_length=1000)
 
 # Predictive posterior: given what we believe about W, what do we predict here?
 thresholds = WPPMPredictivePosterior(
@@ -161,7 +162,7 @@ Psyphy makes it easy to download the published data:
     | `trial_data_pooled_by_type_sub1.csv` | 1 MB | trials, for the refit |
     | `Bestfit_W_sub1.csv` | 212 KB | fitted weights, plus 120 bootstraps |
     | `Thres_ellipses_sub1.csv` | 320 KB | the 7×7 grid and published thresholds |
-    | `Noise_ellipses_sub1.csv` | 68 MB | published Σ_noise on a 103×103 grid |
+    | `Noise_ellipses_sub1.csv` | 68 MB | published $\Sigma_{\text{noise}}$ on a 103×103 grid |
 
 
 
@@ -221,7 +222,7 @@ Two conventions psyphy handles for us:
 
 ## Thresholds (as in Paper Figure 2B)
 
-The model is parameterized in `Σ_noise(x)`, the covariance of the observer's
+The model is parameterized in $\Sigma_{\text{noise}}(x)$, the covariance of the observer's
 _internal representation_. The paper reports **thresholds**, i.e., how much do we have to move in stimulus space, until the observer picks it out as the odd one 66.7% of the time. Those are different
 objects! The map between them runs in two directions, and only the forward pass is easy:
 
@@ -245,13 +246,25 @@ $$
 $$
 
 
-There is no closed form for the inverse. `P(correct)` for the 3-alternative
-oddity task is the probability that `min(d_02, d_12) > d_01`, where d_ij refers to the Mahalanobis distance between any two stimuli representations, which is why the paper estimates it by
+There is no closed form for the inverse. For the 3-alternative oddity task the
+observer is correct when the two identical stimuli are nearer to each other than
+either is to the odd one:
+
+$$
+P(\text{correct}) \;=\; \Pr\!\left[\min(d_{02},\, d_{12}) > d_{01}\right]
+$$
+
+where $d_{ij}$ is the
+[Mahalanobis distance](https://en.wikipedia.org/wiki/Mahalanobis_distance)
+between the internal representations of stimuli $i$ and $j$ — the distance that
+measures separation in units of the noise itself, so a step counts as large only
+relative to how noisy the representation is in that direction. That probability
+has no analytic form, which is why the paper estimates it by
 [Monte Carlo](https://en.wikipedia.org/wiki/Monte_Carlo_method) in the
 first place. So we invert numerically:
 
 1. Probe `n_theta` directions around each reference point.
-2. Along each, evaluate `P(correct)` at `n_length` distances and keep the one
+2. Along each, evaluate $P(\text{correct})$ at `n_length` distances and keep the one
 closest to 2/3. We thus have one boundary point per direction.
 3. Fit an ellipse to those `n_theta` points. This step does have a closed-form solution and so can be done quickly.
 
@@ -282,7 +295,7 @@ Step 3 needs no optimizer — the ellipse fit is closed-form.
 
     **Why bare points go in.** Normally you supply the comparison stimulus and
     the model scores that pair. In threshold mode, *finding* the comparison is
-    what we want: the threshold is the distance at which `P(correct)` reaches
+    what we want: the threshold is the distance at which $P(\text{correct})$ reaches
     2/3. So, supplying one would be handing over the answer. Instead, it generates its own by sweeping `n_theta` directions by `n_length` distances around
     each reference (that is what `ThresholdConfig` controls).
 
@@ -293,18 +306,11 @@ Step 3 needs no optimizer — the ellipse fit is closed-form.
 --8<-- "docs/examples/wppm/hong2025_reproduction.py:threshold_settings"
 ```
 
-```
-reference points : 49
-semi-axis error  : median 2.18 %, max 10.78 %
-settings         : n_theta=16, n_length=300, mc=500
-```
-
-The ~2% residual is the 16-direction fan plus Monte Carlo noise, not anything
-structural; raising `n_theta` and `mc_samples` toward the paper's settings
-shrinks it, at ca. 30× the runtime.
+We run the inversion at the paper's own settings (16 directions, 1,000
+distances per direction, 2,000 Monte Carlo samples).
 
 ### Plotting it
-
+S3
 Both contour fields go on one axes in a single
 [`plot_ellipses`](../../reference/viz.md) call: published dashed underneath, ours on
 top colored by reference stimulus:
@@ -381,15 +387,26 @@ The following block of code refits the WPPM's weights from the raw data, compute
 
 <div align="center">
     <img src="../plots/hong2025_full_ellipses.png"
-         alt="Sigma_noise: published field vs a full-settings psyphy fit"
+         alt="Sigma_noise: the published weights' field vs a full-settings psyphy refit"
          width="560"/>
-    <p><em>Σ_noise(x): published (black) vs our full-settings MAP fit (red),
-    subject 1 (CH). This is the internal noise field — the paper's
-    supplementary Figure S3 (not to be confused with the threshold contours above).</em></p>
+    <p><em><span class="arithmatex">\(\Sigma_{\text{noise}}(x)\)</span> for subject 1 (CH), in the same convention as the figure at
+    the top of this page: dashed gray is the field from the authors' published
+    weights, colored solid is our own MAP refit, each ellipse taking the color of
+    its reference stimulus. This is the paper's supplementary Figure S3.
+    <br/><br/>
+    Note: These ellipses look much like the ones at the top of the page, but they are a
+    different quantity.
+    <span class="arithmatex">\(\Sigma_{\text{noise}}(x) = U(x)U(x)^{\top} + \delta I\)</span>
+    is the covariance of the observer's internal representation at stimulus
+    <span class="arithmatex">\(x\)</span> — the field the WPPM is
+    parameterized in, read off at each grid point. No task enters it. The
+    contours at the top are <span class="arithmatex">\(\Sigma_{\text{thres}}\)</span>, one step downstream: <span class="arithmatex">\(\Sigma_{\text{noise}}\)</span> at a reference
+    and a comparison feeds the oddity likelihood to give <span class="arithmatex">\(P(\text{correct})\)</span>, and that map
+    is inverted for the displacement at which <span class="arithmatex">\(P(\text{correct}) = \tfrac{2}{3}\)</span>. We use the same grid and
+    plotting convention, but <span class="arithmatex">\(\Sigma_{\text{noise}}\)</span> is the model's parameters evaluated,
+    while <span class="arithmatex">\(\Sigma_{\text{thres}}\)</span> is behavior predicted from them at a criterion, here 2/3.</em></p>
 </div>
 
-Three restarts from independent prior draws ended at losses 0.550 / 0.512 /
-0.505, with no sign of a multimodal landscape.
 
 !!! warning "Scope"
     These results are for one subject (CH, 1 of 8) and a single run on one GPU.
@@ -410,22 +427,25 @@ The full refit requires **~16 min** on a single GPU. See the following table for
 
     | Step | Hardware | Wall clock | Details |
     |---|---|---|---|
-    | Thresholds (Figure 2B) | CPU | **20–23 s** | 49 refs, `n_theta=16`, `n_length=300`, `mc=500` |
-    | Thresholds at paper settings | CPU | ~11 min | `n_length=1000`, `mc=2000` (13.4 s per ref) |
     | Exact covariance check | CPU | seconds | 10,609 points, deterministic |
+    | **Thresholds, paper settings** | CPU | **~11 min** | 49 refs, `n_theta=16`, `n_length=1000`, `mc=2000` (13.4 s per ref) |
+    | Thresholds, `fast` preset | CPU | 20–23 s | `n_length=300`, `mc=500` — smoke tests only |
     | **Refit — full** | 1 GPU | **~16 min** | 6,000 trials, 1,500 steps, `mc=2000`, 3 restarts |
-    | Full paper results | H100 | 14 h | Same as Refit above * 8 subjects * 120 bootstraps |
+    | The paper's own run | H100 | 14 h | **one subject**: main fit + 120 bootstrap refits |
 
-    The paper's 14-hour budget covers the main fit *plus* 120 bootstrap refits,
-    not a single fit.
+    The 14-hour figure is per observer, not for the whole paper. The WPPM is fit
+    separately for each participant, and the 120 bootstraps resample that
+    participant's own trials, so all eight observers is roughly eight times
+    that.
 
 
 ---
 
 ## Watch out for
 
-- **`Σ_noise` and `Σ_thres` are different things.** The thresholds above are
-  `Σ_thres`, as plotted in Figure 2B; the exact check and the refit compare `Σ_noise`, the noise field, which is plotted in
+- **$\Sigma_{\text{noise}}$ and $\Sigma_{\text{thres}}$ are different things.** The thresholds
+  above are $\Sigma_{\text{thres}}$, as plotted in Figure 2B; the exact check and the
+  refit compare $\Sigma_{\text{noise}}$, the noise field, which is plotted in
   supplementary Figure S3. Both arrive as `(49, 2, 2)` stacks on the same grid,
   which makes them easy to conflate.
 - **Monte Carlo results are not bit-reproducible across platforms.** The exact
