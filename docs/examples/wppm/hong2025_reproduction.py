@@ -135,14 +135,25 @@ MODES = {
 # --8<-- [end:modes]
 
 # --8<-- [start:threshold_settings]
-# Stage-2 (threshold inversion) settings.
+# Threshold-inversion settings, shared by stage 2 (invert the paper's weights)
+# and stage 4 (invert ours). `n_theta` is the same in both; only the distance
+# grid and the Monte Carlo sample count differ.
 #
-# Hong 2025 uses n_theta=16, n_length=1000, mc_samples=2000
-# The reduced settings below reproduce the published semi-axes to a median 2.18 %
-# (max 10.78 %) in 20-23 s of CPU wall clock, measured over the full 49-point
-# grid.
-THRESHOLD_MC_SAMPLES = 500
-THRESHOLD_CONFIG = ThresholdConfig(n_theta=16, n_length=300)
+# "paper" matches Hong et al. exactly and is the default: every committed
+# figure and quoted number comes from it. "fast" trades accuracy for ~30x less
+# wall clock -- it reproduces the published semi-axes to a median 2.18 %
+# (max 10.78 %) in 20-23 s instead of ~11 min, which is what keeps the
+# smoke test a smoke test.
+THRESHOLD_SETTINGS = {
+    "paper": {
+        "mc_samples": 2000,
+        "config": ThresholdConfig(n_theta=16, n_length=1000),
+    },
+    "fast": {
+        "mc_samples": 500,
+        "config": ThresholdConfig(n_theta=16, n_length=300),
+    },
+}
 # --8<-- [end:threshold_settings]
 
 
@@ -343,16 +354,17 @@ def stage1_exact_check(paths: dict[str, Path]) -> None:
     print("  agreement to the precision the published file can express.")
 
 
-def stage2_thresholds(paths: dict[str, Path]) -> None:
+def stage2_thresholds(paths: dict[str, Path], thr: dict) -> None:
     """Reproduce Figure 2B: threshold contours from the paper's own weights."""
     print("\n=== Stage 2: threshold contours (Figure 2B) from W_org ===")
+    mc_samples, config = thr["mc_samples"], thr["config"]
 
     # --8<-- [start:thresholds]
     W_org = hong2025.load_reference_W(paths["weights"])
     coords, thres_published = hong2025.load_sigma_table(paths["thres_ellipses"])
 
     # Model: given weights W, how noisy is perception at each color?
-    model = hong2025.build_paper_model(mc_samples=THRESHOLD_MC_SAMPLES)
+    model = hong2025.build_paper_model(mc_samples=mc_samples)
     # Parameter posterior: which W do we believe? ,
     posterior = MAPPosterior({"W": W_org}, model)
 
@@ -364,7 +376,7 @@ def stage2_thresholds(paths: dict[str, Path]) -> None:
         jnp.asarray(coords),  # reference points only; the search finds comparisons
         n_samples=1,  # a point estimate has only one draw
         threshold_pred=True,
-        threshold_config=THRESHOLD_CONFIG,  # search settings: how carefully to look
+        threshold_config=config,  # search settings: how carefully to look
     )
     thres_psyphy = np.asarray(predictive.mean)  # (49, 2, 2); runs on first access
     # --8<-- [end:thresholds]
@@ -382,8 +394,8 @@ def stage2_thresholds(paths: dict[str, Path]) -> None:
         f"max {rel_err.max() * 100:.2f} %"
     )
     print(
-        f"  settings         : n_theta={THRESHOLD_CONFIG.n_theta}, "
-        f"n_length={THRESHOLD_CONFIG.n_length}, mc={THRESHOLD_MC_SAMPLES}"
+        f"  settings         : n_theta={config.n_theta}, "
+        f"n_length={config.n_length}, mc={mc_samples}"
     )
 
     # The paper colors each ellipse by its reference stimulus, via a monitor
@@ -515,7 +527,9 @@ def stage3_refit(paths: dict[str, Path], cfg: dict, mode: str, seed: int) -> Pat
     return fit_path
 
 
-def stage4_end_to_end(paths: dict[str, Path], fit_path: Path, mode: str) -> None:
+def stage4_end_to_end(
+    paths: dict[str, Path], fit_path: Path, mode: str, thr: dict
+) -> None:
     """Close the loop: raw trials -> our weights -> our contours -> Figure 2B.
 
     Stages 1-2 take the paper's weights as given, so they test what psyphy
@@ -536,13 +550,13 @@ def stage4_end_to_end(paths: dict[str, Path], fit_path: Path, mode: str) -> None
     coords, thres_published = hong2025.load_sigma_table(paths["thres_ellipses"])
 
     # Identical to stage 2, except the weights are ours rather than theirs.
-    model = hong2025.build_paper_model(mc_samples=THRESHOLD_MC_SAMPLES)
+    model = hong2025.build_paper_model(mc_samples=thr["mc_samples"])
     predictive = WPPMPredictivePosterior(
         MAPPosterior({"W": W_fit}, model),
         jnp.asarray(coords),
         n_samples=1,
         threshold_pred=True,
-        threshold_config=THRESHOLD_CONFIG,
+        threshold_config=thr["config"],
     )
     thres_fit = np.asarray(predictive.mean)  # (49, 2, 2)
 
@@ -629,9 +643,31 @@ def main() -> int:
         action="store_true",
         help="skip stage 4 (the end-to-end inversion of our own fitted weights)",
     )
+    parser.add_argument(
+        "--threshold-settings",
+        choices=sorted(THRESHOLD_SETTINGS),
+        default=None,
+        help=(
+            "inversion settings for stages 2 and 4. 'paper' matches Hong et al. "
+            "(~11 min per stage on CPU) and is the default; 'fast' is ~20 s and "
+            "is the default under --mode quick."
+        ),
+    )
     args = parser.parse_args()
 
+    # Paper settings by default, so the committed figures and the numbers quoted
+    # on the page come from the paper's own configuration. --mode quick falls
+    # back to "fast" unless asked otherwise, so the smoke test stays seconds and
+    # not ~22 min of inversion it was never meant to run.
+    thr_name = args.threshold_settings or ("fast" if args.mode == "quick" else "paper")
+    thr = THRESHOLD_SETTINGS[thr_name]
+
     print(f"device: {jax.devices()[0]}   x64: {jax.config.read('jax_enable_x64')}")
+    print(
+        f"threshold settings: {thr_name} "
+        f"(n_theta={thr['config'].n_theta}, n_length={thr['config'].n_length}, "
+        f"mc={thr['mc_samples']})"
+    )
 
     # --8<-- [start:fetch]
     paths = hong2025.fetch(subject=args.subject, noise_ellipses=args.noise_ellipses)
@@ -641,7 +677,7 @@ def main() -> int:
     if args.skip_thresholds:
         print("\n=== Stage 2: skipped (--skip-thresholds) ===")
     else:
-        stage2_thresholds(paths)
+        stage2_thresholds(paths, thr)
     fit_path = args.from_fit or FITS_DIR / f"hong2025_{args.mode}_fit.npz"
 
     if args.skip_refit or args.from_fit:
@@ -659,7 +695,7 @@ def main() -> int:
     if args.skip_end_to_end:
         print("\n=== Stage 4: skipped (--skip-end-to-end) ===")
     else:
-        stage4_end_to_end(paths, fit_path, args.mode)
+        stage4_end_to_end(paths, fit_path, args.mode, thr)
     return 0
 
 
