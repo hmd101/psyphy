@@ -76,15 +76,15 @@ The WPPM takes a different approach. It assumes the observer's internal noise
 changes *smoothly* across color space, or more generally, the input space: nearby colors are confusable in similar
 ways. That lets us fit one smooth field over the entire space instead of many
 separate measurements, so every trial informs the whole picture. Once fit, we
-can evaluate the model at any point in stimulus space.
+can evaluate the model at any point in stimulus space, including those we haven't tested!
 
-**What psyphy adds.** psyphy implements the Wishart Psychophysical Process Model (WPPM) in general form: any number of
-stimulus dimensions (doesn't have to be color), any task you can write a likelihood for. The color setup
+psyphy implements the Wishart Psychophysical Process Model (WPPM) in general form: any number of
+stimulus dimensions, any task you can write a likelihood for. The color setup
 here is only one configuration of it, which is why this page doubles as an external
 check on psyphy and a worked example of the general pipeline. The WPPM approach carries beyond color to any domain where the noise
 limiting performance varies smoothly across input space.
 
-**The task.** Hong et al. collect each judgement from the human subjects with an **oddity task**: on
+Hong et al. collect each judgement from the human subjects with an **oddity task**: on
 every trial the observer sees three stimuli — two identical, one different —
 and picks the odd one out. Chance is therefore 1/3, and the threshold is placed
 at the usual midpoint between chance and perfect performance,
@@ -99,14 +99,20 @@ color at its center: the smallest color difference this observer can reliably
 detect. Operationally, it is how far a comparison color must move from the
 reference before they pick it out as the odd one 66.7% of the time. It is an
 ellipse rather than a circle because sensitivity depends on *direction* — some
-color changes are easier to see than others of the same physical size. The
+color changes are easier to see than others of the same magnitude. The
 orientation and elongation of each ellipse are exactly what the WPPM estimates.
 
 That sensitivity also scales with the baseline stimulus, which is the
 [Weber–Fechner law](https://en.wikipedia.org/wiki/Weber%E2%80%93Fechner_law).
 psyphy can recover it from simulated data — see
 [Recovering Weber's Law](weber_law.md) for a worked example on a
-one-dimensional stimulus.
+orientation and elongation of each ellipse are exactly what the WPPM estimates. We
+can also see that the sizes of the ellipses increase as you move away from the origin
+in the plot below, which corresponds to a gray stimulus. This is a reproduction of the
+[Weber–Fechner law](https://en.wikipedia.org/wiki/Weber%E2%80%93Fechner_law).
+
+See [Recovering Weber's Law](weber_law.md) for a worked example reproducing the
+classic Weber's Law result on simulated one-dimensional data.
 
 
 <div align="center">
@@ -115,7 +121,7 @@ one-dimensional stimulus.
          width="620"/>
     <p><em>Colored ellipses are the contours we recover with psyphy; dashed gray
     are the published ones. Each ellipse takes the color of its own reference
-    stimulus (center dot), via the monitor calibration matrix published with the data. The dimensions of the figure here are called model dimensions and are arbitrary in that they can result from any affine transformation of the input space, here RGB from the isoluminant plane. </em></p>
+    stimulus (center dot). The dimensions of the figure here are called model dimensions and are arbitrary in that they can result from any affine transformation of the input (RGB) space. </em></p>
 </div>
 
 
@@ -163,7 +169,7 @@ The sections below will dive deeper into details, such as how to load the data o
 ## Data
 
 `psyphy` ships no data. The OSF node carries no explicit license, so we download
-on request into `~/.cache/psyphy/`
+Psyphy makes it easy to download the published data:
 
 ```python title="Download one observer's files"
 --8<-- "docs/examples/wppm/hong2025_reproduction.py:fetch"
@@ -182,7 +188,8 @@ on request into `~/.cache/psyphy/`
 
 
 `load_trials` returns psyphy's ordinary `TrialData`, so nothing downstream
-needs an adapter:
+`load_trials` loads in the published file and returns psyphy's `TrialData` object, so it will
+work directly with our methods:
 
 ```python title="Load the trials"
 --8<-- "docs/examples/wppm/hong2025_reproduction.py:load"
@@ -193,14 +200,19 @@ needs an adapter:
     `MOCS_*` trials. The paper fits the `AEPsych_*` rows; MOCS is held-out
     validation. Fitting all 12,000 gives a plausible result that is not the
     published one. `load_trials` defaults to `trial_types=("AEPsych",)`.
-    For more information on how the authors did adaptive trial placement using the library AEPsych, we refer the reader to the paper.
+The published data holds 12,000 total trials split into two equal-sized groups,
+one group is used for fitting, the other is held-out for validation. By default
+`load_trials` loads only the data used for fitting, to download the validation data
+run `load_trials(trial_types='STRING')` and to download all data run 
+`load_trials(trial_types='OTHER_STRING')`
+For more information on how the authors did adaptive trial placement using the library AEPsych, we refer the reader to the paper.
 
 Two conventions psyphy handles for us:
 
 - **Coordinates are already in the Chebyshev domain** `[-1, 1]`, so no
   normalization is needed.
-- **Oddity trials are stored with `K=2`, not 3.** The task presents three
-  stimuli, reference, reference, comparison, but only **two distinct** ones,
+- **Oddity trials are stored with `K=2`, not 3.** Each trial in the task presents three
+  stimuli (reference, reference, comparison) but only **two distinct** ones,
   and `K` counts the distinct stimuli. The duplication lives in the likelihood,
   not in the stored data.
 
@@ -208,10 +220,7 @@ Two conventions psyphy handles for us:
 
 ## Model
 
-We match the paper's hyperparameters.
-
-
-`build_paper_model()` assembles a WPPM from `PAPER_HYPERPARAMS`.
+`build_paper_model()` assembles a WPPM from the hyperparameters used in the paper, which are stored in the dictionary `PAPER_HYPERPARAMS`
 
 ??? note "Paper -> psyphy parameter mapping"
 
@@ -264,8 +273,8 @@ first place. So we invert numerically:
 
 1. Probe `n_theta` directions around each reference point.
 2. Along each, evaluate `P(correct)` at `n_length` distances and keep the one
-   closest to 2/3. One boundary point per direction.
-3. Fit an ellipse to those points.
+closest to 2/3. We thus have one boundary point per direction.
+3. Fit an ellipse to those `n_theta` points. This step does have a closed-form solution and so can be done quickly.
 
 Step 3 needs no optimizer — the ellipse fit is closed-form.
 
@@ -290,7 +299,7 @@ Step 3 needs no optimizer — the ellipse fit is closed-form.
     |---|---|---|
     | **Direction** | forward | inverse |
     | **`X` you pass** | assembled trials, `(n_test, k_stimuli, input_dim)` | bare reference points, `(n_test, input_dim)` |
-    | **`mean`/`variance` you get** | one probability per trial, `(n_test,)` | one covariance per point, `(n_test, input_dim, input_dim)` |
+    | **output you get** | probability correct per trial, `(n_test,)` | covariance per reference point, `(n_test, input_dim, input_dim)` |
 
     **Why bare points go in.** Normally you supply the comparison stimulus and
     the model scores that pair. In threshold mode, *finding* the comparison is
@@ -331,7 +340,8 @@ compared by eye.
 
 The rest of the API, such as  `scale="auto"`, per-ellipse colors, posterior draws,
 non-positive-definite covariances, and why nothing is saved or shown for you,
-is covered in [Plotting ellipse fields](../viz/ellipse_plots.md).
+For more detail on this plotting function, including how to use per-ellipse colors
+and posterior draws, see [Plotting ellipse fields](../viz/ellipse_plots.md).
 
 
 ---
@@ -339,7 +349,9 @@ is covered in [Plotting ellipse fields](../viz/ellipse_plots.md).
 That reproduces the published figure, but agreement by eye is the weakest
 evidence on this page. Getting there involved a numerical inversion,
 [Monte Carlo](https://en.wikipedia.org/wiki/Monte_Carlo_method) sampling and a
-shared plotting scale, so a mismatch could have come from any of them.
+That reproduces the published figure, but we can test for numeric reproducibility,
+not just visual agreement. The process described above has many steps where
+error can be introduced.
 
 The next two sections take those away in order. First a fully deterministic
 check: published weights straight through psyphy's covariance field, with no
@@ -354,13 +366,14 @@ not the model's.
 This is fully
 deterministic.
 
-```python title="Published weights through psyphy's covariance field"
 --8<-- "docs/examples/wppm/hong2025_reproduction.py:stage1"
 ```
 
 
 Plain elementwise subtraction over all 42,436 entries. The
-published CSV stores 8 decimals (the differences are tiny!):
+In the above, we're simply computing the difference between our computed
+covariances and the values shared by the paper's authors, for all 42,436 
+ellipses. The maximum value of the differences are shown below:
 
 ```
 max |diff|   : 6.778e-09
@@ -373,7 +386,6 @@ agreement to the precision the file can express.**
 
 This runs as a test (`test_covariance_field_matches_published_sigma_noise`),
 skipped automatically when the data has not been downloaded, so CI stays
-network-free.
 
 ---
 
@@ -381,9 +393,9 @@ network-free.
 ### Does psyphy's fit find the paper's covariance field?
 
 Everything above started from the paper's weights. The stronger question is: given
-only the paper's **trials**, does psyphy's fit find the paper's covariance field?
+only the paper's **data**, does psyphy's fit find the paper's covariance field?
 
-Looking at the alignment of the ellipses in the figure below, the answer to that question is yes.
+The following block of code refits the WPPM's weights from the raw data, computes the covariance field  and then plots resulting ellipses. Looking at the alignment of the ellipses in the figure below, the answer to that question is yes.
 
 ```python title="MAP fit with the paper's optimizer settings"
 --8<-- "docs/examples/wppm/hong2025_reproduction.py:fit"
@@ -402,12 +414,12 @@ Looking at the alignment of the ellipses in the figure below, the answer to that
 </div>
 
 Three restarts from independent prior draws ended at losses 0.550 / 0.512 /
-0.505, with no sign of a multimodal landscape.
 
 !!! warning "Scope"
     One subject (CH, 1 of 8), 1 run, 1 GPU. Not repeated for seed stability and
     not run for the other seven. Read this purely as "the fitting pipeline reproduces the
-    paper for this subject,".
+!!! warning "Scope"
+Here we've shown the results for one subject (CH, 1 of 8) and 1 run. It should thus be understood as  "the fitting pipeline reproduces the paper for this one subject". To try with other subjects ...
 
 
 ---
@@ -415,22 +427,21 @@ Three restarts from independent prior draws ended at losses 0.550 / 0.512 /
 ## Runtimes
 
 The full refit refit needs a GPU,
-and that is **~16 min** but there's quick mode available to check the whether the script runs.
+The full refit requires **~16 min** on a single GPU. See the following table for a breakdown of how long each step takes.
 
 ??? note "Measured runtimes, step by step"
 
     CPU figures are an Apple Silicon laptop (M5); GPU is one A100 unless otherwise noted.
 
-    | Step | Hardware | Wall clock | Settings |
+    | Step | Hardware | Wall clock | Details |
     |---|---|---|---|
     | Thresholds (Figure 2B) | CPU | **20–23 s** | 49 refs, `n_theta=16`, `n_length=300`, `mc=500` |
     | Thresholds at paper settings | CPU | ~11 min | `n_length=1000`, `mc=2000` (13.4 s per ref) |
     | Exact covariance check | CPU | seconds | 10,609 points, deterministic |
     | **Refit — full** | 1 GPU | **~16 min** | 6,000 trials, 1,500 steps, `mc=2000`, 3 restarts |
-    | Paper's SLURM request | H100 | 14 h | main fit **+ 120 bootstraps** |
+    | Full paper results | H100 | 14 h | Same as Refit above * 8 subjects * 120 bootstraps |
 
     The paper's 14-hour budget covers the main fit *plus* 120 bootstrap refits,
-    not a single fit.
 
 
 ---
@@ -438,7 +449,7 @@ and that is **~16 min** but there's quick mode available to check the whether th
 ## Watch out for
 
 - **`Σ_noise` and `Σ_thres` are different things.** The thresholds above are
-  Figure 2B; the exact check and the refit compare the noise field, which is
+  `Σ_thres`, as plotted in Figure 2B; the exact check and the refit compare `Σ_noise`, the noise field, which is plotted in 
   supplementary Figure S3. Both arrive as `(49, 2, 2)` stacks on the same grid,
   which makes them easy to conflate.
 - **Monte Carlo results are not bit-reproducible across platforms.** The exact
