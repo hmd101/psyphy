@@ -5,9 +5,10 @@ Reproducing Hong et al. (2025) with psyphy
 This  script fits *published human
 data from Hong et al. (2025)* and compares against the authors' own published fit.
 
-It runs in three stages, deliberately separated. The first two are given the
+It runs in five stages, deliberately separated. The first two are given the
 paper's own fitted weights and check what psyphy *computes* from them; only the
-third asks psyphy to *fit* anything.
+third asks psyphy to *fit* anything. Everything is per-observer: one subject per
+run (``--subject``, default 1 = CH), never pooled.
 
   Stage 1 -- covariance field, exact. Feed the paper's published weights into
       psyphy's covariance field and compare to their published covariances.
@@ -30,10 +31,23 @@ third asks psyphy to *fit* anything.
       raw data -> our weights -> our contours -> the published figure. Reads
       the saved weights, so it costs ~20 s on CPU and needs no GPU.
 
+  Stage 5 -- the yardstick. "Close enough" needs a criterion, so we use the
+      authors' own: they resampled the AEPsych trials 120 times, refit the WPPM
+      to each, ranked the fits by summed Normalized Bures Similarity against
+      the original, kept the top 114 (95% of 120), and took the union and
+      intersection of the retained threshold contours as their 95% CI. We
+      reproduce that definition and report how many of our contours fall
+      inside. Also ~20 s on CPU; the bootstrap contours ship pre-inverted.
+
 The ordering is the point: stages 1-2 hold the model to account with the
 optimizer removed from the picture, so if stage 3 disagrees you already know
 the disagreement is the optimizer's and not the model's. Stage 4 then puts the
-two halves back together.
+two halves back together, and stage 5 says whether the result is good enough by
+the paper's own standard.
+
+Calibration of stage 5, measured: feeding the paper's *own* published weights
+through our inversion puts 49/49 reference contours inside their CI, at 100% of
+sampled directions. That is the ceiling the end-to-end number is read against.
 
 Usage
 -----
@@ -77,6 +91,7 @@ $PSYPHY_DATA_HOME). psyphy ships no data; see the accompanying markdown page.
 from __future__ import annotations
 
 import argparse
+import csv
 import os
 import time
 from pathlib import Path
@@ -220,21 +235,91 @@ def compare_fields(Sigma_fit: np.ndarray, Sigma_ref: np.ndarray) -> dict[str, fl
 
 # ---------------------------------------------------------------------------
 # Plotting
+#
+# One convention across every comparison figure on this page, so the reader
+# learns the legend once: the PUBLISHED field is black dashed at low alpha
+# (reads as gray) and sits underneath; OURS is solid on top, colored by the
+# reference stimulus via the monitor calibration matrix. Stages 2, 3, 4 and 5
+# all follow it. The styling is spelled out at each call site rather than
+# hidden behind a helper, because one of those calls is quoted in the docs.
 # ---------------------------------------------------------------------------
-def plot_comparison(coords, Sigma_fit, Sigma_ref, out_path, title, scale):
-    """Two noise fields overlaid, published vs fitted."""
+# Every figure names its observer in the legend, on both curves, so a panel
+# lifted out of the page cannot be mistaken for a different subject or for a
+# group average. The paper fits each of its 8 observers separately; nothing
+# here is ever pooled across them.
+def _subject_tag(subject: int) -> str:
+    """e.g. "subject 1 (CH)"."""
+    return f"subject {subject} ({hong2025.SUBJECT_INITIALS.get(subject, '?')})"
+
+
+def _published_label(subject: int, what: str = "published inversion") -> str:
+    """Label for the authors' curve.
+
+    ``what`` matters, because the figures do not all compare against the same
+    published object. The threshold figures plot the authors' *published
+    threshold table* -- contours they obtained by inverting their own fit -- so
+    "published inversion" is the like-for-like counterpart to our inversion.
+    The Sigma_noise figure plots no published table at all: it is psyphy's
+    covariance field evaluated at their published weights, so it is labelled as
+    weights rather than as a fit or an inversion.
+    """
+    return f"Hong et al. 2025, {what} — {_subject_tag(subject)}"
+
+
+def _ours_label(subject: int, what: str) -> str:
+    return f"psyphy, {what} — {_subject_tag(subject)}"
+
+
+def _stimulus_colors(coords, M):
+    """Per-reference RGB from the monitor calibration, or flat gray with a note.
+
+    Returning the note rather than silently falling back means a gray figure
+    cannot be mistaken for a correctly colored one.
+    """
+    if M is not None:
+        return hong2025.w2d_to_rgb(coords, M), ""
+    return (
+        np.full((len(coords), 3), 0.45),
+        "\nneutral gray \u2014 calibration matrix not downloaded",
+    )
+
+
+def _load_calibration():
+    """Monitor calibration matrix, or None if it cannot be fetched."""
+    try:
+        return hong2025.load_calibration_matrix(hong2025.fetch_calibration_matrix())
+    except Exception as exc:  # network, or OSF layout change
+        print(f"  color calibration unavailable ({exc}); plotting in grey")
+        return None
+
+
+def plot_comparison(
+    coords, Sigma_fit, Sigma_ref, out_path, title, scale, M=None, subject=1
+):
+    """Two noise fields overlaid, published vs fitted.
+
+    Same convention as the threshold figures: published dashed gray underneath,
+    ours solid on top colored by reference stimulus.
+    """
     fig, ax = plt.subplots(figsize=(6, 6), dpi=150)
+    colors, fallback_note = _stimulus_colors(coords, M)
+    title = title + fallback_note
     plot_ellipses(
         coords,
         [Sigma_ref, Sigma_fit],
         ax=ax,
         scale=scale,
-        colors=["black", "crimson"],
+        colors=["black", colors],
+        linestyles=["--", "solid"],
+        linewidths=[2.2, 1.6],
+        alpha=[0.35, None],
         labels=[
-            "published \u03a3_noise (Hong et al. 2025)",
-            "psyphy \u03a3_noise (MAP fit)",
+            # Not "published Sigma_noise": this curve is psyphy's covariance
+            # field evaluated at their published weights. Stage 1 shows the two
+            # agree to 7e-9, but the curve on screen is ours, from their W.
+            f"{_published_label(subject, 'published weights')}, \u03a3_noise",
+            f"{_ours_label(subject, 'our MAP refit')}, \u03a3_noise",
         ],
-        alpha=0.8,
         show_centers=True,
     )
     ticks = np.linspace(-0.7, 0.7, 5)
@@ -255,7 +340,15 @@ def plot_comparison(coords, Sigma_fit, Sigma_ref, out_path, title, scale):
 
 # --8<-- [start:plot_thresholds]
 def plot_threshold_figure(
-    coords, Sigma_psyphy, Sigma_published, out_path, scale, M, title=None, label=None
+    coords,
+    Sigma_psyphy,
+    Sigma_published,
+    out_path,
+    scale,
+    M,
+    title=None,
+    label=None,
+    subject=1,
 ):
     """Figure 2B: threshold contours, colored by reference stimulus.
 
@@ -269,12 +362,7 @@ def plot_threshold_figure(
     """
     fig, ax = plt.subplots(figsize=(6.5, 6.5), dpi=150)
 
-    if M is not None:
-        colors = hong2025.w2d_to_rgb(coords, M)
-        fallback_note = ""
-    else:
-        colors = np.full((len(coords), 3), 0.45)
-        fallback_note = "\nneutral gray \u2014 calibration matrix not downloaded"
+    colors, fallback_note = _stimulus_colors(coords, M)
 
     # Published contours underneath as a dashed outline, ours on top colored by
     # stimulus. One scale for both, so the comparison stays honest.
@@ -289,8 +377,8 @@ def plot_threshold_figure(
         linewidths=[2.2, 1.6],
         alpha=[0.35, None],
         labels=[
-            "published (Hong et al. 2025)",
-            label or "psyphy (oddity inversion)",
+            _published_label(subject),
+            label or _ours_label(subject, "oddity inversion of their weights"),
         ],
         show_centers=True,
     )
@@ -354,7 +442,7 @@ def stage1_exact_check(paths: dict[str, Path]) -> None:
     print("  agreement to the precision the published file can express.")
 
 
-def stage2_thresholds(paths: dict[str, Path], thr: dict) -> None:
+def stage2_thresholds(paths: dict[str, Path], thr: dict, subject: int) -> None:
     """Reproduce Figure 2B: threshold contours from the paper's own weights."""
     print("\n=== Stage 2: threshold contours (Figure 2B) from W_org ===")
     mc_samples, config = thr["mc_samples"], thr["config"]
@@ -401,11 +489,7 @@ def stage2_thresholds(paths: dict[str, Path], thr: dict) -> None:
     # The paper colors each ellipse by its reference stimulus, via a monitor
     # calibration matrix published alongside the data. Optional: the figure
     # falls back to neutral grey when it has not been downloaded.
-    try:
-        M = hong2025.load_calibration_matrix(hong2025.fetch_calibration_matrix())
-    except Exception as exc:  # network, or OSF layout change
-        print(f"  color calibration unavailable ({exc}); plotting in grey")
-        M = None
+    M = _load_calibration()
 
     plot_threshold_figure(
         coords,
@@ -414,10 +498,13 @@ def stage2_thresholds(paths: dict[str, Path], thr: dict) -> None:
         PLOTS_DIR / "hong2025_thresholds.png",
         scale=auto_scale(coords, thres_published),
         M=M,
+        subject=subject,
     )
 
 
-def stage3_refit(paths: dict[str, Path], cfg: dict, mode: str, seed: int) -> Path:
+def stage3_refit(
+    paths: dict[str, Path], cfg: dict, mode: str, seed: int, subject: int
+) -> Path:
     """Fit psyphy's WPPM to the published trials and compare fields.
 
     Returns the path of the saved weights, for stage 4 to invert.
@@ -500,11 +587,11 @@ def stage3_refit(paths: dict[str, Path], cfg: dict, mode: str, seed: int) -> Pat
         Sigma_fit,
         Sigma_ref,
         PLOTS_DIR / f"hong2025_{mode}_ellipses.png",
-        f"Σ_noise(x) — psyphy MAP fit vs Hong et al. 2025 (subj 1 CH)\n"
+        f"Σ_noise(x) — psyphy MAP refit vs Hong et al. 2025 — {_subject_tag(subject)}\n"
         f" N={data.num_trials}, mc={cfg['mc_samples']}, steps={cfg['steps']}",
-        # f"  (not the published threshold contours)"
-        # f"— ellipses magnified {scale:.1f}x"
         scale=scale,
+        M=_load_calibration(),
+        subject=subject,
     )
 
     fig, ax = plt.subplots(figsize=(6, 4), dpi=150)
@@ -528,7 +615,7 @@ def stage3_refit(paths: dict[str, Path], cfg: dict, mode: str, seed: int) -> Pat
 
 
 def stage4_end_to_end(
-    paths: dict[str, Path], fit_path: Path, mode: str, thr: dict
+    paths: dict[str, Path], fit_path: Path, mode: str, thr: dict, subject: int
 ) -> None:
     """Close the loop: raw trials -> our weights -> our contours -> Figure 2B.
 
@@ -574,11 +661,7 @@ def stage4_end_to_end(
     )
     print("  (stage 2's error is inversion only; this one is fit + inversion)")
 
-    try:
-        M = hong2025.load_calibration_matrix(hong2025.fetch_calibration_matrix())
-    except Exception as exc:
-        print(f"  color calibration unavailable ({exc}); plotting in grey")
-        M = None
+    M = _load_calibration()
 
     plot_threshold_figure(
         coords,
@@ -591,11 +674,192 @@ def stage4_end_to_end(
         M=M,
         title=(
             " 66.7%-correct discrimination thresholds, end to end\n"
-            "raw trials -> psyphy fit -> inversion, vs Hong et al. 2025 "
-            "(subject 1, CH)"
+            "raw trials -> psyphy refit -> inversion, vs Hong et al. 2025 "
+            f"— {_subject_tag(subject)}"
         ),
-        label="psyphy (our fit, then inversion)",
+        label=_ours_label(subject, "our refit, then inversion"),
+        subject=subject,
     )
+
+
+#: The paper's bootstrap CI keeps the top 95% of 120 refits by NBS score, i.e.
+#: 114. The published columns are already sorted that way -- ``rank0`` is the
+#: most similar to the main fit -- so the selection is a slice, not a re-ranking.
+N_BOOTSTRAP_CI = 114
+
+
+def _radii(Sigmas: np.ndarray, u: np.ndarray) -> np.ndarray:
+    """Contour radius of each ellipse in each direction ``u``.
+
+    The threshold contour is ``x^T Sigma^-1 x = 1``, so along a unit direction
+    ``u`` the radius is ``1 / sqrt(u^T Sigma^-1 u)``. Working in radii rather
+    than semi-axes is what lets us take the paper's union and intersection of
+    *contours* rather than a per-semi-axis interval.
+
+    Non-positive-definite inputs come back as nan rather than raising. A
+    reference point whose threshold sweep failed to bracket 2/3 can yield a
+    singular or indefinite Sigma, and ``np.linalg.inv`` would abort the whole
+    stage -- an expensive way to fail, since this runs after the fit.
+    """
+    S = np.asarray(Sigmas, dtype=float)
+    bad = np.linalg.eigvalsh(S)[..., 0] <= 0.0
+    P = np.linalg.inv(np.where(bad[..., None, None], np.eye(2), S))
+    q = np.einsum("di,...ij,dj->...d", u, P, u)  # (..., n_dirs)
+    with np.errstate(invalid="ignore", divide="ignore"):
+        r = 1.0 / np.sqrt(q)
+    return np.where(bad[..., None], np.nan, r)
+
+
+def stage5_bootstrap_envelope(
+    paths: dict[str, Path], fit_path: Path, thr: dict, subject: int, n_dirs: int = 180
+) -> None:
+    """Put our contours inside the paper's own bootstrap confidence interval.
+
+    "Close enough" needs a yardstick, and the authors supply one. From their
+    methods: they drew 120 bootstrap resamplings of the AEPsych trials
+    (preserving the Sobol'/adaptive/fallback ratio), refit the WPPM to each,
+    ranked the fits by summed Normalized Bures Similarity against the original
+    fit, kept the top 114 (95% of 120), and defined the CI bounds as the
+    **union and intersection of the retained threshold contours**.
+
+    We reproduce that definition rather than inventing one:
+      * the published ``Sigmas_thres_grid_btst{b}_rank{r}`` columns are already
+        NBS-sorted, so "top 114" is ``rank < 114``;
+      * union/intersection is a *radial* envelope -- per direction, the largest
+        and smallest contour radius over the retained fits -- not a per-
+        semi-axis percentile.
+
+    A contour inside that band is indistinguishable from the authors' own
+    resampling variability, which is a much stronger statement than "the
+    ellipses look similar".
+    """
+    print("\n=== Stage 5: our thresholds vs the paper's bootstrap CI ===")
+
+    if not fit_path.exists():
+        print(f"  skipped: no saved fit at {fit_path}")
+        return
+
+    # --8<-- [start:bootstraps]
+    path = paths["thres_ellipses"]
+    coords, thres_published = hong2025.load_sigma_table(path)
+
+    # Each bootstrap refit is another column of the file we already loaded, and
+    # the authors already inverted them to threshold space for us. The columns
+    # are named ..._btst{b}_rank{r}, sorted by NBS: rank 0 is the bootstrap fit
+    # most similar to their main fit.
+    with open(path, newline="") as fh:
+        btst_cols = [c for c in csv.DictReader(fh).fieldnames or [] if "btst" in c]
+    btst_cols.sort(key=lambda c: int(c.rsplit("rank", 1)[1]))
+    boots_all = np.stack(
+        [hong2025.load_sigma_table(path, value_column=c)[1] for c in btst_cols]
+    )  # (120, 49, 2, 2)
+    boots = boots_all[:N_BOOTSTRAP_CI]  # the paper's 95% CI set
+    # --8<-- [end:bootstraps]
+
+    print(f"  bootstrap refits : {len(boots_all)} published, top {len(boots)} kept")
+
+    # Our end-to-end contours, from the weights stage 3 fit.
+    W_fit = jnp.asarray(np.load(fit_path)["W"])
+    model = hong2025.build_paper_model(mc_samples=thr["mc_samples"])
+    thres_fit = np.asarray(
+        WPPMPredictivePosterior(
+            MAPPosterior({"W": W_fit}, model),
+            jnp.asarray(coords),
+            n_samples=1,
+            threshold_pred=True,
+            threshold_config=thr["config"],
+        ).mean
+    )
+
+    # --8<-- [start:coverage]
+    # The paper's bound is the union and intersection of the retained contours.
+    # Sampled radially: per reference point and direction, how far out does the
+    # outermost retained fit reach, and the innermost?
+    theta = np.linspace(0.0, 2.0 * np.pi, n_dirs, endpoint=False)
+    u = np.stack([np.cos(theta), np.sin(theta)], axis=1)  # (n_dirs, 2)
+
+    r_boot = _radii(boots, u)  # (114, 49, n_dirs)
+    r_ours = _radii(thres_fit, u)  # (49, n_dirs)
+    # nanmax/nanmin so one unusable bootstrap cannot void a reference point.
+    outer = np.nanmax(r_boot, axis=0)  # union of the retained contours
+    inner = np.nanmin(r_boot, axis=0)  # intersection
+
+    within = (r_ours >= inner) & (r_ours <= outer)  # (49, n_dirs); nan -> False
+    fully_inside = within.all(axis=1)  # (49,)
+    # --8<-- [end:coverage]
+
+    n_in = int(fully_inside.sum())
+    n_bad = int((~np.isfinite(r_ours)).any(axis=1).sum())
+    if n_bad:
+        print(
+            f"  WARNING: {n_bad}/{len(coords)} of our threshold covariances were "
+            "not positive definite and count as outside"
+        )
+    print(
+        f"  inside the CI    : {n_in}/{len(coords)} reference points entirely, "
+        f"{within.mean() * 100:.1f} % of all sampled directions"
+    )
+    # Reported alongside so the two numbers cannot be confused: the full spread
+    # over all 120 is the looser band, and is NOT the paper's CI.
+    r_all = _radii(boots_all, u)
+    loose = ((r_ours >= r_all.min(axis=0)) & (r_ours <= r_all.max(axis=0))).all(axis=1)
+    print(f"  (full 120 spread : {int(loose.sum())}/{len(coords)}, for reference)")
+
+    M = _load_calibration()
+    colors, fallback_note = _stimulus_colors(coords, M)
+    scale = auto_scale(coords, thres_published)
+
+    fig, ax = plt.subplots(figsize=(6.5, 6.5), dpi=150)
+
+    # Layer 1: the CI set. Thin and nearly transparent so 114 fits read as a
+    # band rather than 114 distinguishable curves. Labelled once.
+    plot_ellipses(
+        coords,
+        boots,
+        ax=ax,
+        scale=scale,
+        colors="0.55",
+        linewidths=0.4,
+        alpha=0.10,
+        labels=[f"95% bootstrap CI (Hong et al. 2025, {_subject_tag(subject)})"]
+        + [None] * (len(boots) - 1),
+    )
+    # Layer 2: the same convention as every other figure on the page.
+    plot_ellipses(
+        coords,
+        [thres_published, thres_fit],
+        ax=ax,
+        scale=scale,
+        colors=["black", colors],
+        linestyles=["--", "solid"],
+        linewidths=[2.2, 1.6],
+        alpha=[0.35, None],
+        labels=[
+            _published_label(subject),
+            _ours_label(subject, "our refit, then inversion"),
+        ],
+        show_centers=True,
+    )
+
+    ticks = np.linspace(-0.7, 0.7, 5)
+    ax.set_xticks(ticks)
+    ax.set_yticks(ticks)
+    ax.set_xlim(-0.95, 0.95)
+    ax.set_ylim(-0.95, 0.95)
+    ax.set_xlabel("Model Dimension 1")
+    ax.set_ylabel("Model Dimension 2")
+    ax.set_title(
+        f"Our thresholds against the paper's 95% bootstrap CI — "
+        f"{_subject_tag(subject)}" + fallback_note,
+        fontsize=9,
+    )
+    ax.grid(True, alpha=0.2)
+    fig.tight_layout()
+    out_path = PLOTS_DIR / "hong2025_bootstrap_envelope.png"
+    out_path.parent.mkdir(parents=True, exist_ok=True)
+    fig.savefig(out_path, bbox_inches="tight")
+    plt.close(fig)
+    print(f"  saved {out_path.name}")
 
 
 def main() -> int:
@@ -644,6 +908,11 @@ def main() -> int:
         help="skip stage 4 (the end-to-end inversion of our own fitted weights)",
     )
     parser.add_argument(
+        "--skip-envelope",
+        action="store_true",
+        help="skip stage 5 (our contours against the paper's 120 bootstrap fits)",
+    )
+    parser.add_argument(
         "--threshold-settings",
         choices=sorted(THRESHOLD_SETTINGS),
         default=None,
@@ -677,7 +946,7 @@ def main() -> int:
     if args.skip_thresholds:
         print("\n=== Stage 2: skipped (--skip-thresholds) ===")
     else:
-        stage2_thresholds(paths, thr)
+        stage2_thresholds(paths, thr, args.subject)
     fit_path = args.from_fit or FITS_DIR / f"hong2025_{args.mode}_fit.npz"
 
     if args.skip_refit or args.from_fit:
@@ -690,12 +959,19 @@ def main() -> int:
                 "GPU/cluster job\n  (~16 min on one GPU; far longer here). "
                 "Ctrl-C and pass --mode quick to smoke-test."
             )
-        fit_path = stage3_refit(paths, MODES[args.mode], args.mode, args.seed)
+        fit_path = stage3_refit(
+            paths, MODES[args.mode], args.mode, args.seed, args.subject
+        )
 
     if args.skip_end_to_end:
         print("\n=== Stage 4: skipped (--skip-end-to-end) ===")
     else:
-        stage4_end_to_end(paths, fit_path, args.mode, thr)
+        stage4_end_to_end(paths, fit_path, args.mode, thr, args.subject)
+
+    if args.skip_envelope:
+        print("\n=== Stage 5: skipped (--skip-envelope) ===")
+    else:
+        stage5_bootstrap_envelope(paths, fit_path, thr, args.subject)
     return 0
 
 
