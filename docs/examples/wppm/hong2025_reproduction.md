@@ -148,8 +148,7 @@ The sections below will dive deeper into details, such as how to load the data o
 
 ## Data
 
-psyphy ships no data. It makes the published data easy to pull down on
-request, into `~/.cache/psyphy/`:
+Psyphy makes it easy to download the published data:
 
 ```python title="Download one observer's files"
 --8<-- "docs/examples/wppm/hong2025_reproduction.py:fetch"
