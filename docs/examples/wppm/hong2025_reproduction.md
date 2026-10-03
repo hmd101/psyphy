@@ -27,20 +27,6 @@ This tutorial is accompanied by a
     ```
 
 
-
-For a quick test to see wether the code runs ona your laptop you can run
-
-```bash
-python hong2025_reproduction.py --mode quick # exists only to prove the code path runs on a laptop
-#  500 trials and 20 steps leave the fit essentially at its prior
-```
-
-
-
----
-
-# Reproducing Hong et al. (2025)
-
 Hong et al. measured how finely people can tell colors apart, across a whole
 plane of colors rather than at a handful of points. This page reproduces their
 central figure from their own published data, in three stages: an exact
@@ -100,12 +86,6 @@ detect. Operationally, it is how far a comparison color must move from the
 reference before they pick it out as the odd one 66.7% of the time. It is an
 ellipse rather than a circle because sensitivity depends on *direction* — some
 color changes are easier to see than others of the same magnitude. The
-orientation and elongation of each ellipse are exactly what the WPPM estimates.
-
-That sensitivity also scales with the baseline stimulus, which is the
-[Weber–Fechner law](https://en.wikipedia.org/wiki/Weber%E2%80%93Fechner_law).
-psyphy can recover it from simulated data — see
-[Recovering Weber's Law](weber_law.md) for a worked example on a
 orientation and elongation of each ellipse are exactly what the WPPM estimates. We
 can also see that the sizes of the ellipses increase as you move away from the origin
 in the plot below, which corresponds to a gray stimulus. This is a reproduction of the
@@ -168,8 +148,8 @@ The sections below will dive deeper into details, such as how to load the data o
 
 ## Data
 
-`psyphy` ships no data. The OSF node carries no explicit license, so we download
-Psyphy makes it easy to download the published data:
+psyphy ships no data. It makes the published data easy to pull down on
+request, into `~/.cache/psyphy/`:
 
 ```python title="Download one observer's files"
 --8<-- "docs/examples/wppm/hong2025_reproduction.py:fetch"
@@ -187,7 +167,6 @@ Psyphy makes it easy to download the published data:
 
 
 
-`load_trials` returns psyphy's ordinary `TrialData`, so nothing downstream
 `load_trials` loads in the published file and returns psyphy's `TrialData` object, so it will
 work directly with our methods:
 
@@ -195,17 +174,18 @@ work directly with our methods:
 --8<-- "docs/examples/wppm/hong2025_reproduction.py:load"
 ```
 
-!!! warning "Only 6,000 of the 12,000 trials were fitted"
-    The file holds 5,100 adaptive + 900 Sobol (`AEPsych_*`) trials and 6,000
-    `MOCS_*` trials. The paper fits the `AEPsych_*` rows; MOCS is held-out
-    validation. Fitting all 12,000 gives a plausible result that is not the
-    published one. `load_trials` defaults to `trial_types=("AEPsych",)`.
-The published data holds 12,000 total trials split into two equal-sized groups,
-one group is used for fitting, the other is held-out for validation. By default
-`load_trials` loads only the data used for fitting, to download the validation data
-run `load_trials(trial_types='STRING')` and to download all data run 
-`load_trials(trial_types='OTHER_STRING')`
-For more information on how the authors did adaptive trial placement using the library AEPsych, we refer the reader to the paper.
+The published data holds 12,000 trials in two equal halves: 6,000 `AEPsych_*`
+rows (5,100 adaptive placement plus 900 Sobol) used for fitting, and 6,000
+`MOCS_*` rows held out for validation. By default `load_trials` loads only the
+rows used for fitting. Pass `trial_types=("MOCS",)` for the held-out half, or
+`trial_types=None` for all 12,000.
+
+!!! warning "Fitting all 12,000 trials does not reproduce the paper"
+    It gives a plausible result that is not the published one. This is why
+    `load_trials` defaults to `trial_types=("AEPsych",)`.
+
+For more information on how the authors did adaptive trial placement using the
+library AEPsych, we refer the reader to the paper.
 
 Two conventions psyphy handles for us:
 
@@ -338,17 +318,12 @@ top colored by reference stimulus:
 `hong2025.w2d_to_rgb(coords, M)`. We recommend only passing  **one** `scale` for both fields because otherwise the comparison independently scaled fields cannot be
 compared by eye.
 
-The rest of the API, such as  `scale="auto"`, per-ellipse colors, posterior draws,
-non-positive-definite covariances, and why nothing is saved or shown for you,
 For more detail on this plotting function, including how to use per-ellipse colors
 and posterior draws, see [Plotting ellipse fields](../viz/ellipse_plots.md).
 
 
 ---
 
-That reproduces the published figure, but agreement by eye is the weakest
-evidence on this page. Getting there involved a numerical inversion,
-[Monte Carlo](https://en.wikipedia.org/wiki/Monte_Carlo_method) sampling and a
 That reproduces the published figure, but we can test for numeric reproducibility,
 not just visual agreement. The process described above has many steps where
 error can be introduced.
@@ -366,13 +341,13 @@ not the model's.
 This is fully
 deterministic.
 
+```python title="Published weights through psyphy's covariance field"
 --8<-- "docs/examples/wppm/hong2025_reproduction.py:stage1"
 ```
 
 
-Plain elementwise subtraction over all 42,436 entries. The
 In the above, we're simply computing the difference between our computed
-covariances and the values shared by the paper's authors, for all 42,436 
+covariances and the values shared by the paper's authors, for all 42,436
 ellipses. The maximum value of the differences are shown below:
 
 ```
@@ -386,6 +361,7 @@ agreement to the precision the file can express.**
 
 This runs as a test (`test_covariance_field_matches_published_sigma_noise`),
 skipped automatically when the data has not been downloaded, so CI stays
+network-free.
 
 ---
 
@@ -414,19 +390,19 @@ The following block of code refits the WPPM's weights from the raw data, compute
 </div>
 
 Three restarts from independent prior draws ended at losses 0.550 / 0.512 /
+0.505, with no sign of a multimodal landscape.
 
 !!! warning "Scope"
-    One subject (CH, 1 of 8), 1 run, 1 GPU. Not repeated for seed stability and
-    not run for the other seven. Read this purely as "the fitting pipeline reproduces the
-!!! warning "Scope"
-Here we've shown the results for one subject (CH, 1 of 8) and 1 run. It should thus be understood as  "the fitting pipeline reproduces the paper for this one subject". To try with other subjects ...
+    These results are for one subject (CH, 1 of 8) and a single run on one GPU.
+    They were not repeated for seed stability and not run for the other seven
+    subjects. Read this as "the fitting pipeline reproduces the paper for this
+    subject", not as a claim about all eight.
 
 
 ---
 
 ## Runtimes
 
-The full refit refit needs a GPU,
 The full refit requires **~16 min** on a single GPU. See the following table for a breakdown of how long each step takes.
 
 ??? note "Measured runtimes, step by step"
@@ -442,6 +418,7 @@ The full refit requires **~16 min** on a single GPU. See the following table for
     | Full paper results | H100 | 14 h | Same as Refit above * 8 subjects * 120 bootstraps |
 
     The paper's 14-hour budget covers the main fit *plus* 120 bootstrap refits,
+    not a single fit.
 
 
 ---
@@ -449,7 +426,7 @@ The full refit requires **~16 min** on a single GPU. See the following table for
 ## Watch out for
 
 - **`Σ_noise` and `Σ_thres` are different things.** The thresholds above are
-  `Σ_thres`, as plotted in Figure 2B; the exact check and the refit compare `Σ_noise`, the noise field, which is plotted in 
+  `Σ_thres`, as plotted in Figure 2B; the exact check and the refit compare `Σ_noise`, the noise field, which is plotted in
   supplementary Figure S3. Both arrive as `(49, 2, 2)` stacks on the same grid,
   which makes them easy to conflate.
 - **Monte Carlo results are not bit-reproducible across platforms.** The exact
