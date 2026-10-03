@@ -74,7 +74,7 @@ Hong et al. collect each judgement from the human subjects with an **oddity task
 every trial the observer sees three stimuli — two identical, one different —
 and picks the odd one out. Chance is therefore 1/3, and the threshold is placed
 at the usual midpoint between chance and perfect performance,
-$P(\text{correct}) = \tfrac{2}{3}$. That is the 66.7% contour this page reproduces.
+`P(correct) = 2/3`. That is the 66.7% contour this page reproduces.
 
 ---
 
@@ -256,7 +256,7 @@ $$
 
 where $d_{ij}$ is the
 [Mahalanobis distance](https://en.wikipedia.org/wiki/Mahalanobis_distance)
-between the internal representations of stimuli $i$ and $j$ — the distance that
+between the internal representations of stimuli $i$ and $j$. This is the distance that
 measures separation in units of the noise itself, so a step counts as large only
 relative to how noisy the representation is in that direction. That probability
 has no analytic form, which is why the paper estimates it by
@@ -264,7 +264,7 @@ has no analytic form, which is why the paper estimates it by
 first place. So we invert numerically:
 
 1. Probe `n_theta` directions around each reference point.
-2. Along each, evaluate $P(\text{correct})$ at `n_length` distances and keep the one
+2. Along each, evaluate `P(correct)` at `n_length` distances and keep the one
 closest to 2/3. We thus have one boundary point per direction.
 3. Fit an ellipse to those `n_theta` points. This step does have a closed-form solution and so can be done quickly.
 
@@ -295,7 +295,7 @@ Step 3 needs no optimizer — the ellipse fit is closed-form.
 
     **Why bare points go in.** Normally you supply the comparison stimulus and
     the model scores that pair. In threshold mode, *finding* the comparison is
-    what we want: the threshold is the distance at which $P(\text{correct})$ reaches
+    what we want: the threshold is the distance at which `P(correct)` reaches
     2/3. So, supplying one would be handing over the answer. Instead, it generates its own by sweeping `n_theta` directions by `n_length` distances around
     each reference (that is what `ThresholdConfig` controls).
 
@@ -401,8 +401,8 @@ The following block of code refits the WPPM's weights from the raw data, compute
     <span class="arithmatex">\(x\)</span> — the field the WPPM is
     parameterized in, read off at each grid point. No task enters it. The
     contours at the top are <span class="arithmatex">\(\Sigma_{\text{thres}}\)</span>, one step downstream: <span class="arithmatex">\(\Sigma_{\text{noise}}\)</span> at a reference
-    and a comparison feeds the oddity likelihood to give <span class="arithmatex">\(P(\text{correct})\)</span>, and that map
-    is inverted for the displacement at which <span class="arithmatex">\(P(\text{correct}) = \tfrac{2}{3}\)</span>. We use the same grid and
+    and a comparison feeds the oddity likelihood to give P(correct), and that map
+    is inverted for the displacement at which P(correct) = 2/3. We use the same grid and
     plotting convention, but <span class="arithmatex">\(\Sigma_{\text{noise}}\)</span> is the model's parameters evaluated,
     while <span class="arithmatex">\(\Sigma_{\text{thres}}\)</span> is behavior predicted from them at a criterion, here 2/3.</em></p>
 </div>
