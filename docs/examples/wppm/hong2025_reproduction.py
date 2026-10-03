@@ -19,13 +19,21 @@ third asks psyphy to *fit* anything.
       Monte Carlo but no optimizer. ~20 s on CPU at the default settings.
 
   Stage 3 -- refit. Start from a prior sample and fit psyphy's WPPM to the
-      paper's trials, then compare the resulting field to theirs. At the
-      paper's settings this is a GPU/cluster job; `--mode quick` is a
-      seconds-long smoke test that does NOT reproduce anything.
+      paper's trials, then compare the resulting *noise* field to theirs, and
+      save the fitted weights. At the paper's settings this is a GPU/cluster
+      job; `--mode quick` is a seconds-long smoke test that does NOT reproduce
+      anything.
+
+  Stage 4 -- end to end. Take the weights stage 3 fit from the raw trials, run
+      the same oddity inversion stage 2 runs, and compare the resulting
+      *thresholds* to the published ones. This is the whole claim in one line:
+      raw data -> our weights -> our contours -> the published figure. Reads
+      the saved weights, so it costs ~20 s on CPU and needs no GPU.
 
 The ordering is the point: stages 1-2 hold the model to account with the
 optimizer removed from the picture, so if stage 3 disagrees you already know
-the disagreement is the optimizer's and not the model's.
+the disagreement is the optimizer's and not the model's. Stage 4 then puts the
+two halves back together.
 
 Usage
 -----
@@ -33,6 +41,13 @@ Usage
     python hong2025_reproduction.py --skip-refit    # stages 1-2 only, no fitting
     python hong2025_reproduction.py --mode full     # paper settings, GPU/cluster
     python hong2025_reproduction.py --skip-thresholds   # stages 1 and 3 only
+
+    # on the cluster: fit once, keep the weights
+    python hong2025_reproduction.py --mode full
+
+    # then anywhere, as often as you like, without refitting
+    python hong2025_reproduction.py --from-fit fits/hong2025_full_fit.npz \
+        --no-noise-ellipses --skip-thresholds
 
 Measured runtimes
 -----------------
@@ -103,6 +118,12 @@ from psyphy.viz import auto_scale, plot_ellipses  # noqa: E402
 # --8<-- [end:imports]
 
 PLOTS_DIR = Path(__file__).parent / "plots"
+
+# Stage 3 writes its fitted weights here so stage 4 can invert them without
+# paying for the fit again. The fit is the only part that needs a GPU; keeping
+# its output on disk means the inversion and the figure can be re-run on a
+# laptop as often as you like.
+FITS_DIR = Path(__file__).parent / "fits"
 
 # --8<-- [start:modes]
 # Stage-3 compute settings. "full" is the paper's own configuration; "quick"
@@ -222,12 +243,18 @@ def plot_comparison(coords, Sigma_fit, Sigma_ref, out_path, title, scale):
 
 
 # --8<-- [start:plot_thresholds]
-def plot_threshold_figure(coords, Sigma_psyphy, Sigma_published, out_path, scale, M):
+def plot_threshold_figure(
+    coords, Sigma_psyphy, Sigma_published, out_path, scale, M, title=None, label=None
+):
     """Figure 2B: threshold contours, colored by reference stimulus.
 
     ``M`` is the monitor calibration matrix; when it is None the plot falls
     back to neutral gray and says so, so a gray figure cannot pass for a
     correctly colored one.
+
+    ``title`` and ``label`` let stage 4 reuse this exact styling for the
+    end-to-end figure -- same dashed-published-underneath convention, so the
+    two figures on the page can be compared without re-reading the legend.
     """
     fig, ax = plt.subplots(figsize=(6.5, 6.5), dpi=150)
 
@@ -250,7 +277,10 @@ def plot_threshold_figure(coords, Sigma_psyphy, Sigma_published, out_path, scale
         linestyles=["--", "solid"],
         linewidths=[2.2, 1.6],
         alpha=[0.35, None],
-        labels=["published (Hong et al. 2025)", "psyphy (oddity inversion)"],
+        labels=[
+            "published (Hong et al. 2025)",
+            label or "psyphy (oddity inversion)",
+        ],
         show_centers=True,
     )
     # --8<-- [end:plot_call]
@@ -263,8 +293,12 @@ def plot_threshold_figure(coords, Sigma_psyphy, Sigma_published, out_path, scale
     ax.set_xlabel("Model Dimension 1")
     ax.set_ylabel("Model Dimension 2")
     ax.set_title(
-        " 66.7%-correct discrimination thresholds\n"
-        "Figure 2B in Hong et al. 2025 reproduced, subject 1 (CH)" + fallback_note,
+        (
+            title
+            or " 66.7%-correct discrimination thresholds\n"
+            "Figure 2B in Hong et al. 2025 reproduced, subject 1 (CH)"
+        )
+        + fallback_note,
         fontsize=9,
     )
     ax.grid(True, alpha=0.2)
@@ -371,8 +405,11 @@ def stage2_thresholds(paths: dict[str, Path]) -> None:
     )
 
 
-def stage3_refit(paths: dict[str, Path], cfg: dict, mode: str, seed: int) -> None:
-    """Fit psyphy's WPPM to the published trials and compare fields."""
+def stage3_refit(paths: dict[str, Path], cfg: dict, mode: str, seed: int) -> Path:
+    """Fit psyphy's WPPM to the published trials and compare fields.
+
+    Returns the path of the saved weights, for stage 4 to invert.
+    """
     print(f"\n=== Stage 3: refit from a prior sample (mode={mode}) ===")
 
     # --8<-- [start:load]
@@ -410,6 +447,23 @@ def stage3_refit(paths: dict[str, Path], cfg: dict, mode: str, seed: int) -> Non
             best = (posterior.params, losses[-1], list(losses))
     params, _, loss_hist = best
     # --8<-- [end:fit]
+
+    # --8<-- [start:save_fit]
+    # Persist the fitted weights. The fit is the expensive, GPU-bound step; the
+    # threshold inversion that turns these weights into Figure 2B is ~20 s on a
+    # laptop. Saving here is what lets stage 4 run anywhere, any number of
+    # times, without refitting.
+    FITS_DIR.mkdir(parents=True, exist_ok=True)
+    fit_path = FITS_DIR / f"hong2025_{mode}_fit.npz"
+    np.savez(
+        fit_path,
+        W=np.asarray(params["W"]),
+        final_loss=np.asarray(loss_hist[-1]),
+        mode=mode,
+        seed=seed,
+    )
+    # --8<-- [end:save_fit]
+    print(f"  saved {fit_path.name}")
 
     # --8<-- [start:compare]
     # Grid coordinates come from the published table, so there is no meshgrid
@@ -458,6 +512,77 @@ def stage3_refit(paths: dict[str, Path], cfg: dict, mode: str, seed: int) -> Non
             "  is still close to its prior. Use --mode full on a GPU."
         )
 
+    return fit_path
+
+
+def stage4_end_to_end(paths: dict[str, Path], fit_path: Path, mode: str) -> None:
+    """Close the loop: raw trials -> our weights -> our contours -> Figure 2B.
+
+    Stages 1-2 take the paper's weights as given, so they test what psyphy
+    *computes*. Stage 3 fits weights but only ever compares noise fields. This
+    stage is the end-to-end claim: it takes the weights stage 3 fit from the raw
+    trials, runs the same oddity inversion stage 2 runs, and puts the result
+    against the published thresholds in the same figure convention.
+    """
+    print(f"\n=== Stage 4: thresholds from OUR fitted weights (mode={mode}) ===")
+
+    if not fit_path.exists():
+        print(f"  skipped: no saved fit at {fit_path}")
+        print("  run stage 3 first (--mode full on a GPU), or pass --from-fit")
+        return
+
+    # --8<-- [start:end_to_end]
+    W_fit = jnp.asarray(np.load(fit_path)["W"])  # from stage 3, not the paper
+    coords, thres_published = hong2025.load_sigma_table(paths["thres_ellipses"])
+
+    # Identical to stage 2, except the weights are ours rather than theirs.
+    model = hong2025.build_paper_model(mc_samples=THRESHOLD_MC_SAMPLES)
+    predictive = WPPMPredictivePosterior(
+        MAPPosterior({"W": W_fit}, model),
+        jnp.asarray(coords),
+        n_samples=1,
+        threshold_pred=True,
+        threshold_config=THRESHOLD_CONFIG,
+    )
+    thres_fit = np.asarray(predictive.mean)  # (49, 2, 2)
+
+    # Same metric stage 2 reports, so the two numbers are directly comparable:
+    # stage 2 isolates inversion error, this one carries fit error on top.
+    got = np.sqrt(np.linalg.eigvalsh(thres_fit))
+    want = np.sqrt(np.linalg.eigvalsh(thres_published))
+    rel_err = np.abs(got - want) / want
+    # --8<-- [end:end_to_end]
+
+    print(f"  reference points : {len(coords)}")
+    print(
+        f"  semi-axis error  : median {np.median(rel_err) * 100:.2f} %, "
+        f"max {rel_err.max() * 100:.2f} %"
+    )
+    print("  (stage 2's error is inversion only; this one is fit + inversion)")
+
+    try:
+        M = hong2025.load_calibration_matrix(hong2025.fetch_calibration_matrix())
+    except Exception as exc:
+        print(f"  color calibration unavailable ({exc}); plotting in grey")
+        M = None
+
+    plot_threshold_figure(
+        coords,
+        thres_fit,
+        thres_published,
+        PLOTS_DIR / f"hong2025_{mode}_thresholds_end_to_end.png",
+        # One scale for both fields, from the published one, exactly as stage 2
+        # does -- otherwise the two figures on the page are not comparable.
+        scale=auto_scale(coords, thres_published),
+        M=M,
+        title=(
+            " 66.7%-correct discrimination thresholds, end to end\n"
+            "raw trials -> psyphy fit -> inversion, vs Hong et al. 2025 "
+            "(subject 1, CH)"
+        ),
+        label="psyphy (our fit, then inversion)",
+    )
+
 
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
@@ -489,6 +614,21 @@ def main() -> int:
             "stage-3 refit at paper settings is a GPU/cluster job."
         ),
     )
+    parser.add_argument(
+        "--from-fit",
+        type=Path,
+        default=None,
+        metavar="PATH",
+        help=(
+            "run stage 4 from an existing saved fit (.npz from a previous "
+            "stage-3 run) instead of refitting. Implies --skip-refit."
+        ),
+    )
+    parser.add_argument(
+        "--skip-end-to-end",
+        action="store_true",
+        help="skip stage 4 (the end-to-end inversion of our own fitted weights)",
+    )
     args = parser.parse_args()
 
     print(f"device: {jax.devices()[0]}   x64: {jax.config.read('jax_enable_x64')}")
@@ -502,8 +642,11 @@ def main() -> int:
         print("\n=== Stage 2: skipped (--skip-thresholds) ===")
     else:
         stage2_thresholds(paths)
-    if args.skip_refit:
-        print("\n=== Stage 3: skipped (--skip-refit) ===")
+    fit_path = args.from_fit or FITS_DIR / f"hong2025_{args.mode}_fit.npz"
+
+    if args.skip_refit or args.from_fit:
+        reason = "--from-fit" if args.from_fit else "--skip-refit"
+        print(f"\n=== Stage 3: skipped ({reason}) ===")
     else:
         if args.mode == "full" and jax.devices()[0].platform == "cpu":
             print(
@@ -511,7 +654,12 @@ def main() -> int:
                 "GPU/cluster job\n  (~16 min on one GPU; far longer here). "
                 "Ctrl-C and pass --mode quick to smoke-test."
             )
-        stage3_refit(paths, MODES[args.mode], args.mode, args.seed)
+        fit_path = stage3_refit(paths, MODES[args.mode], args.mode, args.seed)
+
+    if args.skip_end_to_end:
+        print("\n=== Stage 4: skipped (--skip-end-to-end) ===")
+    else:
+        stage4_end_to_end(paths, fit_path, args.mode)
     return 0
 
 
