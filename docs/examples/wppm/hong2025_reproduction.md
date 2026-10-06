@@ -554,7 +554,7 @@ The full refit requires **~16 min** on a single GPU. See the following table for
 
 ## See also
 
-- [Full WPPM fit (simulated data)](full_wppm_fit_example.md) — same machinery with ground truth available.
-- [Quick start](quick_start.md) — the minimal version.
-- [Plotting ellipse fields](../viz/ellipse_plots.md) — `plot_ellipses` on its own, with synthetic data.
+- [Full WPPM fit (simulated data)](full_wppm_fit_example.md) — more on the model math with ground truth available
+- [Quick start](quick_start.md) — the minimal version
+- [Plotting ellipse fields](../viz/ellipse_plots.md) — `plot_ellipses` on its own, with synthetic data
 - `psyphy.data.published.hong2025` in [Data](../../reference/data.md); `WPPMPredictivePosterior` and `ThresholdConfig` in [Posterior](../../reference/posterior.md).
