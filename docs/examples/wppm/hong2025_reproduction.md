@@ -76,8 +76,7 @@ go wrong. Checking the cheap, deterministic parts first means that if question 3
 - You know the paper and want to see how psyphy reproduces it.
 
 No familiarity with the model is needed to start. The next section introduces it
-at a high level, [the simulated-data tutorial](full_wppm_fit_example.md) goes
-further, and the paper itself is the full reference:
+at a high level. See the paper itself for the full reference:
 
 
 > Hong, F., Bouhassira, R., Chow, J., Sanders, C., Shvartsman, M., Guan, P.,
@@ -237,9 +236,6 @@ we transcribed once into `PAPER_HYPERPARAMS`.
     --8<-- "src/psyphy/data/published/hong2025.py:hyperparams"
     ```
 
-
-
-
 ---
 
 ## Exact check
@@ -354,8 +350,7 @@ costs about 11 minutes on CPU for the 49 reference points.
     which runs the same 49 reference points in roughly 20 seconds rather than
     11 minutes. It is what `--mode quick` selects, and it is meant for checking
     that the code path works and not for reproducing anything. The script prints
-    which preset is in effect when it starts, so no number on this page is ever
-    ambiguous about which produced it.
+    which preset is in effect when it starts.
 
 
 
@@ -365,7 +360,6 @@ is asking the predictive posterior for thresholds rather than probabilities:
 ```python title="Threshold inversion at every published reference point"
 --8<-- "docs/examples/wppm/hong2025_reproduction.py:thresholds"
 ```
-
 
 
 ---
@@ -379,7 +373,8 @@ asked it to *fit* anything. That is the next step, which is the expensive part.
 Everything above started from the paper's weights. The stronger question is: given
 only the paper's **data**, does psyphy's fit find the paper's covariance field?
 
-The following block of code refits the WPPM's weights from the raw data, computes the covariance field  and then plots resulting ellipses. Looking at the alignment of the ellipses in the figure below, the answer to that question is yes.
+The following block of code refits the WPPM's weights from the raw data, computes the covariance field  and then plots resulting ellipses. 
+Looking at the alignment of the ellipses in the figure below, the answer to that question is yes.
 
 ```python title="MAP fit with the paper's optimizer settings"
 --8<-- "docs/examples/wppm/hong2025_reproduction.py:fit"
@@ -430,11 +425,6 @@ We now show that together psyphy can go:
 
 *raw trials -> fit weights -> derive threshold contours -> the published figure 2B*
 
-
-!!! tip "One line is the whole difference"
-    Same model, same `ThresholdConfig`, same call as the inversion earlier on
-    this page. Only the weights change: `W_org` from the authors' file there,
-    `W_fit` from the `.npz` we just wrote here.
 
 ```python title="Invert our own fitted weights"
 --8<-- "docs/examples/wppm/hong2025_reproduction.py:end_to_end"
