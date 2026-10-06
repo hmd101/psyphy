@@ -40,11 +40,14 @@ This tutorial is accompanied by a
     ```
 
 
-Hong et al. measured how finely people can tell colors apart, for more than
-just a handful of colors. This page reproduces their central figure end to
-end: starting from their raw trial data, psyphy refits the model, inverts it
-to discrimination thresholds, and lands inside the authors' own bootstrap
-confidence interval.
+**Can psyphy reproduce a published result, starting from the raw data?** This
+page answers that for Hong et al. (2025): refit the model from their trials,
+invert it to discrimination thresholds, and compare against the figure they
+published. The answer is yes: our threshold contours fall inside the authors' own 95%
+bootstrap interval at all of their 49 reference points.
+
+Disclaimer: Their experiment was about color, so this page is too;  but the model and psyphy's implmentation generalize! See
+[Scope](#scope) below.
 
 **How this tutorial is laid out** First, we introduce the task and show the headline
 result: the paper's Figure 2B, reproduced. Then we cover the practical parts, e.g.,
@@ -61,8 +64,8 @@ time, so that a disagreement at any point tells us where it came from:
    bootstrap confidence interval?
 
 That order is backwards on purpose. Questions 1 and 2 hand psyphy the paper's
-own weights, so no optimizer ever runs. If they fail, the bug is in our model
-code; there is nowhere else it could be coning from. Question 3 is the first that fits
+own weights, so the expensive optimization doesn't run. If they fail, the bug is in our model
+code. Question 3 is the first that fits
 anything, and fitting is both the slow part and the part with the most ways to
 go wrong. Checking the cheap, deterministic parts first means that if question 3 disagrees, the optimizer is the only suspect left.
 
@@ -113,6 +116,8 @@ at the usual midpoint between chance and perfect performance,
 
 ---
 
+<a id="scope"></a>
+
 !!! note "Scope"
     For this tutorial we will describe the WPPM in terms of color, because that is what Hong et al.
     measured. The WPPM itself is not specific to color: it models noise varying
@@ -145,9 +150,8 @@ classic Weber's Law result on simulated one-dimensional data.
     ellipses are the contours psyphy recovers; dashed gray are the published
     ones. Each ellipse takes the color of its own reference stimulus (center
     dot). Nothing published enters this chain except the raw trials: psyphy
-    fits the model's weights from those trials, inverts the oddity task to turn
-    the resulting noise field into 66.7%-correct thresholds, and the result is
-    what you see. The axes are model dimensions, arbitrary up to an affine
+    fits the model's weights from those trials, and inverts the oddity task to turn
+    the resulting noise field into 66.7%-correct thresholds (represented as ellipses). The axes are model dimensions, which arbitrary up to an affine
     transformation of the input (RGB) space.</em></p>
 </div>
 
@@ -234,12 +238,6 @@ we transcribed once into `PAPER_HYPERPARAMS`.
     ```
 
 
-!!! warning "One convention differs: `degree` counts basis functions, `basis_degree` is the maximum degree"
-    The paper builds `WishartProcessModel(5, 2, 1, 3e-4, 0.4, 0)`, where
-    `degree=5` is the *number* of Chebyshev basis functions, $T_0$ through
-    $T_4$. psyphy's `basis_degree` is instead the *highest degree* used, so the
-    same model is `basis_degree=4`. Both describe the same $5 \times 5$
-    coefficient grid.
 
 
 ---
@@ -342,12 +340,24 @@ object with the ``threshold_pred`` argument set to ``True``, passing it the rele
     squares over those three unknowns, followed by a single matrix inverse to
     recover $Σ$ itself. No iteration, and nothing that can fail to converge.
 
-We run the inversion at the paper's own settings — 16 directions, 1,000
-distances along each, 2,000 Monte Carlo samples per evaluation:
+We run the inversion at the paper's own settings (16 directions, 1,000
+distances along each, 2,000 Monte Carlo samples per evaluation). That
+costs about 11 minutes on CPU for the 49 reference points.
 
-```python title="Compute settings"
---8<-- "docs/examples/wppm/hong2025_reproduction.py:threshold_settings"
-```
+??? note "Threshold settings"
+
+    ```python
+    --8<-- "docs/examples/wppm/hong2025_reproduction.py:threshold_settings"
+    ```
+
+    300 distances and 500 Monte Carlo samples instead of 1,000 and 2,000,
+    which runs the same 49 reference points in roughly 20 seconds rather than
+    11 minutes. It is what `--mode quick` selects, and it is meant for checking
+    that the code path works and not for reproducing anything. The script prints
+    which preset is in effect when it starts, so no number on this page is ever
+    ambiguous about which produced it.
+
+
 
 The loading and the model are the same as in the recipe above; what is new here
 is asking the predictive posterior for thresholds rather than probabilities:
@@ -375,6 +385,12 @@ The following block of code refits the WPPM's weights from the raw data, compute
 --8<-- "docs/examples/wppm/hong2025_reproduction.py:fit"
 ```
 
+The fit is the only part that needs a GPU, so we write the weights to disk.
+
+```python title="Keep the fitted weights"
+--8<-- "docs/examples/wppm/hong2025_reproduction.py:save_fit"
+```
+
 
 <div align="center">
     <img src="../plots/hong2025_full_ellipses.png"
@@ -382,9 +398,7 @@ The following block of code refits the WPPM's weights from the raw data, compute
          width="560"/>
     <p><em><span class="arithmatex">\(\Sigma_{\text{noise}}(x)\)</span> for subject 1 (CH): dashed gray is the field
     from the authors' published weights, red is our own MAP refit. This is the
-    paper's supplementary Figure S3. The ellipses are a single color here rather
-    than colored by reference stimulus — that convention is reserved for the
-    threshold figures, so the two cannot be confused at a glance.
+    paper's supplementary Figure S3.
     <br/><br/>
     Note: These ellipses look much like the ones at the top of the page, but they are a
     different quantity.
@@ -406,26 +420,32 @@ The following block of code refits the WPPM's weights from the raw data, compute
 
 This is the figure at the top of the page, and this is where it comes from.
 
-The two steps before it each held something fixed: the Figure 2B inversion used
-the authors' *published* weights, so it tested our inversion with the optimizer
-removed; the refit fit weights from the raw trials but only ever compared noise
-fields. Joining them closes the loop:
-*raw trials -> our weights -> our contours
--> the published figure*, with nothing published entering except the data:
+Each of the two steps before it held something fixed. The Figure 2B inversion
+started from the authors' *published* weights, so it tested our inversion. The refit went the other
+way: it fit weights from the raw trials, but only compared noise fields.
+Neither on its own shows that psyphy can get from raw data to the published
+figure, but they served individually as important implementation checks.
 
-Everything is identical to the inversion above — same model, same
-`ThresholdConfig`, same call — except for where the weights come from:
+We now show that together psyphy can go:
+
+*raw trials -> fit weights -> derive threshold contours -> the published figure 2B*
+
+
+!!! tip "One line is the whole difference"
+    Same model, same `ThresholdConfig`, same call as the inversion earlier on
+    this page. Only the weights change: `W_org` from the authors' file there,
+    `W_fit` from the `.npz` we just wrote here.
 
 ```python title="Invert our own fitted weights"
 --8<-- "docs/examples/wppm/hong2025_reproduction.py:end_to_end"
 ```
 
-??? note "Drawing it: both fields on one axes"
+??? note "Plotting it"
 
     Both contour fields go onto one axes in a single
-    [`plot_ellipses`](../../reference/viz.md) call — published dashed
+    [`plot_ellipses`](../../reference/viz.md) call ( published dashed
     underneath, ours on top, each ellipse colored by its own reference
-    stimulus.
+    stimulus)
 
     ```python
     --8<-- "docs/examples/wppm/hong2025_reproduction.py:plot_call"
