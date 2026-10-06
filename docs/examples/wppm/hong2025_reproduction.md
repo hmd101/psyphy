@@ -227,10 +227,9 @@ library AEPsych, we refer the reader to the paper.
 `build_paper_model()` assembles a WPPM from the settings the paper used, which
 we transcribed once into `PAPER_HYPERPARAMS`.
 
-??? note "The paper's hyperparameters, in full"
+??? note "The paper's hyperparameters in full"
 
-    Grouped by what each one controls. These are read straight from the
-    library, so the page cannot drift from the values the model is built with.
+    Grouped by what each one controls.
 
     ```python title="psyphy.data.published.hong2025"
     --8<-- "src/psyphy/data/published/hong2025.py:hyperparams"
