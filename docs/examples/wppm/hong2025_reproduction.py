@@ -867,10 +867,10 @@ def stage5_bootstrap_envelope(
     # --8<-- [start:envelope_plot]
     fig, ax = plt.subplots(figsize=(6.5, 6.5), dpi=150)
 
-    # Layer 1: the CI set. 114 fields in one call -- plot_ellipses accepts a
-    # stack of shape (n_fields, n_points, 2, 2). Thin and nearly transparent so
-    # they read as a band rather than 114 distinguishable curves, and labelled
-    # once rather than 114 times.
+    # Layer 1: the CI set. 114 fields in one call: plot_ellipses accepts a
+    # stack of shape (n_fields, n_points, 2, 2). thin and nearly transparent so
+    # they read as a band rather than distinguishable curves, and labelled
+    # once rather than n_field times
     plot_ellipses(
         coords,
         boots,
@@ -882,7 +882,7 @@ def stage5_bootstrap_envelope(
         labels=[f"95% bootstrap CI (Hong et al. 2025, {_subject_tag(subject)})"]
         + [None] * (len(boots) - 1),
     )
-    # Layer 2: the same convention as every other figure on the page.
+    # Layer 2: the same convention for plotting as every other figure before
     plot_ellipses(
         coords,
         [thres_published, thres_fit],
