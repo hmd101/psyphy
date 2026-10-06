@@ -486,7 +486,7 @@ sense *psyphy's refit is indistinguishable from their fit*.
     dashed gray the published fit, colored solid ours.</em></p>
 </div>
 
-??? note "Plotting it: the band, then the two fits on top"
+??? note "Plotting it:"
 
     `plot_ellipses` takes a whole stack of fields at once, so all 114 retained
     refits go on in a single call. The published fit and ours are drawn over
