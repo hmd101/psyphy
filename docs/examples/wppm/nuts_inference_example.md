@@ -49,9 +49,18 @@ In this tutorial, we use the MC-based likelihood which is estimated via Monte Ca
 ### Step 0 — Install requirements
 
 ```bash
-pip install 'psyphy[nuts]'
-# installs: blackjax>=1.0, arviz>=0.16, matplotlib>=3.5
+pip install 'psyphy[sampling,diagnostics,viz]'
+# sampling    -> blackjax>=1.4,<2   (needs Python >= 3.11)
+# diagnostics -> arviz>=1.0         (needs Python >= 3.12)
+# viz         -> matplotlib>=3.5
 ```
+
+!!! note "Python version"
+    Both optional dependencies carry a Python floor set by upstream, above
+    psyphy's own `>=3.10`: `blackjax` 1.4+ requires **3.11+**, and every
+    `arviz` 1.x requires **3.12+**. On an older interpreter the corresponding
+    extra resolves to nothing, and `NUTSSampler.fit()` / `to_arviz()` raise an
+    `ImportError` that says so. `psyphy` itself is unaffected.
 
 ### Step 1 — Simulate data
 
@@ -158,7 +167,7 @@ NUTSSampler.fit(model, data)        ← same interface as MAPOptimizer
 MCMCPosterior                        ← satisfies ParameterPosterior protocol
   .params        → posterior mean W
   .sample(n,key) → n draws {"W": (n, *W_shape)}
-  .to_arviz()    → az.InferenceData (n_chains, n_draws, *W_shape)
+  .to_arviz()    → xarray.DataTree (n_chains, n_draws, *W_shape)
         ↓
 WPPMPredictivePosterior(nuts_posterior, X_test, ...)
   .mean     → E[p(correct | X*, θ) | D]
@@ -171,7 +180,7 @@ WPPMPredictivePosterior(nuts_posterior, X_test, ...)
 
 ## Limitations and future extensions
 
-- **Fixed MC key bias**: We introduced a fixed key for the MC-based Oddity-Task likelihood because BlackJAX samplers require a deterministict log denstit.  Using a fixed key introduces a slight bias. Mitigate with larger `MC_SAMPLES` or switch to the neural surrogate likelihood.
+- **Fixed MC key bias**: We introduced a fixed key for the MC-based Oddity-Task likelihood because BlackJAX samplers require a deterministic log density. Using a fixed key introduces a slight bias. Mitigate with larger `MC_SAMPLES` or switch to the neural surrogate likelihood.
 - **Sequential warmup**: adaptive mode runs one chain at a time. For >8 chains, fixed `step_size` mode + vmap is faster.
 - **Other samplers**: any sampler that produces an `MCMCPosterior` plugs into the same downstream pipeline. Future additions: `MALASampler`, `SGLDSampler`, NumPyro integration.
 

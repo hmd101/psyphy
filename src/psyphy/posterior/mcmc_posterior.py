@@ -17,6 +17,8 @@ to MAPPosterior by all downstream code.
 
 from __future__ import annotations
 
+import sys
+
 import jax
 import jax.numpy as jnp
 import jax.random as jr
@@ -190,7 +192,13 @@ class MCMCPosterior:
         except ImportError as e:
             raise ImportError(
                 "ArviZ is required for MCMCPosterior.to_arviz(). "
-                "Install it with: pip install 'psyphy[diagnostics]'"
+                "Install it with: pip install 'psyphy[diagnostics]'\n"
+                f"Note: to_arviz() needs arviz >= 1.0, and every arviz 1.x "
+                f"requires Python >= 3.12 (this is {sys.version_info.major}."
+                f"{sys.version_info.minor}). On an older interpreter the "
+                "'diagnostics' extra resolves to nothing and this error appears "
+                "even after installing it. The chains are still available via "
+                "`.sample()` / `._samples` without ArviZ."
             ) from e
 
         # -- ArviZ 1.0 API boundary --------------------------------

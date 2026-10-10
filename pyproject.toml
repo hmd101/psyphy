@@ -78,8 +78,11 @@ examples = [
 # Note this extra raises floors for core deps: blackjax 1.4+ wants jax>=0.9.0,
 # numpy>=1.25 and scipy>=1.13, all above psyphy's own declared minimums. That is
 # acceptable in an extra, but any lowest-version resolution test must exclude it.
+# The python_version marker is upstream's constraint, not a choice: blackjax 1.4+
+# declares requires-python >=3.11 (1.3 allowed >=3.9). Without the marker the
+# resolution is unsatisfiable on psyphy's declared 3.10 floor and `uv lock` fails.
 sampling = [
-  "blackjax>=1.4,<2",
+  'blackjax>=1.4,<2; python_version >= "3.11"',
 ]
 # MCMC convergence diagnostics (MCMCPosterior.to_arviz, R-hat, ESS).
 #
@@ -88,8 +91,12 @@ sampling = [
 # (`idata["posterior"]`, `list(idata.children)`). Measured on 0.23.4, five tests
 # in tests/test_mcmc_posterior.py fail and each of those access patterns raises
 # (KeyError / AttributeError / TypeError). All 17 pass on 1.3.0.
+# Likewise a marker, and a steeper one: EVERY arviz 1.x requires Python >=3.12
+# (0.23.4, the last 0.x, allowed >=3.10). Since to_arviz() only works on 1.x
+# (see below), the diagnostics extra is inherently Python 3.12+. On 3.10/3.11 the
+# extra resolves to nothing and to_arviz() raises with an explanation.
 diagnostics = [
-  "arviz>=1.0",
+  'arviz>=1.0; python_version >= "3.12"',
 ]
 # GPU (NVIDIA/CUDA) support, e.g. for running the example scripts on the
 # Flatiron cluster. `jax[cuda12]` pulls in jaxlib's CUDA plugin plus matching

@@ -37,6 +37,7 @@ blackjax >= 1.0  (install with: pip install 'psyphy[sampling]')
 from __future__ import annotations
 
 import contextlib
+import sys
 
 import jax
 import jax.numpy as jnp
@@ -163,7 +164,11 @@ class NUTSSampler(InferenceEngine):
         except ImportError as e:
             raise ImportError(
                 "BlackJAX is required for NUTSSampler. "
-                "Install it with: pip install 'psyphy[sampling]'"
+                "Install it with: pip install 'psyphy[sampling]'\n"
+                f"Note: blackjax >= 1.4 requires Python >= 3.11 (this is "
+                f"{sys.version_info.major}.{sys.version_info.minor}), so on an "
+                "older interpreter the 'sampling' extra resolves to nothing and "
+                "this error appears even after installing it."
             ) from e
 
         rng_seed = self.seed if seed is None else int(seed)
