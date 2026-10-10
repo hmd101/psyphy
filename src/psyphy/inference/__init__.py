@@ -7,11 +7,16 @@ Inference engines for WPPM.
 This subpackage provides different strategies for fitting model parameters
 to data and returning posterior objects.
 
-MVP implementations
--------------------
+Implementations
+---------------
 - MAPOptimizer : maximum a posteriori fit with Optax optimizers.
-- LaplaceApproximation : approximate posterior covariance around MAP.
-- LangevinSampler : skeleton for sampling-based inference.
+- NUTSSampler : full posterior sampling via NUTS (requires blackjax).
+- LaplaceApproximation : approximate posterior covariance around MAP (stub).
+- LangevinSampler : skeleton for Langevin-based sampling (stub).
+
+Optional dependencies
+---------------------
+- NUTSSampler requires blackjax: pip install 'psyphy[sampling]'
 
 Future extensions
 -----------------
@@ -23,9 +28,15 @@ from .langevin import LangevinSampler
 from .laplace import LaplaceApproximation
 from .map_optimizer import MAPOptimizer
 
+# NUTSSampler soft-imports blackjax at call time, so the class itself is always
+# importable -- a missing blackjax only raises at .fit() time, with a message
+# naming the extra.
+from .nuts import NUTSSampler
+
 # Registry for string-based inference selection
 INFERENCE_ENGINES = {
     "map": MAPOptimizer,
+    "nuts": NUTSSampler,
     "laplace": LaplaceApproximation,
     "langevin": LangevinSampler,
 }
@@ -33,6 +44,7 @@ INFERENCE_ENGINES = {
 __all__ = [
     "InferenceEngine",
     "MAPOptimizer",
+    "NUTSSampler",
     "LangevinSampler",
     "LaplaceApproximation",
     "INFERENCE_ENGINES",

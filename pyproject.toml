@@ -64,6 +64,33 @@ examples = [
   "seaborn>=0.13",
   "jupyterlab>=4.0",
 ]
+# Gradient-based MCMC (NUTSSampler). Soft dependency: the class is always
+# importable and only .fit() raises if blackjax is missing.
+#
+# The `>=1.4` floor is deliberate and is the whole reason this is pinned on both
+# sides. BlackJAX has a hard discontinuity at 1.4: releases <=1.3 require
+# `jax>=0.4.16` *and* the deprecated `jaxopt`, while >=1.4 require `jax>=0.9.0`.
+# An unbounded `blackjax>=1.0` straddles that split, so the resolved jax version
+# depends on what the resolver happens to pick -- which is non-reproducible
+# between a laptop and a CUDA cluster, and is what stalled this work in May 2026.
+# The `<2` bound reserves the right to re-check when 2.x lands.
+#
+# Note this extra raises floors for core deps: blackjax 1.4+ wants jax>=0.9.0,
+# numpy>=1.25 and scipy>=1.13, all above psyphy's own declared minimums. That is
+# acceptable in an extra, but any lowest-version resolution test must exclude it.
+sampling = [
+  "blackjax>=1.4,<2",
+]
+# MCMC convergence diagnostics (MCMCPosterior.to_arviz, R-hat, ESS).
+#
+# `>=1.0` is required, not merely preferred: ArviZ 1.0 replaced InferenceData
+# with xarray's DataTree, and `to_arviz()` returns and is accessed as a DataTree
+# (`idata["posterior"]`, `list(idata.children)`). Measured on 0.23.4, five tests
+# in tests/test_mcmc_posterior.py fail and each of those access patterns raises
+# (KeyError / AttributeError / TypeError). All 17 pass on 1.3.0.
+diagnostics = [
+  "arviz>=1.0",
+]
 # GPU (NVIDIA/CUDA) support, e.g. for running the example scripts on the
 # Flatiron cluster. `jax[cuda12]` pulls in jaxlib's CUDA plugin plus matching
 # nvidia-*-cu12 wheels; JAX bundles its own CUDA/cuDNN runtime this way, so no
@@ -122,6 +149,10 @@ ignore = [
 
 [tool.ruff.lint.per-file-ignores]
 "tests/**/*.py" = ["ARG", "S101"]  # Allow unused args and asserts in tests
+# E402: the blackjax/arviz importorskip guards must run before psyphy imports,
+# so module-level imports below them are deliberate.
+"tests/test_nuts_sampler.py" = ["ARG", "S101", "E402"]
+"tests/test_mcmc_posterior.py" = ["ARG", "S101", "E402"]
 "__init__.py" = ["F401"]  # Allow unused imports in __init__.py
 "docs/**/*.py" = ["ARG", "T201"]  # Allow print statements in examples
 
