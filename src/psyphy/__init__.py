@@ -28,7 +28,7 @@ Core design
    - WPPM: structured prior over basis weights and
      decay_rate-controlled covariance fields.
 
-3. TaskLikelihood (model/likelihood.py):
+3. TaskLikelihood (model/likelihood/):
    - Encodes the psychophysical decision rule.
    - WPPM: loglik and predict implemented via Monte Carlo
      observer simulations, using the noise model explicitly.
