@@ -52,9 +52,7 @@ The companion script can be found at
     ```
 
     `quick` exists so the page can be regenerated quickly (about a minute on an A100). Its
-    diagnostics are deliberately not publication grade; see Step 5. For the heavier modes,
-    the script times one gradient and **prints a projected run time before it starts
-    sampling**, so you can decide whether to run it interactively or as a batch job.
+    diagnostics are deliberately not publication grade; see Step 5.
 
 ---
 
@@ -83,7 +81,7 @@ approximate averages over the posterior, and the spread of the sample is the unc
 Nothing is ever normalized, which is the trick, because the intractable integral is exactly
 the normalising constant.
 
-The catch is building a walk that explores efficiently. A naive random walk works in two or
+The challenge is building a walk that explores efficiently. A naive random walk works in two or
 three dimensions and fails badly in fifty, where almost every direction you could step in
 leads somewhere less probable, so nearly all proposals are rejected and the chain crawls.
 [Hamiltonian Monte Carlo](https://en.wikipedia.org/wiki/Hamiltonian_Monte_Carlo) fixes this
@@ -96,7 +94,7 @@ Betancourt's [*Conceptual Introduction to Hamiltonian Monte Carlo*](https://arxi
 is the readable account of why this works and where it fails; it is worth an hour if you
 intend to trust these numbers.
 
-Two things follow for psyphy, and both shape this page:
+Two things follow for psyphy:
 
 1. **The sampler needs gradients**, which is why the log posterior is written in JAX and
    why psyphy's `NUTSSampler` can hand it straight to BlackJAX.
