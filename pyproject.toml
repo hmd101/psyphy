@@ -130,6 +130,11 @@ Changelog = "https://flatironinstitute.github.io/psyphy/changelog/"
 
 [tool.hatch.build.targets.wheel]
 packages = ["src/psyphy"]
+# Trained surrogate weights ship with the library so that NeuralOddityTask works
+# with no download and no configuration. hatchling includes Python modules
+# automatically but not data files, so the .npz must be named here or it is
+# silently absent from the wheel.
+artifacts = ["src/psyphy/model/likelihood/weights/*.npz"]
 
 [tool.hatch.build.targets.sdist]
 include = ["src/psyphy", "README.md", "LICENSE.md", "CHANGELOG.md", "tests"]

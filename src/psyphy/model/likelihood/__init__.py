@@ -14,6 +14,10 @@ oddity   : OddityTaskConfig, OddityTask (3-AFC, Monte Carlo)
 features : whiten, reduce_2d, whitened_oddity_features -- the input transform a
            neural surrogate consumes, public because deriving one for a new task
            is something users are meant to be able to do
+neural   : NeuralSurrogate and its on-disk format. A surrogate file records what
+           task, dimension and feature map it was trained for, because weights
+           alone cannot say, and the wrong weights fail silently rather than
+           loudly
 
 Every public name is re-exported here, so existing imports are unaffected::
 
@@ -26,6 +30,7 @@ from .base import (
     TaskLikelihood,
 )
 from .features import reduce_2d, whiten, whitened_oddity_features
+from .neural import NeuralSurrogate, mlp_forward, save_surrogate_npz
 from .oddity import OddityTask, OddityTaskConfig
 
 __all__ = [
@@ -40,4 +45,8 @@ __all__ = [
     "whiten",
     "reduce_2d",
     "whitened_oddity_features",
+    # Trained surrogates and their file format
+    "NeuralSurrogate",
+    "mlp_forward",
+    "save_surrogate_npz",
 ]
