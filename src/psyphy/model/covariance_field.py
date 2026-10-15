@@ -13,6 +13,9 @@ This module provides:
 - CovarianceField: Protocol defining the interface
 - WPPMCovarianceField: Concrete implementation for WPPM models
 - construction from priors, posteriors, or arbitrary parameters
+- PosteriorMeanCovarianceField: E[Σ(x)] over posterior draws -- the correct
+  "posterior mean" field for sample-based posteriors (see its docstring for
+  why averaging W instead gives too-small ellipses)
 
 Mathematical Background
 -----------------------
@@ -516,3 +519,198 @@ class WPPMCovarianceField:
         if "W" not in self.params:
             raise ValueError("sqrt_cov_batch only available in Wishart mode")
         return jax.vmap(self.sqrt_cov)(X)
+
+
+class PosteriorMeanCovarianceField:
+    r"""
+    Posterior mean of the covariance field, E[Σ(x) | data].
+
+    Evaluates Σ(x) separately for every posterior draw W_k and averages the
+    resulting matrices:
+
+        Σ̂(x) = (1/N) Σ_k [ U_k(x) U_k(x)^T + λI ]
+
+    Use this, not ``WPPMCovarianceField(model, posterior.params)``, to draw a
+    "posterior mean" covariance field from a sample-based posterior such as
+    ``MCMCPosterior``.
+
+    Why average Σ and not W
+    -----------------------
+    ``posterior.params`` is the mean *parameter* E[W]. Building a field from
+    it gives Σ(E[W]), which is the wrong summary for the WPPM, for two reasons
+    that compound:
+
+    1. Σ is quadratic in W (through U U^T, with U linear in W), so averaging
+       before squaring drops the spread term:
+
+           E[Σ(x)] = Σ(x; E[W]) + Cov[U(x)],   with Cov[U(x)] ⪰ 0.
+
+       Σ(E[W]) is therefore never larger than E[Σ], in any direction.
+
+    2. W is not identifiable. For any orthogonal R acting on the embedding
+       axis, W -> W R gives U -> U R and leaves U U^T, and hence Σ, unchanged;
+       the prior is invariant too. Different draws (in practice, different
+       chains) can sit at different orientations of the same Σ, and averaging
+       W makes them cancel, pulling E[W] toward 0 and Σ(E[W]) toward λI. In
+       the extreme, the draws W and -W average to E[W] = 0.
+
+    Averaging Σ itself avoids both: every term Σ(x; W_k) is unchanged by
+    W_k -> W_k R, and nothing is squared after averaging. E[Σ(x)] is also the
+    Bayes estimate of Σ(x) under squared (Frobenius) loss, i.e. what
+    "posterior mean of Σ" means.
+
+    Parameters
+    ----------
+    posterior : ParameterPosterior
+        Any posterior with ``.model`` and ``.sample(n, key=...)``, e.g.
+        ``MCMCPosterior`` or ``MAPPosterior``.
+    n_samples : int | None, default=None
+        Number of draws to average over. If None, uses every stored draw,
+        which requires the posterior to expose ``n_chains`` and ``n_draws``
+        (``MCMCPosterior`` does). Posteriors without a fixed draw count
+        (``MAPPosterior``, future variational posteriors) must pass it.
+    key : jax.random.KeyArray | None, default=None
+        PRNG key forwarded to ``posterior.sample``. Only matters when
+        ``n_samples`` is smaller than the number of stored draws.
+
+    Notes
+    -----
+    - Implements the ``CovarianceField`` protocol, so it can be passed
+      wherever a field is expected (e.g. ``psyphy.viz.plot_ellipses`` after
+      evaluating it). ``sqrt_cov`` raises: see its docstring.
+    - The arithmetic mean of covariance matrices is somewhat larger than a
+      typical single draw, because spread in ellipse size adds to the mean.
+      That is a property of the mean, not an error.
+    - Deliberately not a subclass of ``WPPMCovarianceField``: that class is
+      "one parameter set W", and its ``params``, ``from_params`` and
+      ``sqrt_cov`` have no meaning for an average over many W.
+
+    Examples
+    --------
+    >>> nuts_posterior = NUTSSampler(...).fit(model, data)
+    >>> mean_field = PosteriorMeanCovarianceField(nuts_posterior)
+    >>> Sigmas = mean_field(ref_points)  # (n_points, 2, 2)
+    """
+
+    def __init__(self, posterior, n_samples: int | None = None, key=None):
+        self.model = posterior.model
+
+        if n_samples is None:
+            # "All draws" is only well defined for posteriors that store a
+            # fixed set of draws. MCMCPosterior.sample(n) samples WITHOUT
+            # replacement when n <= n_chains * n_draws, so asking for exactly
+            # that many returns every stored draw once (in shuffled order,
+            # which does not affect a mean). This stays on the public
+            # ParameterPosterior interface instead of reading _samples.
+            n_chains = getattr(posterior, "n_chains", None)
+            n_draws = getattr(posterior, "n_draws", None)
+            if n_chains is None or n_draws is None:
+                raise ValueError(
+                    f"{type(posterior).__name__} does not expose n_chains/n_draws; "
+                    "pass n_samples explicitly."
+                )
+            n_samples = int(n_chains) * int(n_draws)
+
+        # Drawn ONCE here, so repeated evaluations of the field are
+        # deterministic and consistent with each other.
+        # self._draws: PyTree with leading axis n_samples, e.g. {"W": (N, *W_shape)}
+        self._draws = posterior.sample(int(n_samples), key=key)
+        self.n_samples = int(n_samples)
+
+        self._eval_batch_jitted = jax.jit(self._eval_batch_impl)
+
+    def __call__(self, x: jnp.ndarray) -> jnp.ndarray:
+        """
+        Evaluate E[Σ(x)] at one or more stimulus locations.
+
+        Same shape contract as ``WPPMCovarianceField.__call__``: ``(d,)`` ->
+        ``(d, d)`` and ``(..., d)`` -> ``(..., d, d)``.
+        """
+        if x.shape[-1] != self.model.input_dim:
+            raise ValueError(
+                f"Last axis must be input_dim={self.model.input_dim}, got {x.shape[-1]}"
+            )
+        if x.ndim == 1:
+            return self._eval_single(x)
+        return self._eval_batch_jitted(x)
+
+    def _eval_single(self, x: jnp.ndarray) -> jnp.ndarray:
+        """E[Σ(x)] at one location: Σ for every draw, THEN the mean.
+
+        The order is the whole point of this class -- see the class
+        docstring. Do not "optimize" this into Σ(x; mean of draws).
+        """
+        # vmap over the leading draw axis of every leaf of self._draws:
+        # (N, d, d) -- one covariance matrix per posterior draw
+        per_draw = jax.vmap(lambda params: self.model.local_covariance(params, x))(
+            self._draws
+        )
+        return jnp.mean(per_draw, axis=0)  # (d, d)
+
+    def _eval_batch_impl(self, X: jnp.ndarray) -> jnp.ndarray:
+        """Flatten -> vmap -> reshape, as in ``WPPMCovarianceField``.
+
+        Memory note: the intermediate is (n_points, n_draws, d, d), e.g.
+        25 x 4000 x 2 x 2 floats = 1.6 MB; dense grids with many draws scale
+        as their product.
+        """
+        input_dim = self.model.input_dim
+        batch_shape = X.shape[:-1]
+        X_flat = X.reshape(-1, input_dim)
+        Sigmas_flat = jax.vmap(self._eval_single)(X_flat)
+        return Sigmas_flat.reshape(batch_shape + (input_dim, input_dim))
+
+    def cov(self, x: jnp.ndarray) -> jnp.ndarray:
+        """
+        Evaluate E[Σ(x)] at a single location.
+
+        .. deprecated::
+            Use `field(x)` instead, as for ``WPPMCovarianceField``.
+        """
+        warnings.warn(
+            "cov() is deprecated. Use field(x) instead for unified single/batch API.",
+            DeprecationWarning,
+            stacklevel=2,
+        )
+        if x.ndim != 1:
+            raise ValueError(
+                f"cov() only accepts single points with shape (input_dim,), got {x.shape}. "
+                f"Use field(X) for batches."
+            )
+        return self(x)
+
+    def cov_batch(self, X: jnp.ndarray) -> jnp.ndarray:
+        """
+        Evaluate E[Σ(x)] at multiple locations.
+
+        .. deprecated::
+            Use `field(X)` instead, as for ``WPPMCovarianceField``.
+        """
+        warnings.warn(
+            "cov_batch() is deprecated. Use field(X) instead for unified single/batch API.",
+            DeprecationWarning,
+            stacklevel=2,
+        )
+        if X.ndim < 2:
+            raise ValueError(
+                f"cov_batch() expects batch with shape (n_points, input_dim), got {X.shape}. "
+                f"Use field(x) for single points."
+            )
+        return self(X)
+
+    def sqrt_cov(self, x: jnp.ndarray) -> jnp.ndarray:
+        """
+        Not available: a posterior mean of Σ has no WPPM square root U(x).
+
+        Each draw has its own U_k(x), but the average of U_k U_k^T is not
+        U U^T for any single U from the model (and averaging the U_k instead
+        reintroduces exactly the cancellation this class exists to avoid).
+        Any matrix returned here would be a different object under the same
+        name, so this raises instead. For a factor of the mean matrix itself,
+        use ``jnp.linalg.cholesky(field(x))``.
+        """
+        raise NotImplementedError(
+            "PosteriorMeanCovarianceField has no square root U(x): an average "
+            "of U U^T over draws is not U U^T for any single U. Use "
+            "jnp.linalg.cholesky(field(x)) for a factor of the mean matrix."
+        )
