@@ -16,6 +16,9 @@ This module provides:
 - PosteriorMeanCovarianceField: E[Σ(x)] over posterior draws -- the correct
   "posterior mean" field for sample-based posteriors (see its docstring for
   why averaging W instead gives too-small ellipses)
+- covariance_to_arviz: per-draw Σ(x) at chosen points as an ArviZ DataTree,
+  for convergence diagnostics that are not fooled by the non-identifiable
+  orientation of W (see its docstring)
 
 Mathematical Background
 -----------------------
@@ -739,3 +742,149 @@ class PosteriorMeanCovarianceField:
             "of U U^T over draws is not U U^T for any single U. Use "
             "jnp.linalg.cholesky(field(x)) for a factor of the mean matrix."
         )
+
+
+def covariance_to_arviz(posterior, points):
+    r"""
+    Per-draw covariance Σ(x) at chosen points, as an ArviZ DataTree.
+
+    Use this, not ``posterior.to_arviz()``, for convergence diagnostics
+    (R-hat, ESS, trace plots) of a WPPM fit.
+
+    Why Σ and not W
+    ---------------
+    W is only identified up to an orthogonal rotation R of its embedding
+    axis: W -> W R gives U(x) -> U(x) R and leaves Σ(x) = U Uᵀ + λI, and the
+    prior, unchanged. Chains can therefore settle at different orientations
+    that describe exactly the same covariance field. R-hat on W reports that
+    as non-convergence, although no ellipse, threshold or prediction depends
+    on the orientation. Σ(x) is invariant, so its diagnostics measure what the
+    fit is actually used for.
+
+    Why points must be chosen
+    -------------------------
+    Unlike W, Σ is a function of the stimulus location x, so a diagnostic of Σ
+    is a diagnostic *at some x*. This function deliberately has no default for
+    ``points``: which locations to check is a modelling decision. Sensible
+    choices are the locations you report (e.g. the reference points of the
+    plotted ellipses), optionally plus a grid covering the stimulus space,
+    since away from the data the posterior relies more on the prior. Report
+    the worst value over all points. A modest number of points suffices: Σ is
+    a low-degree polynomial in x, so dense grids add mostly near-duplicates.
+
+    Quantities
+    ----------
+    For each draw and point, the d x d matrix Σ is summarised by its d log
+    variances and d(d-1)/2 correlations, which together determine Σ:
+
+    - ``log_var_i``  = log Σ_ii
+    - ``corr_i_j``   = Σ_ij / sqrt(Σ_ii Σ_jj), for i < j
+
+    (2D: ``log_var_0``, ``log_var_1``, ``corr_0_1``.) The off-diagonal is not
+    counted twice. Logs make the variances less skewed; note that ArviZ's
+    default rank-normalized R-hat is unchanged by such monotone transforms
+    anyway.
+
+    Parameters
+    ----------
+    posterior : MCMCPosterior
+        A sample-based posterior with ``to_arviz()`` (chain structure is
+        needed for R-hat; ``sample()`` would pool the chains).
+    points : array_like, shape (n_points, input_dim)
+        Stimulus locations at which to evaluate Σ.
+
+    Returns
+    -------
+    xarray.DataTree
+        ``posterior`` group with variable ``Sigma`` of dims
+        ``(chain, draw, point, quantity)``, coordinates ``quantity`` (names as
+        above) and ``location_0 … location_{d-1}`` (the evaluation points, one
+        coordinate per stimulus axis, along ``point``). The posterior's
+        ``sample_stats`` group (divergences, energy, ...) is carried over.
+
+    Raises
+    ------
+    TypeError
+        If the posterior has no ``to_arviz()`` (e.g. a MAP posterior: no
+        chains, nothing to diagnose).
+    ValueError
+        If ``points`` is not of shape ``(n_points, input_dim)``.
+    ImportError
+        If ArviZ is not installed (``pip install 'psyphy[diagnostics]'``).
+
+    Examples
+    --------
+    >>> import arviz as az
+    >>> dt = covariance_to_arviz(nuts_posterior, ref_points)
+    >>> az.rhat(dt)["Sigma"].max()  # worst point and quantity
+    >>> az.plot_trace(dt, var_names=["Sigma"], coords={"point": 0})
+    """
+    to_arviz = getattr(posterior, "to_arviz", None)
+    if to_arviz is None:
+        raise TypeError(
+            f"{type(posterior).__name__} has no to_arviz(); convergence diagnostics "
+            "need a sample-based posterior with chains (e.g. MCMCPosterior)."
+        )
+
+    model = posterior.model
+    d = model.input_dim
+    points = jnp.asarray(points)
+    if points.ndim != 2:
+        raise ValueError(
+            f"points must have shape (n_points, input_dim), got {points.shape}. "
+            "For a single location use points[None, :]."
+        )
+    if points.shape[-1] != d:
+        raise ValueError(
+            f"Last axis of points must be input_dim={d}, got {points.shape[-1]}"
+        )
+
+    # Chain-structured draws via the public API (raises ImportError without
+    # ArviZ). Every posterior variable keeps its leading (chain, draw) axes,
+    # e.g. {"W": (C, S, *W_shape)}.
+    idata = to_arviz()
+    import arviz as az
+    import numpy as np
+
+    params = {
+        name: jnp.asarray(var.values)
+        for name, var in idata["posterior"].data_vars.items()
+    }
+
+    def sigma_one_draw(p):
+        # Σ at every point for ONE draw: (n_points, d, d)
+        return jax.vmap(lambda x: model.local_covariance(p, x))(points)
+
+    # vmap over draws, then chains: (C, S, n_points, d, d)
+    Sig = jax.vmap(jax.vmap(sigma_one_draw))(params)
+
+    # Identifiable summary of each Σ: log variances, then correlations (i < j).
+    variances = jnp.diagonal(Sig, axis1=-2, axis2=-1)  # (C, S, P, d)
+    columns = [jnp.log(variances[..., i]) for i in range(d)]
+    names = [f"log_var_{i}" for i in range(d)]
+    for i in range(d):
+        for j in range(i + 1, d):
+            columns.append(
+                Sig[..., i, j] / jnp.sqrt(variances[..., i] * variances[..., j])
+            )
+            names.append(f"corr_{i}_{j}")
+    feats = np.asarray(jnp.stack(columns, axis=-1))  # (C, S, P, n_quantities)
+
+    data = {"posterior": {"Sigma": feats}}
+    if "sample_stats" in idata.children:
+        data["sample_stats"] = {
+            k: v.values for k, v in idata["sample_stats"].data_vars.items()
+        }
+    dt = az.from_dict(
+        data, dims={"Sigma": ["point", "quantity"]}, coords={"quantity": names}
+    )
+    # Record where Σ was evaluated, one 1-D coordinate per stimulus axis along
+    # `point`. (A single (point, axis) coordinate would not attach to Sigma,
+    # which has no `axis` dimension.)
+    pts = np.asarray(points)
+    dt["posterior"] = (
+        dt["posterior"]
+        .to_dataset()
+        .assign_coords({f"location_{i}": ("point", pts[:, i]) for i in range(d)})
+    )
+    return dt

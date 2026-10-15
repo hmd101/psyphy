@@ -24,6 +24,7 @@ from .covariance_field import (
     CovarianceField,
     PosteriorMeanCovarianceField,
     WPPMCovarianceField,
+    covariance_to_arviz,
 )
 from .likelihood import OddityTask, OddityTaskConfig, TaskLikelihood
 from .noise import GaussianNoise, StudentTNoise
@@ -37,6 +38,7 @@ __all__ = [
     "CovarianceField",
     "WPPMCovarianceField",
     "PosteriorMeanCovarianceField",
+    "covariance_to_arviz",
     # Models
     "WPPM",
     # Priors
