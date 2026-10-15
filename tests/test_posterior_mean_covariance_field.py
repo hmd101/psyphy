@@ -212,3 +212,31 @@ def test_exported_from_psyphy_model():
     from psyphy.model import PosteriorMeanCovarianceField as Exported
 
     assert Exported is PosteriorMeanCovarianceField
+
+
+# ==============================================================================
+# WPPMCovarianceField.from_posterior: warn on sample-based posteriors
+# ==============================================================================
+
+
+def test_from_posterior_warns_for_sample_based_posterior(model):
+    """from_posterior builds Σ(E[W]); for MCMC that is the shrunken field."""
+    posterior = MCMCPosterior(_prior_draws(model, 2, 3), model)
+    with pytest.warns(UserWarning, match="PosteriorMeanCovarianceField"):
+        WPPMCovarianceField.from_posterior(posterior)
+
+
+def test_from_posterior_behaviour_unchanged_for_sample_based_posterior(model, X):
+    """The warning is the only change: the returned field is still Σ(E[W])."""
+    posterior = MCMCPosterior(_prior_draws(model, 2, 3), model)
+    with pytest.warns(UserWarning):
+        field = WPPMCovarianceField.from_posterior(posterior)
+    assert isinstance(field, WPPMCovarianceField)
+    assert jnp.allclose(field(X), _sigma(model, posterior.params["W"], X))
+
+
+def test_from_posterior_silent_for_map_posterior(model, recwarn):
+    """For MAP, θ_MAP is a single point, so Σ(θ_MAP) is the right field."""
+    posterior = MAPPosterior(model.init_params(jr.PRNGKey(0)), model)
+    WPPMCovarianceField.from_posterior(posterior)
+    assert not [w for w in recwarn if issubclass(w.category, UserWarning)]

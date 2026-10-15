@@ -403,8 +403,15 @@ class WPPMCovarianceField:
 
         Notes
         -----
-        For MAP posteriors, uses θ_MAP.
-        For variational posteriors, could use posterior mean or sample.
+        Builds the field from ``posterior.params``, i.e. a single parameter set.
+
+        - MAP posteriors: ``params`` is θ_MAP, so this is Σ(θ_MAP). Correct.
+        - Sample-based posteriors (e.g. ``MCMCPosterior``): ``params`` is the
+          mean parameter E[W], and Σ(E[W]) is NOT the posterior mean of Σ. It
+          is systematically too small and can collapse toward λI (see
+          ``PosteriorMeanCovarianceField`` for why). A ``UserWarning`` is
+          raised in that case. Use ``PosteriorMeanCovarianceField(posterior)``
+          for E[Σ], or ``posterior.sample(n)`` for individual draws.
 
         Examples
         --------
@@ -412,6 +419,24 @@ class WPPMCovarianceField:
         >>> field = WPPMCovarianceField.from_posterior(posterior)
         >>> Sigma = field.cov(x)
         """
+        # Sample-based posteriors are recognised by duck typing (they expose a
+        # draw count), the same criterion PosteriorMeanCovarianceField uses.
+        # isinstance(posterior, MCMCPosterior) would need an import from
+        # psyphy.posterior, which already imports psyphy.model -> cycle.
+        #
+        # This warns instead of switching to the posterior-mean field because
+        # that would change the return type (and drop sqrt_cov) for existing
+        # callers; the behaviour is unchanged, only made loud.
+        if getattr(posterior, "n_draws", None) is not None:
+            warnings.warn(
+                f"from_posterior() on a {type(posterior).__name__} builds Σ from the "
+                "mean parameter E[W]. For the WPPM, Σ(E[W]) is not the posterior "
+                "mean of Σ: it is systematically too small, because Σ is quadratic "
+                "in W and W is only identified up to an embedding rotation. Use "
+                "PosteriorMeanCovarianceField(posterior) for E[Σ].",
+                UserWarning,
+                stacklevel=2,
+            )
         return cls(posterior._model, posterior.params)
 
     @classmethod
