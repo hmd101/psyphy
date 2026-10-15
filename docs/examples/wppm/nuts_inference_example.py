@@ -99,15 +99,42 @@ os.makedirs(PLOTS_DIR, exist_ok=True)
 def plot_path(name: str) -> str:
     """Canonical filename for `quick`, mode-suffixed otherwise.
 
-    The documentation embeds plots/nuts_*.png, and those committed figures come
-    from the default (quick) run. A heavier run must not silently replace them,
-    so every other mode writes plots/nuts_*_<mode>.png -- the same convention
-    hong2025_reproduction.py uses for its own full-mode figures.
+    The documentation embeds plots/nuts_*.{png,jpg}, and those committed
+    figures come from the default (quick) run. A heavier run must not silently
+    replace them, so every other mode writes plots/nuts_*_<mode>.<ext> -- the
+    same convention hong2025_reproduction.py uses for its own full-mode figures.
     """
     if MODE == "quick":
         return os.path.join(PLOTS_DIR, name)
     stem, ext = os.path.splitext(name)
     return os.path.join(PLOTS_DIR, f"{stem}_{MODE}{ext}")
+
+
+def save_ellipse_figure(fig, name: str) -> None:
+    """Save an ellipse figure as JPEG (150 dpi, quality 85) and close it.
+
+    Why JPEG and not PNG: the posterior-ensemble figures overlay thousands of
+    thin, semi-transparent, anti-aliased outlines (e.g. 100 fields x 25
+    reference points in --mode balanced). That is noisy detail lossless PNG
+    compresses badly: such a figure measured 1.4 MB as a 200-dpi PNG, against
+    0.2 MB as this JPEG, with no visible artefacts on the outlines. (Vector
+    SVG is worse still, ~6.6 MB, because every outline is stored.)
+
+    The trace plot is NOT saved through here: it is flat lines and text,
+    which PNG handles well and JPEG would blur.
+
+    `name` is given without an extension; ".jpg" is appended.
+    """
+    fig.savefig(
+        plot_path(f"{name}.jpg"),
+        dpi=150,
+        bbox_inches="tight",
+        # Passed through to Pillow's JPEG encoder. optimize=True costs a
+        # little time and saves a few percent of size at no loss.
+        pil_kwargs={"quality": 85, "optimize": True},
+    )
+    plt.close(fig)
+    print(f"  Saved: {os.path.basename(plot_path(name + '.jpg'))}")
 
 
 print("DEVICE:", jax.devices()[0])
@@ -556,13 +583,7 @@ ax.set_title(
 ax.legend(loc="upper right")
 ax.grid(True, alpha=0.3)
 plt.tight_layout()
-fig.savefig(
-    plot_path("nuts_ellipses_uncertainty.png"),
-    dpi=200,
-    bbox_inches="tight",
-)
-plt.close()
-print("  Saved: nuts_ellipses_uncertainty.png")
+save_ellipse_figure(fig, "nuts_ellipses_uncertainty")
 
 # ---------------------------------------------------------------------------
 # 7. MAP vs NUTS mean comparison (side-by-side)
@@ -637,9 +658,7 @@ plt.suptitle(
     "Ground truth vs MAP (point estimate) vs NUTS (posterior mean + spread)", y=1.01
 )
 plt.tight_layout()
-fig.savefig(plot_path("nuts_vs_map_comparison.png"), dpi=200, bbox_inches="tight")
-plt.close()
-print("  Saved: nuts_vs_map_comparison.png")
+save_ellipse_figure(fig, "nuts_vs_map_comparison")
 
 # ---------------------------------------------------------------------------
 # 8. Everything in one axes: truth, MAP, posterior mean, posterior spread
@@ -703,8 +722,6 @@ ax.set_title(
     f"{NUM_CHAINS}×{NUM_SAMPLES} draws, ellipses ×{ELLIPSE_SCALE})"
 )
 ax.grid(True, alpha=0.3)
-fig.savefig(plot_path("nuts_overlay.png"), dpi=200, bbox_inches="tight")
-plt.close()
-print("  Saved: nuts_overlay.png")
+save_ellipse_figure(fig, "nuts_overlay")
 
 print("\nDone. All plots saved to:", PLOTS_DIR)

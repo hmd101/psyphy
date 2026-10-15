@@ -403,7 +403,7 @@ for exactly this reason, before drawing any conclusion from the numbers.
 ```
 
 <div align="center">
-  <img src="../plots/nuts_ellipses_uncertainty.png" width="600"/>
+  <img src="../plots/nuts_ellipses_uncertainty.jpg" width="600"/>
   <p><em>Faint blue: 30 covariance fields sampled from the posterior. Red: posterior mean. Black: ground truth. The spread of blue ellipses shows where the model is uncertain.</em></p>
 </div>
 
@@ -423,7 +423,7 @@ for exactly this reason, before drawing any conclusion from the numbers.
 
 
 <div align="center">
-  <img src="../plots/nuts_overlay.png" width="650"/>
+  <img src="../plots/nuts_overlay.jpg" width="650"/>
   <p><em>Faint blue: posterior draws. Black: ground truth. Dashed orange: MAP. Red:
   posterior mean. Drawn at the same <code>ELLIPSE_SCALE</code> as the figure above, so the
   two are comparable.</em></p>
