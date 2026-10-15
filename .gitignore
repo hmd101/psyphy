@@ -50,3 +50,8 @@ docs/examples/wppm/plots/hong2025_quick_thresholds_end_to_end.png
 # full-mode .npz is ~2 KB and worth committing, since it lets anyone
 # regenerate the end-to-end figure without a GPU.
 docs/examples/wppm/fits/hong2025_quick_fit.npz
+
+# Research branches: sampled posteriors saved by research/*/collect.py. Binary
+# and regenerable (balanced: ~36 min on a GPU), so kept out of git history;
+# the scripts, figures and READMEs are committed.
+research/**/results/
