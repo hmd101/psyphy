@@ -72,6 +72,7 @@ from psyphy.model import (
     GaussianNoise,
     OddityTask,
     OddityTaskConfig,
+    PosteriorMeanCovarianceField,
     Prior,
     WPPMCovarianceField,
 )
@@ -492,8 +493,17 @@ param_samples = nuts_posterior.sample(n_ensemble, key=jr.PRNGKey(0))
 # param_samples["W"].shape == (n_ensemble, *W_shape)
 # --8<-- [end:posterior_samples]
 
-mean_field = WPPMCovarianceField(model, nuts_posterior.params)
-covs_mean = mean_field(ref_points)
+# Posterior mean covariance field, E[Σ(x)]: Σ is computed for EVERY stored
+# draw and the matrices are averaged. Deliberately NOT
+# WPPMCovarianceField(model, nuts_posterior.params): params is the mean
+# parameter E[W], and Σ(E[W]) comes out far too small. Σ = U Uᵀ + λI is
+# quadratic in W, and W is only defined up to a rotation of its embedding
+# axis, so draws (especially from different chains) at different orientations
+# cancel when W is averaged. See PosteriorMeanCovarianceField's docstring.
+# --8<-- [start:posterior_mean]
+mean_field = PosteriorMeanCovarianceField(nuts_posterior)  # all draws by default
+covs_mean = mean_field(ref_points)  # (n_ref, 2, 2)
+# --8<-- [end:posterior_mean]
 covs_truth = truth_field(ref_points)
 
 fig, ax = plt.subplots(figsize=(7, 7))
