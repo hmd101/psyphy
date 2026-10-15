@@ -57,7 +57,7 @@ class MAPPosterior:
         ----------
         n : int, default=1
             Number of samples
-        key : jax.random.KeyArray, optional
+        key : jax.Array, optional
             PRNG key (unused for delta distribution)
 
         Returns

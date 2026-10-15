@@ -9,13 +9,38 @@ repos:
       # Run the formatter
       - id: ruff-format
 
-  # Type checking with mypy
+  # Type checking with mypy.
+  #
+  # This hook is the single definition of what "mypy passes" means for psyphy:
+  # CI runs this same hook rather than its own mypy invocation, so the two
+  # cannot drift apart. Four things here are deliberate, because each was a
+  # real defect beforehand.
+  #
+  # 1. `rev` is a genuine pin, and it must move together with the `mypy==` pin
+  #    in pyproject.toml's `dev` extra. mypy's inference differs between
+  #    releases in ways that change whether correct code is accepted, so a
+  #    stale or floating version makes a green run a statement about the
+  #    checker rather than about the code.
+  # 2. jax and numpy are installed into the hook's environment and
+  #    `--no-site-packages` is NOT passed. Without the real libraries every
+  #    `jnp.ndarray` in psyphy collapses to `Any`, which made this hook strict
+  #    about our own code and blind to the library it is written against.
+  #    They are pinned for the same reason as `rev`.
+  # 3. `args: []` clears the hook's defaults so that every setting comes from
+  #    `[tool.mypy]` in pyproject.toml, including `python_version` and
+  #    `ignore_missing_imports`. One config file, one meaning.
+  # 4. `pass_filenames: false` stops pre-commit handing mypy only the staged
+  #    files; mypy instead reads `files` from pyproject.toml and checks the
+  #    whole project. Partial checks were how a type error could pass the
+  #    commit and only appear once an unrelated file was touched. `files`
+  #    below now only decides *whether* the hook runs, not what it checks.
   - repo: https://github.com/pre-commit/mirrors-mypy
-    rev: v1.11.2
+    rev: v2.4.0
     hooks:
       - id: mypy
-        additional_dependencies: [numpy]
-        args: [--ignore-missing-imports, --no-site-packages]
+        additional_dependencies: ["numpy==2.5.2", "jax==0.11.0"]
+        args: []
+        pass_filenames: false
         files: ^src/psyphy/|^tests/
 
   # General pre-commit hooks
