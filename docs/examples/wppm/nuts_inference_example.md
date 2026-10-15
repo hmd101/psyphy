@@ -186,12 +186,19 @@ back is an `MCMCPosterior`, and these are the three things you will use from it:
 
 | call | returns | used in |
 |---|---|---|
-| `nuts_posterior.params` | the posterior mean of `W` | Step 6, the red "posterior mean" field |
 | `nuts_posterior.sample(n, key=...)` | `n` draws `{"W": (n, *W_shape)}` | Step 6, the ellipse ensemble |
+| `PosteriorMeanCovarianceField(nuts_posterior)` | the posterior mean covariance field E[Σ(x)] | Step 6, the red "posterior mean" ellipses |
 | `nuts_posterior.to_arviz()` | all chains, for diagnostics | Step 5 |
 
 `MCMCPosterior` and `MAPPosterior` share this interface, so code written for a MAP fit,
 for example `WPPMPredictivePosterior`, accepts a NUTS fit unchanged.
+
+!!! warning "Don't draw ellipses from `nuts_posterior.params`"
+    `nuts_posterior.params` is the average **parameter** E[W]. It is a valid parameter set
+    (you can pass it as `init_params`), but the covariance field built from it,
+    `WPPMCovarianceField(model, nuts_posterior.params)`, comes out far too small. Step 6
+    shows why and what to use instead. `WPPMCovarianceField.from_posterior` builds exactly
+    this field, so it warns when given an MCMC posterior.
 
 **What happens inside `fit`.** Each chain runs in two phases:
 
@@ -398,13 +405,51 @@ for exactly this reason, before drawing any conclusion from the numbers.
 --8<-- "docs/examples/wppm/nuts_inference_example.py:posterior_samples"
 ```
 
+Each draw gives one complete covariance field, so every blue ellipse below is a field the
+data cannot rule out. For a single summary field, the *posterior mean* E[Σ(x)], average the
+covariance matrices over all draws:
+
+```python title="Posterior mean covariance field"
+--8<-- "docs/examples/wppm/nuts_inference_example.py:posterior_mean"
+```
+
+??? note "Why the mean is computed from Σ, not from W"
+
+    The tempting shortcut is to average the parameters and build one field from the
+    result, `WPPMCovarianceField(model, nuts_posterior.params)`. That computes Σ(E[W]),
+    and for the WPPM it gives ellipses that are far too small.
+
+    The reason is that Σ(x) = U(x) U(x)ᵀ + λI, with U linear in W, so Σ is roughly
+    *W squared*. Squaring and then averaging is not the same as averaging and then
+    squaring. A one-number example with two draws, W = +1 and W = −1:
+
+    | | draw 1 | draw 2 | average |
+    |---|---|---|---|
+    | W | +1 | −1 | **0** |
+    | Σ = W² | 1 | 1 | **1** |
+
+    Both draws describe the same ellipse, Σ = 1. Averaging Σ gives 1, the right answer.
+    Averaging W first gives 0, and 0² = 0: the ellipse disappears.
+
+    The WPPM has this situation built in. Rotating `W` along its embedding axis (its
+    last axis) leaves Σ unchanged, so many different `W`s produce the same ellipses, and
+    different draws, especially from different chains, settle on different ones. On their
+    own each draw is fine. Averaged, they partly cancel. Even without that symmetry,
+    E[Σ] = Σ(E[W]) + Cov[U] holds exactly, so averaging W first always loses the spread
+    term and never gives larger ellipses.
+
+    `PosteriorMeanCovarianceField` computes Σ for every draw first and averages afterwards,
+    so neither effect applies. One thing to keep in mind: an average of covariance matrices
+    is somewhat larger than a typical single draw, because draws differ in size. That is
+    what a mean does, not an error.
+
 ```python title="Plot ensemble of ellipses"
 --8<-- "docs/examples/wppm/nuts_inference_example.py:plot_uncertainty"
 ```
 
 <div align="center">
   <img src="../plots/nuts_ellipses_uncertainty.jpg" width="600"/>
-  <p><em>Faint blue: 30 covariance fields sampled from the posterior. Red: posterior mean. Black: ground truth. The spread of blue ellipses shows where the model is uncertain.</em></p>
+  <p><em>Faint blue: 30 covariance fields sampled from the posterior. Red: posterior mean E[Σ(x)], averaged over all draws. Black: ground truth. The spread of blue ellipses shows where the model is uncertain.</em></p>
 </div>
 
 
