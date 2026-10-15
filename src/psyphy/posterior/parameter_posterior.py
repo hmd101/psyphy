@@ -20,7 +20,7 @@ from __future__ import annotations
 from typing import TYPE_CHECKING, Protocol, runtime_checkable
 
 if TYPE_CHECKING:
-    import jax.random as jr
+    import jax
 
 
 @runtime_checkable
@@ -61,7 +61,7 @@ class ParameterPosterior(Protocol):
         """
         ...
 
-    def sample(self, n: int, *, key: jr.KeyArray) -> dict:
+    def sample(self, n: int, *, key: jax.Array) -> dict:
         """
         Sample parameter vectors from p(θ | data).
 
@@ -69,7 +69,7 @@ class ParameterPosterior(Protocol):
         ----------
         n : int
             Number of samples
-        key : jax.random.KeyArray
+        key : jax.Array
             PRNG key for randomness
 
         Returns

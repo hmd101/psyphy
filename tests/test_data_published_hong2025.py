@@ -31,7 +31,18 @@ from psyphy.model.covariance_field import WPPMCovarianceField
 try:
     _enable_x64 = jax.enable_x64
 except AttributeError:  # jax < 0.6-ish
-    from jax.experimental import enable_x64 as _enable_x64
+    # The ignore is the point of the shim rather than a defect in it: on a recent
+    # jax the experimental path does not exist, which is precisely what the `try`
+    # above has already established at this line.
+    #
+    # Imported under its own name and aliased on a separate line, deliberately.
+    # Writing `import enable_x64 as _enable_x64` here needs a second ignore for
+    # `no-redef` and pushes the line past 88 characters, at which point
+    # ruff-format wraps it in parentheses and the trailing `# type: ignore`
+    # lands on a line mypy does not blame, silently doing nothing.
+    from jax.experimental import enable_x64  # type: ignore[attr-defined]
+
+    _enable_x64 = enable_x64
 
 
 @pytest.fixture

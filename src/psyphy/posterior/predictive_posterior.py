@@ -147,7 +147,7 @@ class PredictivePosterior(Protocol):
         """
         ...
 
-    def rsample(self, sample_shape: tuple = (), *, key: jr.KeyArray) -> jnp.ndarray:
+    def rsample(self, sample_shape: tuple = (), *, key: jax.Array) -> jnp.ndarray:
         """
         Reparameterized samples from p(f(X*) | data).
 
@@ -155,7 +155,7 @@ class PredictivePosterior(Protocol):
         ----------
         sample_shape : tuple, default=()
             Shape of sample batch
-        key : jax.random.KeyArray
+        key : jax.Array
             PRNG key
 
         Returns
@@ -259,9 +259,11 @@ class WPPMPredictivePosterior:
         self.threshold_pred = threshold_pred
         self.threshold_config = threshold_config
 
-        # Lazy evaluation cache
-        self._mean = None
-        self._variance = None
+        # Lazy evaluation cache. Annotated explicitly: without it the
+        # initialiser alone makes these `None`, and the `mean`/`variance`
+        # properties then look like they return None rather than an array.
+        self._mean: jnp.ndarray | None = None
+        self._variance: jnp.ndarray | None = None
         self._computed = False
 
     def _recover_threshold_covariances(
@@ -456,6 +458,7 @@ class WPPMPredictivePosterior:
         stays PD; not a geometric/Bures mean).
         """
         self._ensure_computed()
+        assert self._mean is not None  # set by _ensure_computed
         return self._mean
 
     @property
@@ -469,9 +472,10 @@ class WPPMPredictivePosterior:
         entry by entry).
         """
         self._ensure_computed()
+        assert self._variance is not None  # set by _ensure_computed
         return self._variance
 
-    def rsample(self, sample_shape: tuple = (), *, key: jr.KeyArray) -> jnp.ndarray:
+    def rsample(self, sample_shape: tuple = (), *, key: jax.Array) -> jnp.ndarray:
         """
         Sample predictions from p(f(X*) | data).
 
@@ -479,7 +483,7 @@ class WPPMPredictivePosterior:
         ----------
         sample_shape : tuple
             Batch shape
-        key : jax.random.KeyArray
+        key : jax.Array
             PRNG key
 
         Returns

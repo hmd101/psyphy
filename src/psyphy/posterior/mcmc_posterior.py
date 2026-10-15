@@ -106,7 +106,7 @@ class MCMCPosterior:
         ----------
         n : int
             Number of samples to return.
-        key : jax.random.KeyArray | None
+        key : jax.Array | None
             PRNG key. Defaults to ``jax.random.PRNGKey(0)`` when None.
 
         Returns

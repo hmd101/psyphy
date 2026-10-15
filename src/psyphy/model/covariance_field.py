@@ -51,7 +51,7 @@ import jax
 import jax.numpy as jnp
 
 if TYPE_CHECKING:
-    import jax.random as jr
+    pass
 
 
 @runtime_checkable
@@ -358,7 +358,7 @@ class WPPMCovarianceField:
         return self._eval_batch_jitted(X)
 
     @classmethod
-    def from_prior(cls, model, key: jr.KeyArray) -> WPPMCovarianceField:
+    def from_prior(cls, model, key: jax.Array) -> WPPMCovarianceField:
         """
         Sample a covariance field from the prior.
 
@@ -366,7 +366,7 @@ class WPPMCovarianceField:
         ----------
         model : WPPM
             Model defining prior distribution
-        key : jax.random.KeyArray
+        key : jax.Array
             PRNG key for sampling
 
         Returns
