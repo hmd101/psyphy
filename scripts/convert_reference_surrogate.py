@@ -26,8 +26,8 @@ rotation-reduced 4-D features of the 3-AFC oddity task.
 
 ``domain_lo``/``domain_hi`` are deliberately **not** written. We do not have the
 training set, and a box inferred from ``input_mean ± k·input_std`` would describe
-the training distribution rather than its support while looking exactly like a
-measured one. Absent means unknown; see the design note, §6.1 of the PR plan.
+the training distribution rather than its support, while looking exactly like a
+measured one to anyone reading the file later. Absent means unknown.
 
 ``label_mc_samples`` and the validation errors are likewise omitted unless given
 on the command line, because they are properties of a training run we did not
@@ -64,7 +64,10 @@ def convert(src: Path, dest: Path, *, label_mc_samples: int | None = None) -> Pa
         input_mean, input_std = d["input_mean"], d["input_std"]
 
     n_features = int(params[0][0].shape[0])
-    input_dim = n_features // 2  # the 2d counting rule; see the design note §17.2
+    # The affine invariance of these tasks reduces the inputs to 2 * input_dim
+    # numbers, so the feature count determines the dimension. See the module
+    # docstring of psyphy.model.likelihood.features for the counting argument.
+    input_dim = n_features // 2
 
     meta = {
         "task": "oddity",

@@ -70,7 +70,8 @@ def test_whitening_makes_the_pooled_covariance_the_identity(w_ref):
         # pooled combination of them must be exactly the identity.
         pooled = w_ref * A + (1.0 - w_ref) * B
         # atol is float32-scaled: eps is 1.2e-7, so 1e-10 would be unreachable
-        # regardless of correctness. psyphy runs float32 by design (§4.1).
+        # regardless of correctness. psyphy runs float32 by default and the
+        # surrogate does not need more; see the note on the reference test below.
         assert jnp.allclose(pooled, jnp.eye(2), atol=1e-6)
 
 
@@ -230,8 +231,10 @@ def test_matches_reference_implementation(Sr, Sc, mr, mc, expected):
     """Agreement with nn_march2026, which is where the weights come from.
 
     The tolerance is 1e-5 rather than machine precision because the reference was
-    computed in float64 and psyphy runs float32. The gap is in the features; it
-    shrinks to 1.9e-7 by the time it reaches p(correct) (§4.1).
+    computed in float64 and psyphy runs float32. That gap is in the features
+    themselves; measured end to end it shrinks to about 2e-7 by the time it
+    reaches p(correct), which is far below the surrogate's own ~0.02 worst-case
+    approximation error.
     """
     got = whitened_oddity_features(
         jnp.asarray(Sr), jnp.asarray(Sc), jnp.asarray(mr), jnp.asarray(mc)

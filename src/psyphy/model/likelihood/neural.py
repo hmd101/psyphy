@@ -7,8 +7,10 @@ through a small network fitted offline to that same simulation. The payoff is no
 only speed: the result is *deterministic*, which is what makes gradient-based
 samplers honest and a Laplace approximation possible at all.
 
-This module holds the container and the format. The task classes that use it, and
-the feature maps that feed it, live in their own modules.
+This module holds three things: the forward pass, the container and its file
+format, and the concrete oddity task that puts them together. The feature maps
+that turn a trial into network inputs live in
+:mod:`psyphy.model.likelihood.features`.
 
 Why the file format carries metadata
 ------------------------------------
@@ -22,9 +24,7 @@ two-interval network have identical shapes.
 
 So the weights alone are not a sufficient description of a surrogate. The file
 also records *what it is*, and the loader refuses anything that does not match
-what the caller asked for. The schema is specified in
-``psyphy-study/notes/design/nn-surrogate-likelihood.md`` §17.4a; the short version
-is below.
+what the caller asked for.
 
 Required metadata
     ``psyphy_surrogate_version``, ``task``, ``input_dim``, ``n_features``,
@@ -45,17 +45,24 @@ implicit in ``n_layers`` and the ``W_i`` shapes.
 from __future__ import annotations
 
 from dataclasses import dataclass, field
+from importlib import resources
 from pathlib import Path
-from typing import Any
+from typing import Any, Callable, ClassVar
 
 import jax
 import jax.numpy as jnp
 import numpy as np
 
+from .base import BernoulliTaskLikelihood
+from .features import ODDITY_W_REF, whitened_oddity_features
+
 __all__ = [
     "SCHEMA_VERSION",
     "REQUIRED_KEYS",
+    "ODDITY_2D_REQUIRE",
+    "DEFAULT_ODDITY_WEIGHTS",
     "NeuralSurrogate",
+    "NeuralOddityTask",
     "mlp_forward",
     "save_surrogate_npz",
 ]
@@ -336,3 +343,207 @@ def save_surrogate_npz(
 
     np.savez(path, **payload)
     return path
+
+
+#: Metadata that :class:`NeuralOddityTask` requires of any weight file it loads.
+#: Checked by :meth:`NeuralSurrogate.from_npz`, which raises when a file declares
+#: anything different. Expressed as a plain dict so that a task defined outside
+#: psyphy can state its own requirements the same way.
+ODDITY_2D_REQUIRE: dict[str, Any] = {
+    "task": "oddity",
+    "input_dim": 2,
+    "feature_map": "whitened_rotation_reduced",
+    "feature_map_version": 1,
+    "w_ref": float(ODDITY_W_REF),
+}
+
+#: Weight file shipped with psyphy, used when no surrogate is supplied.
+DEFAULT_ODDITY_WEIGHTS = "oddity_2d_64x2.npz"
+
+#: Clip applied to the returned probability. This exists so that ``log(p)`` and
+#: ``log(1 - p)`` stay finite, and for no other reason. See the note in
+#: :meth:`NeuralOddityTask.predict` about why it must not be raised to 1/3.
+_P_EPS = 1e-6
+
+
+def _default_surrogate() -> NeuralSurrogate:
+    """Load the weight file that ships with psyphy."""
+    path = (
+        resources.files("psyphy.model.likelihood") / "weights" / DEFAULT_ODDITY_WEIGHTS
+    )
+    with resources.as_file(path) as real_path:
+        return NeuralSurrogate.from_npz(real_path, require=ODDITY_2D_REQUIRE)
+
+
+class NeuralOddityTask(BernoulliTaskLikelihood):
+    """The 3-AFC oddity likelihood, evaluated by a trained network.
+
+    This is a drop-in replacement for :class:`~psyphy.model.likelihood.OddityTask`.
+    Both describe the same observer and the same decision rule; they differ only
+    in how ``P(correct)`` is obtained. ``OddityTask`` simulates noisy trials and
+    counts how often the rule succeeds. This class evaluates a small network that
+    was fitted to that simulation in advance.
+
+    Why that is worth doing
+    -----------------------
+    The simulation is expensive, because every likelihood evaluation re-simulates
+    many trials, and it is *random*, because it is a sample average. The second
+    property is the more limiting one. Gradient-based samplers assume the log
+    density is a fixed function of the parameters; a stochastic one breaks the
+    assumption quietly, and a Laplace approximation, which needs a second
+    derivative, becomes meaningless because second derivatives amplify noise.
+
+    A network fitted offline removes both problems at once. It is also, at the
+    sample counts normally used, *closer* to a high-accuracy simulation than the
+    simulation itself is, so this is not a trade of accuracy for speed.
+
+    How a 4-input network can be enough
+    -----------------------------------
+    ``P(correct)`` for this task is invariant under any invertible affine change
+    of stimulus coordinates. That reduces its arguments from eight numbers to
+    four, so the network only has to learn a four-dimensional function. The
+    reduction is performed by
+    :func:`~psyphy.model.likelihood.features.whitened_oddity_features`, whose
+    module docstring explains the counting.
+
+    Limitations, all enforced rather than documented-and-hoped
+    ---------------------------------------------------------
+    * **Two-dimensional stimuli only.** The reduction's final step is a 2-D
+      rotation; three dimensions need six features and separately trained weights.
+    * **Gaussian internal noise only.** That assumption is baked into the data the
+      network was fitted to.
+    * **The weights must match the task.** A file trained for a different task or
+      dimension has the same shape as this one, so it would load and silently
+      produce wrong numbers. :meth:`NeuralSurrogate.from_npz` refuses it instead.
+
+    Parameters
+    ----------
+    surrogate : callable, optional
+        Maps the four features to ``P(correct)``. Defaults to the weights shipped
+        with psyphy. Typed as a plain callable rather than as
+        :class:`NeuralSurrogate` so that anything with the right signature works,
+        including a network from another framework.
+
+    Examples
+    --------
+    >>> from psyphy.model import WPPM, Prior, GaussianNoise
+    >>> from psyphy.model.likelihood import NeuralOddityTask
+    >>> model = WPPM(
+    ...     input_dim=2,
+    ...     prior=Prior(input_dim=2, basis_degree=3),
+    ...     likelihood=NeuralOddityTask(),
+    ...     noise=GaussianNoise(),
+    ... )
+
+    See Also
+    --------
+    psyphy.model.likelihood.OddityTask
+        The Monte Carlo implementation of the same task. It remains the reference:
+        the network was fitted to it, and it is what any surrogate is checked
+        against.
+    """
+
+    #: This likelihood does not consume randomness, so ``loglik`` returns the same
+    #: value for every PRNG key. Samplers can use this to skip workarounds that
+    #: exist only for stochastic likelihoods.
+    is_stochastic: ClassVar[bool] = False
+
+    #: What this task demands of a weight file. See :data:`ODDITY_2D_REQUIRE`.
+    REQUIRED: ClassVar[dict[str, Any]] = ODDITY_2D_REQUIRE
+
+    def __init__(
+        self, surrogate: Callable[[jnp.ndarray], jnp.ndarray] | None = None
+    ) -> None:
+        # Annotated rather than inferred, and the annotation is the point: what
+        # this class needs is *any* callable mapping the features to a
+        # probability. NeuralSurrogate is merely the implementation that ships
+        # with psyphy, so the attribute is typed by the capability it requires
+        # rather than by the concrete class it usually holds.
+        #
+        # Filled in by statement rather than by conditional expression, which is
+        # not a style choice. A type checker reading ``a if c else b`` must give
+        # the whole expression one type, and the only type shared by a bare
+        # Callable and NeuralSurrogate is ``object``; the assignment then fails
+        # against the annotation above, and calling the attribute fails too. The
+        # two-branch form lets each branch be checked against the annotation on
+        # its own, which is what was meant.
+        if surrogate is None:
+            surrogate = _default_surrogate()
+        self.surrogate: Callable[[jnp.ndarray], jnp.ndarray] = surrogate
+
+    def predict(
+        self,
+        params: Any,
+        stimuli: jnp.ndarray,
+        model: Any,
+        *,
+        key: Any = None,
+    ) -> tuple[jnp.ndarray]:
+        """Return ``(P(correct),)`` for one trial.
+
+        Parameters
+        ----------
+        params : Any
+            Model parameters.
+        stimuli : jnp.ndarray, shape (2, input_dim)
+            Slot 0 is the reference, slot 1 the comparison. The oddity task shows
+            three stimuli but stores two: the reference is presented twice, and
+            that duplication belongs to the decision rule rather than to the data.
+        model : Any
+            Supplies the covariance field through ``local_covariance``.
+        key : Any, optional
+            Accepted for interface compatibility and ignored. This likelihood is
+            deterministic, which is the main reason it exists.
+
+        Returns
+        -------
+        tuple of one jnp.ndarray
+            A one-element tuple, matching the convention that ``predict`` returns
+            the sufficient statistics of the response distribution. Returning a
+            bare array here would not raise; it would make ``loglik`` reuse the
+            first trial's probability for the whole batch.
+        """
+        self._check_applicable(model)
+
+        ref, comp = stimuli[0], stimuli[1]
+        # local_covariance is the public accessor for Sigma(x); it already adds
+        # the diagonal stabiliser and returns a (d, d) matrix whatever the
+        # embedding dimension happens to be.
+        sigma_ref = model.local_covariance(params, ref)
+        sigma_comp = model.local_covariance(params, comp)
+
+        features = whitened_oddity_features(
+            sigma_ref, sigma_comp, ref, comp, w_ref=ODDITY_W_REF
+        )
+        p = self.surrogate(features)
+
+        # The clip keeps log(p) and log(1 - p) finite. It is deliberately not a
+        # floor at the 1/3 guessing rate: this observer's rule is suboptimal, and
+        # when the comparison's distribution is much tighter than the reference's
+        # it performs reliably *worse* than chance. Values near 0.17 in that
+        # regime are correct, and clamping them would replace a right answer with
+        # a wrong one while flattening the gradient where it matters most.
+        return (jnp.clip(p, _P_EPS, 1.0 - _P_EPS),)
+
+    def _check_applicable(self, model: Any) -> None:
+        """Refuse models the shipped weights do not describe.
+
+        These are Python-level checks on static attributes, so they run once when
+        the function is traced and cost nothing per call, but they fail loudly
+        instead of returning a confident wrong number.
+        """
+        if int(model.input_dim) != 2:
+            raise NotImplementedError(
+                f"NeuralOddityTask supports input_dim=2, got {model.input_dim}. "
+                f"The feature reduction ends in a two-dimensional rotation, and a "
+                f"{model.input_dim}-dimensional task needs both a different "
+                f"reduction and its own trained weights. Use OddityTask instead."
+            )
+        noise_name = type(model.noise).__name__
+        if noise_name != "GaussianNoise":
+            raise NotImplementedError(
+                f"NeuralOddityTask assumes Gaussian internal noise, got "
+                f"{noise_name}. The network was fitted to simulations drawn from "
+                f"Gaussian distributions, so it has no information about any "
+                f"other noise model. Use OddityTask instead."
+            )

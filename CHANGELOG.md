@@ -6,6 +6,45 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). `ps
 pre-1.0: while the version is `0.0.x`, **any release may change the public API**, so
 breaking changes are called out below but do not force a minor-version bump.
 
+## [Unreleased]
+
+### Added
+
+- **`psyphy.model.likelihood` is now a package** rather than a single module, with
+  `base.py` (the `TaskLikelihood` hierarchy), `oddity.py` (`OddityTask`), `features.py`
+  and `neural.py`. Every public name is re-exported, so imports are unchanged.
+- **`NeuralOddityTask`**, a neural-network surrogate for the 3-AFC oddity likelihood. It
+  describes the same observer and the same decision rule as `OddityTask`, but evaluates a
+  small network fitted to that simulation instead of simulating trials. Two-dimensional
+  models with Gaussian noise only; both limits raise rather than mispredicting.
+
+  Besides being much cheaper per evaluation, it is **deterministic**, which the Monte
+  Carlo likelihood is not. That matters for gradient-based samplers, which assume the log
+  density is a fixed function of the parameters, and it is a prerequisite for any method
+  built on second derivatives. Accuracy is not traded away: at the sample counts normally
+  used, the surrogate is closer to a high-accuracy simulation than the simulation is at
+  its own defaults.
+
+      from psyphy.model.likelihood import NeuralOddityTask
+      model = WPPM(input_dim=2, prior=..., likelihood=NeuralOddityTask(), noise=GaussianNoise())
+
+  Weights ship with psyphy, so no download or configuration is needed.
+- **`psyphy.model.likelihood.features`**, the input transform a surrogate consumes:
+  `whiten`, `reduce_2d` and `whitened_oddity_features`. Public because deriving a feature
+  map for a new task is something users should be able to do. The pooling weight `w_ref`
+  is an argument rather than a constant, so the same whitening serves other tasks.
+- **`NeuralSurrogate` and a self-describing weight-file format.** A surrogate file records
+  which task, stimulus dimension and feature map it was trained for, and the loader
+  refuses a file that does not match what the task requires.
+
+  This exists because the failure it prevents is silent. Networks for different tasks can
+  have identical shapes, so loading the wrong weights produces a plausible probability
+  rather than an error. Files written before this format cannot be verified and are
+  refused; `scripts/convert_reference_surrogate.py` re-saves them with the metadata
+  attached.
+- `TaskLikelihood.is_stochastic`, declaring whether a likelihood consumes randomness.
+  `False` for `NeuralOddityTask`, so callers can stop inferring it.
+
 ## [0.0.5] — 2026-10-09
 
  Two new subpackages

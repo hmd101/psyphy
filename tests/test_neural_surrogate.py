@@ -204,7 +204,12 @@ def test_w_ref_is_compared_with_a_tolerance(toy_file):
 
 
 def test_refuses_when_n_features_disagrees_with_the_weights(tmp_path):
-    """Declared width vs the width the network actually accepts (§6.3)."""
+    """Declared width vs the width the network actually accepts.
+
+    This is checked against the weights rather than against any rule relating
+    n_features to input_dim: how many features a task needs is a property of its
+    feature map, and a different map may legitimately use a different count.
+    """
     rng = np.random.default_rng(6)
     path = tmp_path / "inconsistent.npz"
     save_surrogate_npz(
@@ -261,7 +266,13 @@ def test_optional_fields_round_trip(tmp_path):
 
 
 def test_absent_optional_fields_are_absent_not_defaulted(toy_file):
-    """'Unknown' must stay distinguishable from a guessed value (§6.1)."""
+    """'Unknown' must stay distinguishable from a guessed value.
+
+    A surrogate extrapolates silently outside its training range, so a caller may
+    want to warn about that -- but only for files that carry a measured range.
+    Defaulting an absent box to something plausible would make the two cases
+    indistinguishable.
+    """
     s = NeuralSurrogate.from_npz(toy_file, require=ODDITY_REQUIRE)
     assert "domain_lo" not in s.meta
     assert s.domain is None, (
