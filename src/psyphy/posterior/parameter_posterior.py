@@ -45,7 +45,9 @@ class ParameterPosterior(Protocol):
         Notes
         -----
         - MAP: θ_MAP
-        - MCMC: posterior mean of samples
+        - MCMC: posterior mean of the parameter samples. This is a parameter
+          average, not an average of model outputs: for WPPM, Σ(params) is not
+          the posterior mean covariance (use PosteriorMeanCovarianceField).
         """
         ...
 

@@ -30,7 +30,8 @@ class MCMCPosterior:
     Backend-agnostic container for MCMC posterior samples.
 
     Satisfies the ParameterPosterior protocol:
-    - ``params``: posterior mean over all chains and draws
+    - ``params``: posterior mean *parameter* over all chains and draws (for
+      WPPM, do not turn this into a covariance field -- see ``params``)
     - ``model``: the fitted WPPM instance
     - ``sample(n, key)``: draw n parameter vectors from the chain pool
 
@@ -77,7 +78,7 @@ class MCMCPosterior:
 
     @property
     def params(self) -> dict:
-        """Posterior mean over all chains and draws.
+        """Posterior mean of the parameters over all chains and draws.
 
         Returns
         -------
@@ -85,9 +86,31 @@ class MCMCPosterior:
             Parameter PyTree with the same structure as a single draw.
             For WPPM: ``{"W": ndarray of shape (*W_shape)}``.
             e.g. {"W": (2, 2, 2, 3)} — mean over axes 0 (chains) and 1 (draws).
+
+        Warnings
+        --------
+        For WPPM, do **not** build a covariance field from this, e.g.
+        ``WPPMCovarianceField(model, posterior.params)``. That gives Σ(E[W]),
+        which is not the posterior mean of Σ and is systematically too small:
+
+        - Σ = U Uᵀ + λI is quadratic in W, so E[Σ] = Σ(E[W]) + Cov[U] and
+          averaging W first drops the (positive semidefinite) Cov[U] term.
+        - W is only identified up to an orthogonal rotation of its embedding
+          axis (W -> W R leaves Σ unchanged), so draws at different
+          orientations partly cancel in E[W], pulling Σ(E[W]) toward λI.
+
+        For the posterior mean covariance field use
+        ``PosteriorMeanCovarianceField(posterior)``; for individual covariance
+        draws use ``sample(n)``. E[W] remains a valid parameter set, e.g. as
+        ``init_params`` for another fit.
         """
         # _samples["W"]: (n_chains, n_draws, *param_shape)
         # mean over (0, 1)  ->  (*param_shape)
+        # Kept as the plain parameter mean on purpose: the ParameterPosterior
+        # protocol requires params to be a parameter PyTree (NUTSSampler and
+        # MAPOptimizer accept it as init_params), and E[Σ] cannot be expressed
+        # as any single W. The fix for covariance summaries therefore lives in
+        # PosteriorMeanCovarianceField, not here.
         return jax.tree.map(lambda x: jnp.mean(x, axis=(0, 1)), self._samples)
 
     @property
