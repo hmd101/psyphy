@@ -36,31 +36,41 @@ jobs:
         run: |
           ruff format --check src/ tests/
 
+  # Type checking runs the pre-commit hook rather than its own mypy, so that
+  # CI and a local `git commit` cannot disagree about mypy's version, the
+  # libraries it can see, or which files it checks. .pre-commit-config.yaml is
+  # the only place any of that is decided.
+  #
+  # No Python matrix, and psyphy is deliberately not installed: the hook builds
+  # its own hermetic environment with pinned mypy, numpy and jax, and the
+  # semantics being checked are fixed by `python_version` in [tool.mypy], not
+  # by whichever interpreter the runner happens to use. Three legs all checked
+  # Python 3.10 semantics and differed only in which numpy got installed, which
+  # is noise rather than coverage.
+  #
+  # This job has no `continue-on-error`. It previously did, marked "preserve
+  # existing behavior", which meant mypy reported 19 errors on every run and
+  # failed nothing. Those are fixed; the gate is live, and a new type error is
+  # now a red build.
   type-check:
-    name: Type check (mypy) - Python ${{ matrix.python-version }}
+    name: Type check (mypy)
     runs-on: ubuntu-latest
-    strategy:
-      matrix:
-        python-version: ["3.10", "3.11", "3.12"]
 
     steps:
       - uses: actions/checkout@v4
 
-      - name: Set up Python ${{ matrix.python-version }}
+      - name: Set up Python
         uses: actions/setup-python@v5
         with:
-          python-version: ${{ matrix.python-version }}
+          python-version: "3.12"
 
-      - name: Install dependencies
+      - name: Install pre-commit
         run: |
           python -m pip install --upgrade pip
-          pip install mypy
-          pip install -e .
+          pip install pre-commit
 
       - name: Type check with mypy
-        run: |
-          mypy src/psyphy tests/
-        continue-on-error: true  # Preserve existing behavior
+        run: pre-commit run mypy --all-files --show-diff-on-failure
 
   # The floor test: deliberately pinned to psyphy's declared minimums, and
   # deliberately WITHOUT the sampling/diagnostics extras. blackjax>=1.4 requires

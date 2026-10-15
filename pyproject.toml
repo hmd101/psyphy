@@ -36,7 +36,12 @@ dependencies = [
 dev = [
   "pytest>=8.0",
   "ruff>=0.9",
-  "mypy>=1.0",
+  # Pinned, not floored, and must match `rev` on the mirrors-mypy hook in
+  # .pre-commit-config.yaml. mypy changes what it accepts between releases:
+  # `mypy>=1.0` once resolved to 1.11.2 in the commit hook and 2.x locally,
+  # and the two disagreed about correct code, so a green local run said
+  # nothing about whether the commit would pass.
+  "mypy==2.4.0",
   "pre-commit>=3.0",
 ]
 # Toolchain for `mkdocs build --strict`. Kept separate from `examples` so CI's
@@ -184,6 +189,15 @@ docstring-code-format = true
 
 # mypy configuration
 [tool.mypy]
+# The declared floor from `requires-python`, and checked against deliberately:
+# it catches syntax or stdlib use that would break on the oldest Python psyphy
+# claims to support, which the newest interpreter would happily accept.
+#
+# This once looked like the cause of a parse error inside numpy's own stubs
+# ("Type statement is only supported in Python 3.12 and greater"). It was not;
+# that was mypy 1.11.2 being too old to parse a modern numpy. A current mypy
+# checks 3.10 semantics against a 3.12-only numpy without complaint. Revisit
+# only when the floor itself moves.
 python_version = "3.10"
 warn_return_any = false  # Disabled for JAX compatibility
 warn_unused_configs = true

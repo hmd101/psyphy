@@ -65,7 +65,7 @@ class TaskLikelihood(ABC):
             stimuli for a given trial (stimulus dimensions, number of stimuli)
         model : Any
             Model instance (provides covariance structure and ``model.noise``).
-        key : jax.random.KeyArray, optional
+        key : jax.Array, optional
             PRNG key for stochastic tasks. When None, the task falls back to
             its ``config.default_key_seed``.
 
@@ -100,7 +100,7 @@ class TaskLikelihood(ABC):
             Object with ``.stimuli``, ``.responses`` array attributes.
         model : Any
             Model instance (provides covariance structure and ``model.noise``).
-        key : jax.random.KeyArray, optional
+        key : jax.Array, optional
             PRNG key for stochastic tasks. When None, the task falls back to
             its ``config.default_key_seed``.
 
@@ -130,7 +130,7 @@ class TaskLikelihood(ABC):
             Stimuli.
         model : Any
             Model instance.
-        key : jax.random.KeyArray
+        key : jax.Array
             PRNG key (required; split internally for prediction and sampling).
 
         Returns
@@ -183,7 +183,7 @@ class BernoulliTaskLikelihood(TaskLikelihood):
             Object with ``.stimuli``, ``.responses`` array attributes.
         model : Any
             Model instance.
-        key : jax.random.KeyArray, optional
+        key : jax.Array, optional
             PRNG key. Passed as independent per-trial subkeys to ``predict``.
             When None, falls back to ``key=jr.PRNGKey(0)`` (deterministic).
 
@@ -241,7 +241,7 @@ class BernoulliTaskLikelihood(TaskLikelihood):
             Stimuli.
         model : Any
             Model instance.
-        key : jax.random.KeyArray
+        key : jax.Array
             PRNG key (required; split internally for prediction and sampling).
 
         Returns
@@ -303,7 +303,7 @@ class GaussianTaskLikelihood(TaskLikelihood):
             Object with ``.stimuli``, ``.responses`` array attributes.
         model : Any
             Model instance.
-        key : jax.random.KeyArray, optional
+        key : jax.Array, optional
             PRNG key. Passed as independent per-trial subkeys to ``predict``.
             When None, falls back to ``key=jr.PRNGKey(0)`` (deterministic).
 
@@ -364,7 +364,7 @@ class GaussianTaskLikelihood(TaskLikelihood):
             Stimuli.
         model : Any
             Model instance.
-        key : jax.random.KeyArray
+        key : jax.Array
             PRNG key (required; split internally for prediction and sampling).
 
         Returns

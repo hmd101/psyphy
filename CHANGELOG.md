@@ -44,6 +44,31 @@ breaking changes are called out below but do not force a minor-version bump.
   attached.
 - `TaskLikelihood.is_stochastic`, declaring whether a likelihood consumes randomness.
   `False` for `NeuralOddityTask`, so callers can stop inferring it.
+### Fixed
+
+- **`OddityTask.predict` declared the wrong return type.** It was annotated
+  `-> jnp.ndarray` while `TaskLikelihood.predict` specifies `-> tuple[jnp.ndarray, ...]`,
+  and its helper `_simulate_trial_mc` was annotated the same way. Both already returned
+  the one-tuple `(p_correct,)` that the base class documents, so **behaviour is
+  unchanged**; only the declarations were wrong.
+- **`PredictivePosterior.mean` and `.variance` looked like they could return `None`.**
+  The lazy cache they read is initialized to `None` and populated by
+  `_ensure_computed()`; it is now annotated and the invariant is asserted.
+- Three `list[np.array]` annotations in `psyphy.data.dataset` used the `np.array`
+  *function* in type position instead of `np.ndarray`.
+
+### Internal
+
+- **mypy now means one thing.** The commit hook, CI and local runs previously used three
+  different mypy configurations that disagreed with each other. CI now runs the same
+  pre-commit hook a developer runs, mypy is pinned to one version in both
+  `.pre-commit-config.yaml` and the `dev` extra, and the hook checks the whole project
+  rather than only staged files.
+- **The commit hook can now see JAX.** It ran with `--no-site-packages`, under which every
+  `jnp.ndarray` annotation in psyphy resolved to `Any`; array types were effectively
+  unchecked by the only gate that blocked a commit.
+- **The mypy CI job no longer carries `continue-on-error: true`.** It reported 19 errors
+  on every run and failed nothing. Those are fixed and the gate is live.
 
 ## [0.0.5] — 2026-10-09
 
