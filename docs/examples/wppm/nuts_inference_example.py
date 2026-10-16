@@ -41,8 +41,11 @@ Usage
 `quick` is the default so the docs build and a laptop run stay fast. It is NOT a
 fit to interpret -- 450 trials and 50 MC samples leave the frozen-key posterior
 visibly biased, and 150 draws cannot support R-hat or ESS. Use `balanced` or
-`full` for anything you intend to read. Only `quick` writes the canonical plot
-filenames the documentation embeds; other modes suffix them with the mode.
+`full` for anything you intend to read.
+
+The documentation embeds the `balanced` figures, i.e. the mode-suffixed
+plots/nuts_*_balanced.{png,jpg}. `quick` writes the unsuffixed names and its
+output is throwaway.
 """
 
 from __future__ import annotations
@@ -58,6 +61,7 @@ import jax
 import jax.numpy as jnp
 import jax.random as jr
 import matplotlib.pyplot as plt
+import numpy as np
 
 sys.path.insert(
     0, os.path.abspath(os.path.join(os.path.dirname(__file__), "../../../src"))
@@ -99,10 +103,12 @@ os.makedirs(PLOTS_DIR, exist_ok=True)
 def plot_path(name: str) -> str:
     """Canonical filename for `quick`, mode-suffixed otherwise.
 
-    The documentation embeds plots/nuts_*.{png,jpg}, and those committed
-    figures come from the default (quick) run. A heavier run must not silently
-    replace them, so every other mode writes plots/nuts_*_<mode>.<ext> -- the
-    same convention hong2025_reproduction.py uses for its own full-mode figures.
+    The documentation embeds the `--mode balanced` figures,
+    plots/nuts_*_balanced.{png,jpg}: a `quick` fit is not converged, so its
+    plots show little beyond "not converged yet". Every mode other than `quick`
+    therefore suffixes its filenames with the mode -- the same convention
+    hong2025_reproduction.py uses -- and `quick` writes the unsuffixed names as
+    throwaway smoke-test output, which must never be what the docs embed.
     """
     if MODE == "quick":
         return os.path.join(PLOTS_DIR, name)
@@ -409,6 +415,16 @@ print(
 )
 acc = nuts_posterior.sampler_stats["acceptance_rate"]
 print(f"  Mean acceptance rate: {float(jnp.mean(acc)):.3f}")
+# Divergences first: a divergent transition means the integrator blew up rather
+# than following the posterior's geometry, so the kept draws are biased in a way
+# more sampling does not fix. Any non-zero count makes the run suspect whatever
+# R-hat says, which is why it is printed before the convergence diagnostics.
+_div = nuts_posterior.sampler_stats["diverging"]
+_n_div = int(jnp.sum(_div))
+print(
+    f"  Divergences: {_n_div} / {_div.size} draws ({_n_div / _div.size:.1%})"
+    f"{'  <-- investigate; try target_acceptance_rate=0.9' if _n_div else ''}"
+)
 # Fraction of post-warmup draws whose trajectory was cut off by the depth cap.
 # A large fraction means max_num_doublings is limiting mixing.
 _n_steps = nuts_posterior.sampler_stats["n_steps"]
@@ -568,6 +584,91 @@ ax.legend(loc="upper right")
 ax.grid(True, alpha=0.3)
 plt.tight_layout()
 save_ellipse_figure(fig, "nuts_ellipses_uncertainty")
+
+# ---------------------------------------------------------------------------
+# 6b. Pointwise credible band on the threshold contour
+#
+# The ensemble figure above shows a cloud of contours. A cloud is not what gets
+# reported in a paper; an interval is. Writing each draw's contour as a radius
+# per direction turns the cloud into a quantile band.
+# ---------------------------------------------------------------------------
+print("[6b/7] Pointwise credible band on the threshold contours...")
+
+# More draws than the visual ensemble: quantiles need samples, lines do not.
+N_BAND = min(400, NUM_CHAINS * NUM_SAMPLES)
+CI_PROB = 0.89  # matches ArviZ's default ci_prob, so the band and az.summary agree
+
+# --8<-- [start:credible_band]
+# Direction grid: phi closes the loop so the filled polygon has no seam.
+phi = jnp.linspace(0.0, 2 * jnp.pi, 181)
+u = jnp.stack([jnp.cos(phi), jnp.sin(phi)], axis=-1)  # (n_phi, 2)
+
+
+def contour_radii(cov):
+    """Radius of the Mahalanobis-1 contour of one 2x2 covariance, per direction.
+
+    r(phi) = 1 / sqrt(u(phi)^T Sigma^-1 u(phi)). Along an eigenvector this is
+    sqrt(lambda), i.e. exactly the semi-axis `plot_ellipses` draws at scale 1,
+    so a band and an ellipse on the same axes are the same object.
+    """
+    prec = jnp.linalg.inv(cov)
+    return 1.0 / jnp.sqrt(jnp.einsum("pi,ij,pj->p", u, prec, u))
+
+
+band_samples = nuts_posterior.sample(N_BAND, key=jr.PRNGKey(1))
+band_covs = ensemble_covs(band_samples, ref_points)  # (N_BAND, n_ref, 2, 2)
+radii = jax.vmap(jax.vmap(contour_radii))(band_covs)  # (N_BAND, n_ref, n_phi)
+
+# Elementwise quantile over draws, one interval per (reference point, direction).
+_q = jnp.array([(1 - CI_PROB) / 2, 0.5, 1 - (1 - CI_PROB) / 2])
+r_lo, r_med, r_hi = jnp.quantile(radii, _q, axis=0)  # each (n_ref, n_phi)
+# --8<-- [end:credible_band]
+
+r_truth = jax.vmap(contour_radii)(covs_truth)  # (n_ref, n_phi)
+
+_u = jax.device_get(u)
+_refs = jax.device_get(ref_points)
+_lo, _med, _hi, _truth = (
+    jax.device_get(r_lo),
+    jax.device_get(r_med),
+    jax.device_get(r_hi),
+    jax.device_get(r_truth),
+)
+
+fig, ax = plt.subplots(figsize=(7, 7))
+for k in range(_refs.shape[0]):
+    outer = _refs[k] + ELLIPSE_SCALE * _hi[k][:, None] * _u
+    inner = _refs[k] + ELLIPSE_SCALE * _lo[k][:, None] * _u
+    # One path, inner contour reversed: nonzero winding leaves the hole unfilled,
+    # so the fill is an annulus between the two quantile contours.
+    ax.fill(
+        np.concatenate([outer[:, 0], inner[::-1, 0]]),
+        np.concatenate([outer[:, 1], inner[::-1, 1]]),
+        color="#4444cc",
+        alpha=0.25,
+        linewidth=0,
+    )
+    for r, color, lw in ((_med[k], "#4444cc", 1.0), (_truth[k], "k", 1.0)):
+        pts = _refs[k] + ELLIPSE_SCALE * r[:, None] * _u
+        ax.plot(pts[:, 0], pts[:, 1], color=color, linewidth=lw, alpha=0.85)
+
+ax.plot([], [], color="#4444cc", alpha=0.25, linewidth=8, label=f"{CI_PROB:.0%} CI")
+ax.plot([], [], color="#4444cc", linewidth=1, label="Posterior median contour")
+ax.plot([], [], color="k", linewidth=1, label="Ground truth")
+ax.scatter(_refs[:, 0], _refs[:, 1], c="g", s=5, zorder=5)
+ax.set_aspect("equal")
+ax.set_xlim(-1.1, 1.1)
+ax.set_ylim(-1.1, 1.1)
+ax.set_xlabel("Model dimension 1")
+ax.set_ylabel("Model dimension 2")
+ax.set_title(
+    f"Pointwise {CI_PROB:.0%} credible band on the threshold contour\n"
+    f"{N_BAND} draws, chains={NUM_CHAINS}, draws={NUM_SAMPLES}, MC_samples={MC_SAMPLES}"
+)
+ax.legend(loc="upper right", fontsize=8)
+ax.grid(True, alpha=0.3)
+plt.tight_layout()
+save_ellipse_figure(fig, "nuts_threshold_band")
 
 # ---------------------------------------------------------------------------
 # 7. MAP vs NUTS mean comparison (side-by-side)

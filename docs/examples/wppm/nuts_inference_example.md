@@ -8,6 +8,13 @@ point. Where the distribution is
 tight, the data pin the threshold down. Where it fans out, they do not, and a single MAP
 ellipse would have hidden that.
 
+<div align="center">
+  <img src="../plots/nuts_ellipses_uncertainty_balanced.jpg" width="520"/>
+  <p><em>Where this page ends up. Each faint blue ellipse is one threshold contour the data
+  cannot rule out; black is ground truth, red the posterior mean. Built in
+  <a href="#step-6-posterior-predictive-uncertainty">Step 6</a>.</em></p>
+</div>
+
 The companion script can be found at
 [`nuts_inference_example.py`](https://github.com/flatironinstitute/psyphy/blob/main/docs/examples/wppm/nuts_inference_example.py).
 
@@ -51,27 +58,33 @@ The companion script can be found at
     python nuts_inference_example.py --mode full
     ```
 
-    `quick` exists so the page can be regenerated quickly: about a minute on an A100 GPU,
-    about 20 minutes on a CPU. Don't expect good diagnostics from these settings yet.
+    `quick` is a smoke test for the code path: about a minute on an A100 GPU, about 20
+    minutes on a CPU. Its chains are far too short to converge, so don't read its
+    diagnostics as a result.
+
+    **Every figure and every number on this page comes from `--mode balanced`.**
 
 
 ---
 
 ## Background: why Markov Chain Monte Carlo (MCMC), and what it is
 
-MAP estimation returns a single point estimate $\theta_\text{MAP}$ for our parameters $W$:
+Throughout this page $\theta$ and `W` are the same object: the WPPM's single parameter
+array, the basis coefficients that define the covariance field $\Sigma(x)$ (Step 2 says what
+is in it). MAP estimation returns one value of it:
 
 $$\theta_\text{MAP} = \arg\max_\theta \left[\log p(\mathcal{D} \mid \theta) + \log p(\theta)\right]$$
 
 This tells you *where the posterior peaks*, but not *how wide* it is. If the data are
 sparse or ambiguous the posterior may be broad, and the MAP estimate alone cannot tell you
 that. For a threshold contour the difference is the whole point: a point estimate gives one
-curve, where what you want to report is a curve with a band around it.
+curve, where what you want to report is that curve together with the cloud of curves the
+data cannot rule out.
 
 What we actually want instead is the posterior $p(\theta \mid \mathcal{D})$, the full distribution
 over parameters given the data. Bayes' rule writes it down in one line, but the line
 contains an integral over all of parameter space that nobody can evaluate here: `W` has 54
-entries in the smallest setting on this page. We cannot plot the posterior, and we cannot
+entries, in every setting on this page. We cannot plot the posterior, and we cannot
 integrate against it directly.
 
 [Markov chain Monte Carlo](https://en.wikipedia.org/wiki/Markov_chain_Monte_Carlo) sidesteps
@@ -145,6 +158,32 @@ differentiate, which removes both problems.
 
 ---
 
+## A note on the parameters: `W` is not identified
+
+`W` is not uniquely determined by the data, and not because the data are too few. Look again
+at how the field is built, $\Sigma(x) = U(x)U(x)^\top + \lambda I$ with $U(x) = \sum_j W_j \phi_j(x)$:
+the last axis of `W` is the *embedding* axis, and it is summed over in $UU^\top$. Rotate `W`
+along that axis, $W \mapsto WR$ with $R$ orthogonal, and every $U(x)R$ gives
+$U(x)RR^\top U(x)^\top = U(x)U(x)^\top$. So $\Sigma$ is unchanged, the likelihood is unchanged,
+and the prior — being isotropic in that axis — is unchanged too. The posterior over `W` is
+therefore a continuum of orthogonal copies of itself, and different chains, started from
+different points, happily settle on different ones.
+
+This is a property of the model, not of NUTS or of any sampler, and it has exactly two
+consequences on this page. Both are about treating `W` as if it meant something on its own:
+
+- **Diagnostics on `W` report failures that do not exist.** Chains that disagree about `W`
+  while agreeing about every ellipse look non-convergent. So psyphy diagnoses $\Sigma$
+  instead ([Step 5](#what-to-diagnose-sigma-not-w)).
+- **Averaging `W` destroys the answer.** Draws at different rotations cancel, so the mean
+  parameter $\mathbb{E}[W]$ gives ellipses that are far too small. So psyphy averages
+  $\Sigma$ instead ([Step 6](#step-6-posterior-predictive-uncertainty)).
+
+Everything the model predicts — every covariance, threshold, ellipse and response
+probability — is invariant under the rotation, so nothing you would report is affected.
+
+---
+
 ## Step-by-step walkthrough
 
 ### Step 1: Simulate data
@@ -156,6 +195,34 @@ Same setup as the full MAP example. Data is a `TrialData` object:
 ```
 
 ### Step 2: Build the model
+
+The model is a `Prior` over the parameters plus a task likelihood and a noise model. Two
+things about it are worth having in mind for the rest of the page, because every diagnostic
+and every figure below refers to them.
+
+**What the parameters are.** The WPPM does not have one covariance matrix; it has a
+covariance *field* $\Sigma(x)$, a $2\times2$ matrix at every point $x$ of the stimulus space.
+The field is built as
+
+$$\Sigma(x) = U(x)\,U(x)^\top + \lambda I, \qquad U(x) = \sum_{j} W_j \,\phi_j(x)$$
+
+where the $\phi_j$ are fixed polynomial basis functions (Chebyshev, here up to degree 2 per
+input dimension) and the coefficients $W_j$ are the only thing being fitted. With
+`input_dim=2`, `basis_degree=2` and `extra_embedding_dims=1` that is an array of shape
+`(3, 3, 2, 3)` — the 54 numbers the background section referred to. $\lambda$ is
+`diag_term`, a small floor that keeps $\Sigma$ invertible.
+
+Two consequences come straight out of this form:
+
+- $\Sigma$ is *quadratic* in `W`. Averaging draws of `W` and squaring is not the same as
+  squaring and averaging, which is why Step 6 never averages `W`.
+- The prior shrinks the coefficients as their total degree rises (`decay_rate`), so a
+  degree-0 coefficient and a degree-4 one live on genuinely different scales. That is what
+  the sampler's mass matrix has to discover, and why Step 4 preconditions by the prior
+  standard deviation.
+
+For the basis, the prior and `diag_term` in more depth, see the
+[WPPM tutorial](wppm_tutorial.md).
 
 ```python title="Model definition"
 --8<-- "docs/examples/wppm/nuts_inference_example.py:build_model"
@@ -193,12 +260,19 @@ back is an `MCMCPosterior`, and these are the three things you will use from it:
 `MCMCPosterior` and `MAPPosterior` share this interface, so code written for a MAP fit,
 for example `WPPMPredictivePosterior`, accepts a NUTS fit unchanged.
 
+Concretely, what a draw buys you: **one draw is one complete covariance field**, hence one
+ellipse at every reference point. 2000 draws are 2000 ellipses per point, and their spread
+*is* the posterior uncertainty about that threshold. That is the figure at the top of this
+page, and Step 6 is where it gets built.
+
 !!! warning "Don't draw ellipses from `nuts_posterior.params`"
-    `nuts_posterior.params` is the average **parameter** $\mathbb{E}[W]$. It is a valid parameter set
-    (you can pass it as `init_params`), but the covariance field built from it,
-    `WPPMCovarianceField(model, nuts_posterior.params)`, comes out far too small. Step 6
-    shows why and what to use instead. `WPPMCovarianceField.from_posterior` builds exactly
-    this field, so it warns when given an MCMC posterior.
+    `nuts_posterior.params` is the average **parameter** $\mathbb{E}[W]$. It is a valid parameter
+    set — you can pass it as `init_params` — but the covariance field built from it,
+    `WPPMCovarianceField(model, nuts_posterior.params)`, comes out far too small, for the
+    reason given in [`W` is not identified](#a-note-on-the-parameters-w-is-not-identified).
+    Use `PosteriorMeanCovarianceField` instead ([Step 6](#step-6-posterior-predictive-uncertainty)).
+    `WPPMCovarianceField.from_posterior` builds the wrong one, so it warns when handed an
+    MCMC posterior.
 
 **What happens inside `fit`.** Each chain runs in two phases:
 
@@ -219,9 +293,17 @@ The arguments you are most likely to touch:
 | `max_num_doublings` | tree-depth cap, $\le 2^k - 1$ gradients per draw | most draws hit the cap (the script prints this) |
 | `target_acceptance_rate` | how cautious the tuned step size is | you see divergences (try 0.9) |
 
-**Compute settings.** The script takes `--mode`, which selects a preset (see
-*How to run the script* at the top). The *model* is identical in every mode, so only the
-thoroughness of the fit changes, never what is being fit:
+**Compute settings.** The script takes `--mode`, which selects a preset (see *How to run
+the script* at the top). The model class and its 54 parameters are the same in every mode.
+What the presets scale is three different things, and only the third is "how hard the
+sampler works":
+
+- **how much data** there is (9 reference points × 50 trials in `quick`, 25 × 200 in `full`),
+- **how accurately the likelihood is estimated** (`mc_samples` 50 → 2000),
+- **how long the sampler runs** (chains, warmup, draws).
+
+The first two change the posterior *being targeted*, not just how well it is explored, so a
+`quick` fit is not a rough version of a `full` fit — it is a different, smaller problem.
 
 ```python
 --8<-- "docs/examples/wppm/nuts_inference_example.py:compute_settings"
@@ -260,44 +342,25 @@ thoroughness of the fit changes, never what is being fit:
 | Adaptive (default, `step_size=None`) | Best quality; adapts step size and mass matrix per chain via `blackjax.window_adaptation`, starting from a prior-scaled metric. Chains vmapped; each adapts independently. | `NUTSSampler(num_warmup=200, num_samples=500)` |
 | Fixed (`step_size=<float>`) | Faster with many chains; no adaptation. All chains vmapped in one compiled call. User must choose a good step size. | `NUTSSampler(..., step_size=0.01)` |
 
-??? note "Using a different BlackJAX sampler, e.g. MALA"
+!!! info "Samplers other than NUTS"
+    psyphy ships NUTS only. Nothing *downstream* of the sampler is NUTS-specific, though:
+    any engine that returns an `MCMCPosterior` whose draws are shaped
+    `(n_chains, n_draws, *W_shape)` works unchanged with `to_arviz`, `covariance_to_arviz`,
+    `PosteriorMeanCovarianceField`, `WPPMPredictivePosterior` and every figure on this page.
+    BlackJAX itself offers MALA, plain HMC and random-walk Metropolis.
 
-    psyphy ships NUTS only, but BlackJAX offers other samplers, such as MALA
-    (`blackjax.mala`), plain HMC or random-walk Metropolis. Here is what using one would take.
+    What is missing is the *upstream* half: the pieces that make a sampler a psyphy
+    sampler — the log density with the frozen Monte Carlo key, the prior preconditioning,
+    the vmapped chains — currently live inside `NUTSSampler.fit` rather than in a shared
+    base class, so adding a second engine today means copying them rather than setting an
+    option. Factoring them out is planned.
 
-    **What psyphy needs from a sampler.** A subclass of
-    [`InferenceEngine`](../../reference/inference.md#psyphy.inference.base.InferenceEngine)
-    whose `fit(model, data)` returns an `MCMCPosterior`, with draws shaped
-    `(n_chains, n_draws, *W_shape)`. Once it does, everything downstream works unchanged:
-    `to_arviz`, `covariance_to_arviz`, `PosteriorMeanCovarianceField`,
-    `WPPMPredictivePosterior` and every figure on this page.
-
-    **What BlackJAX needs from psyphy.** Only a log-density function. In
-    [`nuts.py`](https://github.com/flatironinstitute/psyphy/blob/main/src/psyphy/inference/nuts.py)
-    the block marked "BlackJAX API boundary" builds it from
-    `model.log_posterior_from_data`, with the frozen Monte Carlo key from
-    [A note on the likelihood](#a-note-on-the-likelihood).
-
-    **For MALA specifically**, the change at the centre is replacing the kernel,
-    `blackjax.nuts(logdensity_fn, step_size=..., inverse_mass_matrix=...)`, with
-    `blackjax.mala(logdensity_fn, step_size)`. Three things differ:
-
-    - **No automatic tuning.** `window_adaptation` (Mode A above) tunes a mass matrix, which
-      MALA does not have, so its step size must be chosen some other way.
-    - **Fewer diagnostics.** MALA reports only an acceptance rate and whether each proposal
-      was accepted, so there are no divergences, energies or tree sizes in `sampler_stats`.
-    - **Same caveats.** The frozen-key likelihood applies to any gradient-based sampler,
-      and the rotation symmetry of `W` (Step 5) is a property of the model, not of NUTS.
-
-    **How much work that is today.** It is copy-and-adapt rather than configuration. The
-    psyphy-specific parts live inside
-    [`NUTSSampler.fit`](../../reference/inference.md#psyphy.inference.NUTSSampler), not in a
-    shared base class: the log density with the frozen key, the prior preconditioning,
-    running chains in parallel and wrapping the result in `MCMCPosterior`. A MALA sampler
-    would copy those (about a hundred lines, mostly the fixed-step-size path) and swap the
-    kernel. The unimplemented
-    [`LangevinSampler`](../../reference/inference.md#psyphy.inference.langevin.LangevinSampler)
-    stub is the natural place for it.
+    Two caveats would carry over to any gradient-based sampler, because they belong to the
+    model and the likelihood rather than to NUTS: the
+    [frozen-key likelihood](#a-note-on-the-likelihood) and the
+    [rotation symmetry of `W`](#a-note-on-the-parameters-w-is-not-identified). What does not
+    carry over is the diagnostics — a sampler without trajectories has no divergences, no
+    energies and no tree sizes, so parts of Step 5 would simply not apply.
 
 ### Step 5: Diagnostics with ArviZ
 
@@ -315,17 +378,13 @@ both on top of arviz-base (the data format). `import arviz as az` gives you all 
 
 The obvious thing to check would be the parameters themselves:
 `nuts_posterior.to_arviz()` hands the raw draws of `W` to ArviZ. For the WPPM that is
-misleading. `W` is only defined up to a rotation: rotating `W` along its embedding axis
-(its last axis) leaves every covariance matrix $\Sigma(x)$ unchanged, and the prior too. So
-different chains can settle at different rotations. They then disagree about `W` while
-agreeing about every ellipse, and diagnostics computed on `W` report a failure that no
-ellipse, threshold or prediction is affected by. (It is the same symmetry that makes the
-naive posterior mean too small; see the note in Step 6.)
+misleading, because `W` is [not identified](#a-note-on-the-parameters-w-is-not-identified) —
+chains settle at different rotations, disagree about `W`, and agree about every ellipse.
 
-If you run diagnostics on `W` yourself, for example
-`az.summary(nuts_posterior.to_arviz())`, expect them to look bad: in our `balanced` runs,
-R-hat on `W` reaches about 2, while on $\Sigma$ it stays around 1.07. That is the symmetry, not a
-failed fit.
+The size of the effect is worth seeing once. On the `balanced` run behind this page, R-hat
+on `W` reaches about **2**, while on $\Sigma$ it stays around **1.07**. Same draws, same fit:
+one number says the sampler failed and the other says it nearly converged, and only the
+second one is about something the model predicts.
 
 So psyphy diagnoses $\Sigma$ itself.
 [`covariance_to_arviz`](../../reference/model.md#psyphy.model.covariance_to_arviz)
@@ -450,7 +509,9 @@ per chain for ESS, which is 400 here with 4 chains (200 in `quick` with 2).
 - **ESS:** you want the opposite, the curve still at 0 at the dashed line, meaning every
   quantity has more effective draws than the threshold.
 
-In this run, about 40% of the quantities have R-hat below 1.01, and the largest is 1.066.
+In this run, about 40% of the quantities have R-hat below 1.01 — that is ArviZ's default,
+rank-normalized split R-hat; the comparison below shows what the variants give — and the
+largest is 1.066.
 Roughly three quarters have a bulk ESS below 400 (the smallest is 50), and about one in six
 has a tail ESS below 400. So the fit is close to converged on $\Sigma$ but does not meet the strict
 thresholds, mainly because it collected too few effective draws. That fits another number
@@ -487,10 +548,19 @@ That is also where the `< 1.01` threshold comes from, together with `> 100` effe
 draws per chain: they are recommendations from the same paper, which explains why the
 older `< 1.1` rule turned out to be too lenient.
 
-The extra steps matter in practice. On a `balanced` run, the classic R-hat puts 61% of
-the $\Sigma$ quantities below 1.01. Splitting each chain in half (step 1) catches slow drift
-within a chain, and drops that to 35%. Rank-normalization adds almost nothing on top
-here, because the $\Sigma$ quantities have no heavy tails.
+The extra steps matter in practice. On the `balanced` run behind this page, the share of
+the 75 $\Sigma$ quantities that pass `< 1.01` depends on which version you compute:
+
+| R-hat variant | share below 1.01 |
+|---|---|
+| classic (Gelman & Rubin, 1992) | 61% |
+| + split chains (step 1) | 35% |
+| + rank-normalization (step 2) — ArviZ's default, and the figure above | ~40% |
+
+Splitting is what does the work here: slow drift inside a single chain is invisible to the
+classic formula and is most of what this fit suffers from. Rank-normalization barely moves
+the number, because the $\Sigma$ quantities have no heavy tails. The lesson is that "R-hat
+looked fine" is not a claim until you say which R-hat.
 
 **ESS** (effective sample size) is computed with the same rank-normalization. It answers
 how many *independent* draws your correlated chain is worth. To make it concrete: 1000
@@ -574,12 +644,12 @@ covariance matrices over all draws:
     Both draws describe the same ellipse, $\Sigma = 1$. Averaging $\Sigma$ gives $1$, the right answer.
     Averaging $W$ first gives $0$, and $0^2 = 0$: the ellipse disappears.
 
-    The WPPM has this situation built in. Rotating `W` along its embedding axis (its
-    last axis) leaves $\Sigma$ unchanged, so many different `W`s produce the same ellipses, and
-    different draws, especially from different chains, settle on different ones. On their
-    own each draw is fine. Averaged, they partly cancel. Even without that symmetry,
-    $\mathbb{E}[\Sigma] = \Sigma(\mathbb{E}[W]) + \operatorname{Cov}[U]$ holds exactly, so averaging $W$ first always loses the spread
-    term and never gives larger ellipses.
+    The $W = \pm 1$ example is not a contrivance: it is exactly the rotation symmetry of
+    [`W` is not identified](#a-note-on-the-parameters-w-is-not-identified) in one dimension,
+    where the only orthogonal transforms are $\pm 1$. Draws that each describe the same
+    ellipse cancel when their parameters are averaged. And even without any symmetry,
+    $\mathbb{E}[\Sigma] = \Sigma(\mathbb{E}[W]) + \operatorname{Cov}[U]$ holds exactly, so averaging $W$
+    first always drops the spread term and can never give larger ellipses.
 
     `PosteriorMeanCovarianceField` computes $\Sigma$ for every draw first and averages afterwards,
     so neither effect applies. One thing to keep in mind: an average of covariance matrices
@@ -591,9 +661,58 @@ covariance matrices over all draws:
 ```
 
 <div align="center">
-  <img src="../plots/nuts_ellipses_uncertainty.jpg" width="600"/>
-  <p><em>Faint blue: 30 covariance fields sampled from the posterior. Red: posterior mean \(\mathbb{E}[\Sigma(x)]\), averaged over all draws. Black: ground truth. The spread of blue ellipses shows where the model is uncertain.</em></p>
+  <img src="../plots/nuts_ellipses_uncertainty_balanced.jpg" width="600"/>
+  <p><em>Faint blue: 100 covariance fields sampled from the posterior. Red: posterior mean \(\mathbb{E}[\Sigma(x)]\), averaged over all draws. Black: ground truth. The spread of blue ellipses shows where the model is uncertain.</em></p>
 </div>
+
+#### From a cloud of curves to an interval
+
+The figure above is a *cloud*: a hundred contours the data cannot rule out, drawn on top of
+one another. That is the honest picture, but it is not what goes in a paper caption. A
+paper reports an interval — "the threshold in this direction is 0.08, 89% CI [0.06, 0.11]"
+— and the draws already contain it.
+
+The step that makes it possible is writing a contour as a **radius per direction**. The
+threshold contour of draw $i$ at reference point $x$ is the set
+$\{d : d^\top \Sigma_i(x)^{-1} d = 1\}$, and along the unit direction
+$u(\varphi) = (\cos\varphi, \sin\varphi)$ that set is a single point, at distance
+
+$$r_i(\varphi) \;=\; \frac{1}{\sqrt{u(\varphi)^\top \Sigma_i(x)^{-1} u(\varphi)}}$$
+
+from the reference point. Along an eigenvector of $\Sigma_i$ this is $\sqrt{\lambda}$, the
+semi-axis the ellipse plots are already drawing, so nothing new is being shown — it is the
+same contour in polar form. The gain is that $r_i(\varphi)$ is a *scalar*, one number per
+draw, so the ordinary recipe for a credible interval applies: sort the draws and take
+quantiles. For a $1-\alpha$ interval, at each direction separately,
+
+$$\big[\,q_{\alpha/2}\{r_i(\varphi)\}_{i=1}^{N},\;\; q_{1-\alpha/2}\{r_i(\varphi)\}_{i=1}^{N}\,\big]$$
+
+and filling between the two curves over all $\varphi$ gives a band. $r_i(\varphi)$ also has a
+meaning the entries of $\Sigma$ do not: it is the discrimination threshold — the just
+noticeable difference — in direction $\varphi$, which is the quantity an experiment set out
+to measure.
+
+```python title="Pointwise credible band on the threshold contour"
+--8<-- "docs/examples/wppm/nuts_inference_example.py:credible_band"
+```
+
+!!! warning "This band is pointwise, not simultaneous"
+    The interval above covers the true radius **in each direction separately** with
+    probability $1-\alpha$. It does *not* say that the whole true contour lies inside the
+    band with probability $1-\alpha$ — that is a stronger, *simultaneous* statement, and it
+    needs a different construction (calibrate one global factor on the worst standardized
+    deviation over $\varphi$, rather than taking a quantile at each $\varphi$ independently).
+    A simultaneous band is wider. Which one a figure shows belongs in its caption, because
+    readers will assume whichever one suits them.
+
+    The same distinction applies to the `eti89_lb`/`eti89_ub` columns of `az.summary` in
+    Step 5: those are pointwise intervals on single $\Sigma$ quantities, not a joint region
+    for the matrix.
+
+The default here is $1-\alpha = 0.89$, which is ArviZ's default `ci_prob`, so the band and
+the `az.summary` columns are the same kind of interval at the same level. There is nothing
+special about 89%; it is a round number chosen to be visibly *not* 95%, so that nobody
+reads it as a significance test.
 
 
 
@@ -611,7 +730,7 @@ covariance matrices over all draws:
 
 
 <div align="center">
-  <img src="../plots/nuts_overlay.jpg" width="650"/>
+  <img src="../plots/nuts_overlay_balanced.jpg" width="650"/>
   <p><em>Faint blue: posterior draws. Black: ground truth. Dashed orange: MAP. Red:
   posterior mean. Drawn at the same <code>ELLIPSE_SCALE</code> as the figure above, so the
   two are comparable.</em></p>
@@ -641,8 +760,7 @@ covariance matrices over all draws:
   the [arviz-stats API](https://python.arviz.org/projects/stats/en/latest/) (R-hat, ESS,
   `summary`) and the [arviz-plots gallery](https://arviz-plots.readthedocs.io/en/latest/gallery/index.html)
 
-The papers behind the method and the diagnostics, cited where they are used above and
-collected here:
+The papers behind the method and the diagnostics cited above:
 
 > Hoffman, M. D., & Gelman, A. (2014). *The No-U-Turn Sampler: adaptively setting path
 > lengths in Hamiltonian Monte Carlo.* Journal of Machine Learning Research, 15, 1593-1623.
