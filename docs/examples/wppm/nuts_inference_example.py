@@ -493,7 +493,7 @@ try:
         for a in (ax_W, ax_S):
             a.set_xlabel("draw (post-warmup); one colour per chain")
     pc.savefig(plot_path("nuts_trace_W_vs_Sigma.png"), bbox_inches="tight")
-    print("  Saved: nuts_trace_W_vs_Sigma.png")
+    print(f"  Saved: {os.path.basename(plot_path('nuts_trace_W_vs_Sigma.png'))}")
 
     # R-hat over ALL quantities: one curve for the 54 W coefficients, one for
     # the Σ quantities (3 per reference point). y = fraction of quantities with
@@ -518,7 +518,7 @@ try:
         fig.axes[1].set_xlabel("R-hat (rank-normalized)")
         fig.tight_layout()
     pc.savefig(plot_path("nuts_rhat_W_vs_Sigma.png"), bbox_inches="tight")
-    print("  Saved: nuts_rhat_W_vs_Sigma.png")
+    print(f"  Saved: {os.path.basename(plot_path('nuts_rhat_W_vs_Sigma.png'))}")
 
 
 except ImportError:
