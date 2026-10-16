@@ -48,7 +48,6 @@ filenames the documentation embeds; other modes suffix them with the mode.
 from __future__ import annotations
 
 import argparse
-import contextlib
 import os
 import sys
 import time
@@ -426,15 +425,13 @@ print("[5/7] Computing ArviZ diagnostics...")
 
 try:
     import arviz as az
-    import numpy as np
-    import xarray as xr
 
     # Diagnostics are computed on the covariance field Σ(x), not on W. W is
     # only identified up to a rotation of its embedding axis (W -> W R leaves
     # every Σ unchanged), so chains can disagree about W while agreeing about
-    # every ellipse, and R-hat on W reports a failure that does not exist.
-    # Σ is a function of x, so we must choose WHERE to evaluate it: here the
-    # reference points, i.e. exactly the ellipses this script plots and
+    # every ellipse, and diagnostics on W report a failure that does not
+    # exist. Σ is a function of x, so we must choose WHERE to evaluate it: here
+    # the reference points, i.e. exactly the ellipses this script plots and
     # reports. covariance_to_arviz deliberately has no default for `points`.
     # --8<-- [start:arviz_diagnostics]
     dt_sigma = covariance_to_arviz(nuts_posterior, ref_points)
@@ -444,81 +441,32 @@ try:
     ess_min = float(summary["ess_bulk"].min())
     print(f"  R-hat max on Σ: {r_hat_max:.3f}  (target < 1.01)")
     print(f"  ESS min on Σ:   {ess_min:.0f}    (target > 100 per chain)")
-
-    # For comparison only, NOT a convergence criterion: R-hat on the raw W.
-    idata = nuts_posterior.to_arviz()
-    r_hat_W_max = float(az.rhat(idata)["W"].max())
-    print(f"  (R-hat max on W: {r_hat_W_max:.3f} -- inflated by the rotation symmetry)")
     # --8<-- [end:arviz_diagnostics]
 
-    # One DataTree holding both W and the Σ quantities, so ArviZ can plot them
-    # side by side. Both share the (chain, draw) dims; sample_stats (divergences)
-    # comes along from idata.
-    dt_both = idata.copy()
-    dt_both["posterior"] = xr.merge(
-        [idata["posterior"].to_dataset(), dt_sigma["posterior"].to_dataset()]
-    )
-    rhat_both = az.rhat(dt_both)
-
-    # Trace plot: the W coefficient and the Σ quantity with the HIGHEST R-hat
-    # (worst case, not hand-picked), one line per chain. What to look for: in
-    # the W panel chains can hold separate levels (different orientations of
-    # the same Σ); in the Σ panel they should overlap ("fuzzy caterpillar").
+    # Trace plot at the reference point with the highest R-hat (the worst
+    # case, picked by the numbers rather than by hand): one panel per quantity
+    # (log_var_0, log_var_1, corr_0_1), one line per chain. Plain ArviZ output.
     #
     # NOTE (arviz >= 1.0): plot_trace returns an arviz_plots PlotCollection,
     # not an array of matplotlib axes, so it is saved with pc.savefig(). The
     # 0.x kwargs `compact=` and `figsize=` no longer exist and raise if passed.
+    # bbox_inches="tight" only affects saving: without it, ArviZ's two-line
+    # panel titles are clipped at the top edge of the image.
     # --8<-- [start:trace_plot]
-    w_dims = [
-        dim for dim in idata["posterior"]["W"].dims if dim not in ("chain", "draw")
-    ]
-    worst_W = rhat_both["W"].argmax(dim=w_dims)  # {dim: position} of the worst W
-    worst_S = rhat_both["Sigma"].argmax(dim=["point", "quantity"])
-    # plot_trace selects by coordinate LABEL, argmax returns POSITIONS: convert
-    # (they differ for `quantity`, whose labels are names like "log_var_1").
-    coords = {
-        dim: dt_both["posterior"][dim].values[int(pos)]
-        for dim, pos in {**worst_W, **worst_S}.items()
-    }
-    pc = az.plot_trace(dt_both, var_names=["W", "Sigma"], coords=coords)
+    worst_point = int(az.rhat(dt_sigma)["Sigma"].max("quantity").argmax(dim="point"))
+    pc = az.plot_trace(dt_sigma, var_names=["Sigma"], coords={"point": worst_point})
+    pc.savefig(plot_path("nuts_trace_sigma.png"), bbox_inches="tight")
     # --8<-- [end:trace_plot]
-    # Reaching into arviz_plots internals for the panel titles: cosmetic only
-    with contextlib.suppress(Exception):
-        ax_W, ax_S = pc.viz["figure"].item().axes[:2]
-        ax_W.set_title(f"worst W coefficient, R-hat {float(rhat_both['W'].max()):.2f}")
-        ax_S.set_title(
-            f"worst Σ quantity: {coords['quantity']} at ref point {coords['point']}, "
-            f"R-hat {float(rhat_both['Sigma'].max()):.2f}"
-        )
-        for a in (ax_W, ax_S):
-            a.set_xlabel("draw (post-warmup); one colour per chain")
-    pc.savefig(plot_path("nuts_trace_W_vs_Sigma.png"), bbox_inches="tight")
-    print(f"  Saved: {os.path.basename(plot_path('nuts_trace_W_vs_Sigma.png'))}")
+    print(f"  Saved: {os.path.basename(plot_path('nuts_trace_sigma.png'))}")
 
-    # R-hat over ALL quantities: one curve for the 54 W coefficients, one for
-    # the Σ quantities (3 per reference point). y = fraction of quantities with
-    # R-hat at or below x; the dashed line is 1.01. Both panels get the same
-    # x-range so they can be compared directly.
-    # --8<-- [start:rhat_plot]
-    pc = az.plot_convergence_dist(
-        dt_both, var_names=["W", "Sigma"], diagnostics=["rhat_rank"], grouped=False
-    )
-    # --8<-- [end:rhat_plot]
-    with contextlib.suppress(Exception):
-        fig = pc.viz["figure"].item()
-        hi = 1.02 * max(float(rhat_both["W"].max()), float(rhat_both["Sigma"].max()))
-        for a, var in zip(fig.axes[:2], ("W", "Sigma")):
-            r = rhat_both[var].values.ravel()
-            a.set_xlim(0.99, hi)
-            a.set_title(
-                f"R-hat on {'Σ' if var == 'Sigma' else var}: median {np.median(r):.2f}, "
-                f"{np.mean(r < 1.01):.0%} below 1.01"
-            )
-            a.set_ylabel("fraction of quantities")
-        fig.axes[1].set_xlabel("R-hat (rank-normalized)")
-        fig.tight_layout()
-    pc.savefig(plot_path("nuts_rhat_W_vs_Sigma.png"), bbox_inches="tight")
-    print(f"  Saved: {os.path.basename(plot_path('nuts_rhat_W_vs_Sigma.png'))}")
+    # ESS (bulk, tail) and R-hat over ALL Σ quantities, ArviZ defaults: one
+    # cumulative curve per diagnostic (height = fraction of quantities at or
+    # below that value) and ArviZ's own reference thresholds as dashed lines.
+    # --8<-- [start:convergence_plot]
+    pc = az.plot_convergence_dist(dt_sigma, var_names=["Sigma"])
+    pc.savefig(plot_path("nuts_convergence_sigma.png"), bbox_inches="tight")
+    # --8<-- [end:convergence_plot]
+    print(f"  Saved: {os.path.basename(plot_path('nuts_convergence_sigma.png'))}")
 
 
 except ImportError:

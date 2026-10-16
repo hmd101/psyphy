@@ -428,7 +428,7 @@ the most common thing this plot catches, and it is a reason to raise `--mode`, n
 distrust the model.
 
 ```python title="R-hat over all quantities: W vs Σ"
---8<-- "docs/examples/wppm/nuts_inference_example.py:rhat_plot"
+--8<-- "docs/examples/wppm/nuts_inference_example.py:convergence_plot"
 ```
 
 <div align="center">
