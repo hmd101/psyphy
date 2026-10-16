@@ -325,6 +325,11 @@ agreeing about every ellipse, and diagnostics computed on `W` report a failure t
 ellipse, threshold or prediction is affected by. (It is the same symmetry that makes the
 naive posterior mean too small; see the note in Step 6.)
 
+If you run diagnostics on `W` yourself, for example
+`az.summary(nuts_posterior.to_arviz())`, expect them to look bad: in our `balanced` runs,
+R-hat on `W` reaches about 2, while on Σ it stays around 1.07. That is the symmetry, not a
+failed fit.
+
 So psyphy diagnoses Σ itself.
 [`covariance_to_arviz`](../../reference/model.md#psyphy.model.covariance_to_arviz)
 evaluates Σ for every posterior draw at points you choose and returns the result in
@@ -388,66 +393,73 @@ rows are not readable. If you print `summary` itself, the columns mean:
 The single row to look at first is the one with the **largest** `r_hat` and the
 **smallest** `ess_bulk`. If the worst quantity passes, all of them do.
 
-The snippet also prints R-hat on `W`, for comparison only. Expect it to be much larger,
-for the reason above. It is not the convergence criterion.
+#### Trace and convergence plots
 
-#### W and Σ side by side
+Both figures below are plain ArviZ output, with no extra styling. They come from
+`--mode balanced` (4 chains × 500 draws): `quick` is too short for the chains to settle,
+so its plots show little beyond "not converged yet". Running the script with
+`--mode balanced` writes them under these names.
 
-The two figures below put the difference in front of you. They come from
-`--mode balanced` (4 chains × 500 draws), because `quick` is too short for chains to
-settle and shows both problems mixed together. Running the script in `balanced` mode
-writes them under these names.
-
-```python title="Trace plot: worst W coefficient vs worst Σ quantity"
+```python title="Trace plot of Σ at the worst reference point"
 --8<-- "docs/examples/wppm/nuts_inference_example.py:trace_plot"
 ```
 
 <div align="center">
-  <img src="../plots/nuts_trace_W_vs_Sigma_balanced.png" width="800"/>
-  <p><em>Left: the W coefficient with the highest R-hat. Right: the Σ quantity with the
-  highest R-hat, here the log variance along dimension 2 at reference point 15. One
+  <img src="../plots/nuts_trace_sigma_balanced.png" width="800"/>
+  <p><em>The three Σ quantities at the reference point with the highest R-hat, one
   colour per chain, from <code>--mode balanced</code>.</em></p>
 </div>
 
+The first line picks the reference point whose worst quantity has the highest R-hat, so
+the plot shows the worst case, chosen by the numbers rather than by hand. ArviZ then draws
+one panel per quantity:
+
 | element of the figure | what it is |
 |---|---|
-| x axis | draw index **within a chain**, post-warmup (warmup draws are discarded, not plotted) |
-| y axis | the value of that coefficient or quantity |
+| panel title, e.g. `Sigma` / `log_var_0` | the variable and the quantity shown. The selected point is not part of the title; it is the worst one, as described above |
+| x axis, `Draw` | draw index **within a chain**, post-warmup (warmup draws are discarded, not plotted) |
+| y axis | the value of that quantity: a log variance, or the correlation |
 | one coloured line | one chain |
 | black ticks along the bottom | divergences, if any; they appear because the sampler statistics carry `diverging` under ArviZ's standard name |
 
 **What good looks like:** chains overlapping each other, flat, and wiggling fast, the
-"fuzzy caterpillar". The right panel shows it: all four chains cover the same range.
-The left panel shows the opposite, four chains holding four separate levels for all
-500 draws. Judged on `W` alone, that run would look broken. Judged on Σ, it is close to
-converged. Both panels show the worst case of their kind, picked by R-hat, not by hand.
+"fuzzy caterpillar". That is what this run shows: the four chains cover the same range in
+all three panels, and only one chain sits a little high in `log_var_0` for its first
+50 or so draws.
 
-A chain that drifts steadily across a Σ panel is a different matter. It has not
-converged: warmup was too short and the sampler is still finding the typical set. That is
-the most common thing this plot catches, and it is a reason to raise `--mode`, not to
-distrust the model.
+A chain that drifts steadily across a panel, or sits at its own level, has not converged:
+warmup was too short and the sampler is still finding the typical set. That is the most
+common thing this plot catches, and it is a reason to raise `--mode`, not to distrust the
+model.
 
-```python title="R-hat over all quantities: W vs Σ"
+```python title="ESS and R-hat over all Σ quantities"
 --8<-- "docs/examples/wppm/nuts_inference_example.py:convergence_plot"
 ```
 
 <div align="center">
-  <img src="../plots/nuts_rhat_W_vs_Sigma_balanced.png" width="600"/>
-  <p><em>R-hat for all 54 coefficients of W (top) and all 75 Σ quantities (bottom),
-  from <code>--mode balanced</code>. The dashed line marks 1.01.</em></p>
+  <img src="../plots/nuts_convergence_sigma_balanced.png" width="800"/>
+  <p><em>Bulk ESS, tail ESS and R-hat for all 75 Σ quantities (25 reference points × 3),
+  from <code>--mode balanced</code>, with ArviZ's default settings.</em></p>
 </div>
 
-**How to read it.** Each curve is cumulative: its height at a given R-hat is the fraction
-of quantities whose R-hat is at or below that value. The ideal curve jumps from 0 to 1
-right at the dashed 1.01 line. Both panels share the x-axis, so they can be compared
-directly. In this run:
+**How to read it.** There is one panel per diagnostic, titled with ArviZ's name for it
+(`ess_bulk`, `ess_tail`, `rhat`). Each panel is a cumulative curve over all 75 quantities:
+its height at a value x is the **fraction of quantities** whose diagnostic is at or below x.
+The dashed lines are ArviZ's reference values: 1.01 for R-hat, and 100 effective draws
+per chain for ESS, which is 400 here with 4 chains (200 in `quick` with 2).
 
-- **W:** median 1.12, none of the 54 coefficients below 1.01, maximum 2.03.
-- **Σ:** median 1.01, 35% of the quantities below 1.01, maximum 1.08.
+- **R-hat:** you want the curve to reach 1 by the dashed line, meaning every quantity is
+  below 1.01.
+- **ESS:** you want the opposite, the curve still at 0 at the dashed line, meaning every
+  quantity has more effective draws than the threshold.
 
-So most of the alarm on `W` is the rotation symmetry. Σ is close to converged, but not
-fully by the strict 1.01 standard. Longer runs (`--mode full`) are the remedy for that
-remainder.
+In this run, about 40% of the quantities have R-hat below 1.01, and the largest is 1.066.
+Roughly three quarters have a bulk ESS below 400 (the smallest is 50), and about one in six
+has a tail ESS below 400. So the fit is close to converged on Σ but does not meet the strict
+thresholds, mainly because it collected too few effective draws. That fits another number
+the script prints: every draw ran to the tree-depth cap of 255 integration steps, so the
+trajectories are cut short and consecutive draws stay correlated. The remedy is more
+draws, from `--mode full` (4 × 1000) or a larger `num_samples`.
 
 #### What R-hat measures, and what "rank-normalized" means
 
@@ -459,7 +471,7 @@ least two chains: a single chain cannot tell you it is stuck.
 
 ArviZ computes the improved version of
 [Vehtari et al. (2021)](https://doi.org/10.1214/20-BA1221) by default (`az.rhat` uses
-`method="rank"`; `az.summary` and `diagnostics=["rhat_rank"]` above use the same). Three
+`method="rank"`; `az.summary` and `az.plot_convergence_dist` above use the same). Three
 changes make it stricter and more robust:
 
 1. **Split chains.** Each chain is cut in half and the halves are compared as separate
@@ -476,9 +488,12 @@ changes make it stricter and more robust:
 
 That is also where the `< 1.01` threshold comes from, together with `> 100` effective
 draws per chain: they are recommendations from the same paper, which explains why the
-older `< 1.1` rule turned out to be too lenient. The extra steps matter in practice: on
-the `balanced` run above, the classic R-hat on `W` peaks at 1.77, the rank-normalized one
-at 2.03.
+older `< 1.1` rule turned out to be too lenient.
+
+The extra steps matter in practice. On a `balanced` run, the classic R-hat puts 61% of
+the Σ quantities below 1.01. Splitting each chain in half (step 1) catches slow drift
+within a chain, and drops that to 35%. Rank-normalization adds almost nothing on top
+here, because the Σ quantities have no heavy tails.
 
 **ESS** (effective sample size) is computed with the same rank-normalization. It answers
 how many *independent* draws your correlated chain is worth. To make it concrete: 1000
@@ -493,7 +508,7 @@ quantity with `coords`, e.g. `coords={"point": 0}`. The first two produce the fi
 | function | what it shows | what bad looks like |
 |---|---|---|
 | [`az.plot_trace`](https://python.arviz.org/projects/plots/en/latest/api/generated/arviz_plots.plot_trace.html) | value at every draw, one line per chain | chains at separate levels, or drifting |
-| [`az.plot_convergence_dist`](https://python.arviz.org/projects/plots/en/latest/api/generated/arviz_plots.plot_convergence_dist.html) | distribution of R-hat (or ESS) over all quantities | the curve rising far to the right of 1.01 |
+| [`az.plot_convergence_dist`](https://python.arviz.org/projects/plots/en/latest/api/generated/arviz_plots.plot_convergence_dist.html) | distribution of ESS (bulk and tail) and R-hat over all quantities | the R-hat curve reaching 1 far to the right of 1.01, or the ESS curves rising before their dashed line |
 | [`az.plot_rank`](https://python.arviz.org/projects/plots/en/latest/api/generated/arviz_plots.plot_rank.html) | for each chain, how its draws rank among *all* chains' draws | one chain's curve leaving the band: it is exploring somewhere else |
 | [`az.plot_trace_dist`](https://python.arviz.org/projects/plots/en/latest/api/generated/arviz_plots.plot_trace_dist.html) | each quantity's distribution per chain, next to its trace | one chain's distribution sitting apart from the others |
 | [`az.plot_energy`](https://python.arviz.org/projects/plots/en/latest/api/generated/arviz_plots.plot_energy.html) | NUTS-specific: whether the sampler moves freely between energy levels (BFMI) | the two energy distributions differ clearly in width, or BFMI < 0.3 |
