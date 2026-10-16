@@ -391,9 +391,7 @@ chain cannot tell you it is stuck. The idea goes back to
 [Gelman and Rubin (1992)](https://doi.org/10.1214/ss/1177011136), but the version ArviZ
 computes is the rank-normalized, split variant of
 [Vehtari et al. (2021)](https://doi.org/10.1214/20-BA1221), which is also where the
-`< 1.01` and `> 100` thresholds above come from. They are recommendations from that paper
-rather than folklore, and the paper is worth skimming for *why* the older `< 1.1` rule of
-thumb turned out to be too lenient.
+`< 1.01` and `> 100` thresholds above come from. They are recommendations from that paper.
 
 With `--mode quick` (2 chains and 150 draws) R-hat and ESS will not reach these
 thresholds, and they are not meant to. Use `--mode balanced` or `--mode full`, which exist
