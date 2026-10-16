@@ -37,6 +37,7 @@ Usage
     python nuts_inference_example.py                    # quick: laptop smoke test
     python nuts_inference_example.py --mode balanced    # a real fit, ~GPU-hour
     python nuts_inference_example.py --mode full        # paper-scale, batch job
+    python nuts_inference_example.py --mode balanced --from-fit   # figures only
 
 `quick` is the default so the docs build and a laptop run stay fast. It is NOT a
 fit to interpret -- 450 trials and 50 MC samples leave the frozen-key posterior
@@ -51,6 +52,7 @@ output is throwaway.
 from __future__ import annotations
 
 import argparse
+import json
 import os
 import sys
 import time
@@ -80,6 +82,7 @@ from psyphy.model import (
     WPPMCovarianceField,
     covariance_to_arviz,
 )
+from psyphy.posterior import MAPPosterior, MCMCPosterior
 from psyphy.viz import plot_ellipses
 
 # --8<-- [end:imports]
@@ -92,9 +95,16 @@ _parser.add_argument(
     help="compute/fidelity preset; see MODES below (default: quick)",
 )
 _parser.add_argument("--seed", type=int, default=42, help="master PRNG seed")
+_parser.add_argument(
+    "--from-fit",
+    action="store_true",
+    help="skip MAP and NUTS; rebuild every figure and diagnostic from the "
+    "cached fit for this mode (see fit_path). Needs no GPU.",
+)
 _args = _parser.parse_args()
 MODE = _args.mode
 SEED = _args.seed
+FROM_FIT = _args.from_fit
 
 PLOTS_DIR = os.path.join(os.path.dirname(__file__), "plots")
 os.makedirs(PLOTS_DIR, exist_ok=True)
@@ -114,6 +124,21 @@ def plot_path(name: str) -> str:
         return os.path.join(PLOTS_DIR, name)
     stem, ext = os.path.splitext(name)
     return os.path.join(PLOTS_DIR, f"{stem}_{MODE}{ext}")
+
+
+FITS_DIR = os.path.join(os.path.dirname(__file__), "fits")
+
+
+def fit_path() -> str:
+    """Where this mode's cached fit lives.
+
+    Same convention as hong2025_reproduction.py: one .npz per mode. The
+    `balanced` file is the fit this tutorial is written from and is committed
+    (~0.5 MB), so every figure and every printed diagnostic on the page can be
+    regenerated with --from-fit on a laptop. The `quick` file is smoke-test
+    output and is gitignored.
+    """
+    return os.path.join(FITS_DIR, f"nuts_{MODE}_fit.npz")
 
 
 def save_ellipse_figure(fig, name: str) -> None:
@@ -235,6 +260,12 @@ NUM_CHAINS = _cfg["chains"]
 # evaluations (255 here; BlackJAX's default 10 would allow 1023). Check
 # sampler_stats["n_steps"] after the run -- if most draws hit 255, raise it.
 MAX_NUM_DOUBLINGS = 8
+# Sampling seed, and the frozen key the Monte Carlo likelihood is evaluated
+# with. Both define *which* posterior was sampled, not just how, so they are
+# named here rather than inlined: the fit cache fingerprints them.
+NUTS_SEED = 7
+LOGDENSITY_KEY_SEED = 0
+TARGET_ACCEPTANCE_RATE = 0.8
 # --8<-- [end:nuts_settings]
 N_ENSEMBLE = _cfg["ensemble"]
 
@@ -242,6 +273,111 @@ print(
     f"        mc={MC_SAMPLES}, {N_REF_GRID**2}x{NUM_TRIALS_PER_REF} trials, "
     f"MAP {MAP_STEPS} steps, NUTS {NUM_CHAINS}x({NUM_WARMUP}+{NUM_SAMPLES})"
 )
+
+# Everything that changes what was fitted. Stored with the cache and compared
+# on load: a figure captioned `balanced` that was drawn from `quick` draws is
+# precisely the failure this cache could otherwise introduce, so a mismatch is
+# a hard error naming the field rather than a warning nobody reads.
+RUN_SETTINGS = {
+    "mode": MODE,
+    "seed": SEED,
+    "mc_samples": MC_SAMPLES,
+    "bandwidth": BANDWIDTH,
+    "trials_per_ref": NUM_TRIALS_PER_REF,
+    "n_ref_grid": N_REF_GRID,
+    "chains": NUM_CHAINS,
+    "warmup": NUM_WARMUP,
+    "draws": NUM_SAMPLES,
+    "max_num_doublings": MAX_NUM_DOUBLINGS,
+    "nuts_seed": NUTS_SEED,
+    "logdensity_key_seed": LOGDENSITY_KEY_SEED,
+    "target_acceptance_rate": TARGET_ACCEPTANCE_RATE,
+    "map_steps": MAP_STEPS,
+    "map_lr": MAP_LR,
+    "map_momentum": MAP_MOMENTUM,
+    "input_dim": INPUT_DIM,
+    "basis_degree": BASIS_DEGREE,
+    "extra_dims": EXTRA_DIMS,
+    "decay_rate": DECAY_RATE,
+    "variance_scale": VARIANCE_SCALE,
+    "diag_term": DIAG_TERM,
+}
+
+
+def save_fit(map_posterior, nuts_posterior, ref_points, truth_params) -> None:
+    """Persist the fit so the figures can be rebuilt without re-sampling.
+
+    Stores the draws with their chain structure intact (diagnostics need it),
+    the sampler statistics, the MAP estimate the chains were warm-started
+    from, and the ground truth and reference grid the figures are drawn
+    against -- plus RUN_SETTINGS, which is what makes the file self-describing
+    rather than a bag of arrays whose provenance you have to remember.
+    """
+    os.makedirs(FITS_DIR, exist_ok=True)
+    stats = {
+        f"stat_{k}": np.asarray(jax.device_get(v))
+        for k, v in nuts_posterior.sampler_stats.items()
+    }
+    np.savez_compressed(
+        fit_path(),
+        settings=json.dumps(RUN_SETTINGS, sort_keys=True),
+        draws_W=np.asarray(jax.device_get(nuts_posterior.samples["W"])),
+        map_W=np.asarray(jax.device_get(map_posterior.params["W"])),
+        truth_W=np.asarray(jax.device_get(truth_params["W"])),
+        ref_points=np.asarray(jax.device_get(ref_points)),
+        **stats,
+    )
+    _mb = os.path.getsize(fit_path()) / 1e6
+    print(f"  Cached fit: {os.path.basename(fit_path())} ({_mb:.2f} MB)")
+
+
+def load_fit(model, ref_points, truth_params):
+    """Rebuild (map_posterior, nuts_posterior) from the cache for this mode.
+
+    Refuses rather than guesses: a missing file, a settings mismatch or a
+    ground truth that does not match the one just rebuilt all raise, naming
+    what differs.
+    """
+    path = fit_path()
+    if not os.path.exists(path):
+        raise SystemExit(
+            f"--from-fit: no cached fit at {path}\n"
+            f"            run `python {os.path.basename(__file__)} "
+            f"--mode {MODE}` once to create it."
+        )
+    blob = np.load(path, allow_pickle=False)
+    cached = json.loads(str(blob["settings"]))
+    differs = [
+        f"            {k}: cached {cached.get(k, '<missing>')!r} != current {v!r}"
+        for k, v in RUN_SETTINGS.items()
+        if cached.get(k, "<missing>") != v
+    ]
+    if differs:
+        raise SystemExit(
+            f"--from-fit: {os.path.basename(path)} was produced with different "
+            "settings:\n" + "\n".join(differs)
+        )
+    # The data are re-simulated rather than stored, so check that they came out
+    # the same: identical truth and grid mean identical trials downstream.
+    for name, cached_arr, current in (
+        ("truth_W", blob["truth_W"], truth_params["W"]),
+        ("ref_points", blob["ref_points"], ref_points),
+    ):
+        if not np.allclose(cached_arr, jax.device_get(current)):
+            raise SystemExit(
+                f"--from-fit: {name} differs from the cached run. The cache "
+                "does not describe this script's current ground truth."
+            )
+    stats = {
+        k[len("stat_") :]: jnp.asarray(blob[k])
+        for k in blob.files
+        if k.startswith("stat_")
+    }
+    return (
+        MAPPosterior({"W": jnp.asarray(blob["map_W"])}, model),
+        MCMCPosterior({"W": jnp.asarray(blob["draws_W"])}, model, sampler_stats=stats),
+    )
+
 
 # ---------------------------------------------------------------------------
 # 1. Ground-truth model + synthetic data
@@ -323,96 +459,111 @@ model = WPPM(
 # --8<-- [end:build_model]
 
 # ---------------------------------------------------------------------------
-# 3. MAP warm-start
-# Initializing NUTS near the posterior mode greatly reduces warmup steps.
+# 3. MAP warm-start, and 4. NUTS sampling
+#
+# Both are skipped under --from-fit: they are the only expensive steps, and
+# everything after them is post-processing of the draws. Initializing NUTS near
+# the posterior mode greatly reduces warmup steps.
 # ---------------------------------------------------------------------------
-print("[3/7] MAP warm-start (fast initialization near posterior mode)...")
+if FROM_FIT:
+    print(f"[3/7] --from-fit: skipping MAP ({os.path.basename(fit_path())})")
+    print("[4/7] --from-fit: skipping NUTS; loading cached draws...")
+    map_posterior, nuts_posterior = load_fit(model, ref_points, truth_params)
+else:
+    print("[3/7] MAP warm-start (fast initialization near posterior mode)...")
 
-# --8<-- [start:map_warmstart]
-map_optimizer = MAPOptimizer(
-    steps=MAP_STEPS,
-    learning_rate=MAP_LR,
-    momentum=MAP_MOMENTUM,
-    track_history=True,
-    show_progress=True,
-)
-map_posterior = map_optimizer.fit(model, data, seed=SEED)
-# --8<-- [end:map_warmstart]
-
-print(f"  MAP done. Final loss: {map_optimizer.loss_history[-1]:.4f}")
-
-# --8<-- [start:cost_probe]
-# Project the sampling cost before committing to it. NUTS costs
-# O(2^tree_depth) gradient evaluations per draw and the depth is data
-# dependent, so the honest output is a bracket, not a number. Cheap insurance
-# against submitting a batch job that cannot finish inside its time limit --
-# and the only way to know whether --mode full is hours or days on this
-# hardware, since the MC likelihood dominates and GPUs do not scale linearly
-# with mc_samples.
-_probe = jax.jit(
-    jax.value_and_grad(
-        lambda q: model.log_posterior_from_data(q, data, key=jr.PRNGKey(0))
+    # --8<-- [start:map_warmstart]
+    map_optimizer = MAPOptimizer(
+        steps=MAP_STEPS,
+        learning_rate=MAP_LR,
+        momentum=MAP_MOMENTUM,
+        track_history=True,
+        show_progress=True,
     )
-)
-_, _grad = _probe(map_posterior.params)
-jax.block_until_ready(_grad["W"])  # compile first, outside the timing
-_t0 = time.perf_counter()
-for _ in range(5):
+    map_posterior = map_optimizer.fit(model, data, seed=SEED)
+    # --8<-- [end:map_warmstart]
+
+    print(f"  MAP done. Final loss: {map_optimizer.loss_history[-1]:.4f}")
+
+    # --8<-- [start:cost_probe]
+    # Project the sampling cost before committing to it. NUTS costs
+    # O(2^tree_depth) gradient evaluations per draw and the depth is data
+    # dependent, so the honest output is a bracket, not a number. Cheap insurance
+    # against submitting a batch job that cannot finish inside its time limit --
+    # and the only way to know whether --mode full is hours or days on this
+    # hardware, since the MC likelihood dominates and GPUs do not scale linearly
+    # with mc_samples.
+    _probe = jax.jit(
+        jax.value_and_grad(
+            lambda q: model.log_posterior_from_data(q, data, key=jr.PRNGKey(0))
+        )
+    )
     _, _grad = _probe(map_posterior.params)
-jax.block_until_ready(_grad["W"])
-_per_grad = (time.perf_counter() - _t0) / 5
-_total_draws = NUM_CHAINS * (NUM_WARMUP + NUM_SAMPLES)
-print(
-    f"  cost probe: one value_and_grad = {_per_grad * 1e3:.1f} ms"
-    f"  (mc={MC_SAMPLES}, {n_total} trials)"
-)
-# Chains are vmapped (one batched call), so on a GPU the wall clock is closer
-# to the per-chain figure below than to the all-chains total; on a CPU it is
-# closer to the total. The upper bracket is the tree-depth cap: no draw can
-# cost more than 2**MAX_NUM_DOUBLINGS - 1 gradient evaluations.
-print(f"  {_total_draws} draws total ({NUM_CHAINS} chains vmapped)")
-for _g_per_draw in (16, 64, 2**MAX_NUM_DOUBLINGS - 1):
-    _hours = _per_grad * _total_draws * _g_per_draw / 3600.0
-    print(f"    at {_g_per_draw:2d} grad evals/draw -> {_hours:7.2f} h")
-# The probe times *execution* of an already-compiled gradient. It therefore
-# EXCLUDES XLA compilation of the warmup scan, which is a one-off cost but can
-# take minutes and, on a short run like --mode quick, dominates everything the
-# projection above reports. If the run seems stuck right after "[4/7]", it is
-# almost certainly still compiling -- not hung.
-print("    (excludes one-off XLA compilation of the warmup scan: can be minutes)")
-# --8<-- [end:cost_probe]
+    jax.block_until_ready(_grad["W"])  # compile first, outside the timing
+    _t0 = time.perf_counter()
+    for _ in range(5):
+        _, _grad = _probe(map_posterior.params)
+    jax.block_until_ready(_grad["W"])
+    _per_grad = (time.perf_counter() - _t0) / 5
+    _total_draws = NUM_CHAINS * (NUM_WARMUP + NUM_SAMPLES)
+    print(
+        f"  cost probe: one value_and_grad = {_per_grad * 1e3:.1f} ms"
+        f"  (mc={MC_SAMPLES}, {n_total} trials)"
+    )
+    # Chains are vmapped (one batched call), so on a GPU the wall clock is closer
+    # to the per-chain figure below than to the all-chains total; on a CPU it is
+    # closer to the total. The upper bracket is the tree-depth cap: no draw can
+    # cost more than 2**MAX_NUM_DOUBLINGS - 1 gradient evaluations.
+    print(f"  {_total_draws} draws total ({NUM_CHAINS} chains vmapped)")
+    for _g_per_draw in (16, 64, 2**MAX_NUM_DOUBLINGS - 1):
+        _hours = _per_grad * _total_draws * _g_per_draw / 3600.0
+        print(f"    at {_g_per_draw:2d} grad evals/draw -> {_hours:7.2f} h")
+    # The probe times *execution* of an already-compiled gradient. It therefore
+    # EXCLUDES XLA compilation of the warmup scan, which is a one-off cost but can
+    # take minutes and, on a short run like --mode quick, dominates everything the
+    # projection above reports. If the run seems stuck right after "[4/7]", it is
+    # almost certainly still compiling -- not hung.
+    print("    (excludes one-off XLA compilation of the warmup scan: can be minutes)")
+    # --8<-- [end:cost_probe]
 
-# ---------------------------------------------------------------------------
-# 4. NUTS sampling
-# ---------------------------------------------------------------------------
-print("[4/7] Running NUTS posterior sampling (BlackJAX)...")
-print(f"  {NUM_CHAINS} chains × {NUM_WARMUP} warmup + {NUM_SAMPLES} draws")
-print("  Note: warmup compiles once for all chains — may take ~30s+ before it runs.")
+    # ---------------------------------------------------------------------------
+    # 4. NUTS sampling
+    # ---------------------------------------------------------------------------
+    print("[4/7] Running NUTS posterior sampling (BlackJAX)...")
+    print(f"  {NUM_CHAINS} chains × {NUM_WARMUP} warmup + {NUM_SAMPLES} draws")
+    print(
+        "  Note: warmup compiles once for all chains — may take ~30s+ before it runs."
+    )
 
-# --8<-- [start:nuts_fit]
-sampler = NUTSSampler(
-    num_warmup=NUM_WARMUP,
-    num_samples=NUM_SAMPLES,
-    num_chains=NUM_CHAINS,
-    logdensity_key_seed=0,  # fixed MC key → deterministic Hamiltonian
-    target_acceptance_rate=0.8,
-    max_num_doublings=MAX_NUM_DOUBLINGS,  # cap: <= 255 grad evals per draw
-    # Sample z = W / prior_std so warmup starts from a metric matched to the
-    # prior scales instead of the identity (the default; shown for clarity).
-    prior_preconditioning=True,
-    show_progress=True,
-)
-nuts_posterior = sampler.fit(
-    model,
-    data,
-    init_params=map_posterior.params,  # warm-start from MAP
-    seed=7,
-)
-# --8<-- [end:nuts_fit]
+    # --8<-- [start:nuts_fit]
+    sampler = NUTSSampler(
+        num_warmup=NUM_WARMUP,
+        num_samples=NUM_SAMPLES,
+        num_chains=NUM_CHAINS,
+        logdensity_key_seed=LOGDENSITY_KEY_SEED,  # fixed MC key → deterministic
+        target_acceptance_rate=TARGET_ACCEPTANCE_RATE,
+        max_num_doublings=MAX_NUM_DOUBLINGS,  # cap: <= 255 grad evals per draw
+        # Sample z = W / prior_std so warmup starts from a metric matched to the
+        # prior scales instead of the identity (the default; shown for clarity).
+        prior_preconditioning=True,
+        show_progress=True,
+    )
+    nuts_posterior = sampler.fit(
+        model,
+        data,
+        init_params=map_posterior.params,  # warm-start from MAP
+        seed=NUTS_SEED,
+    )
+    # --8<-- [end:nuts_fit]
 
-print(
-    f"  Sampling done: {nuts_posterior.n_chains} chains × {nuts_posterior.n_draws} draws"
-)
+    # Cache before plotting: the sampling is the expensive part, and a crash in
+    # a figure must not cost it. A failure to cache is not a failure of the run.
+    try:
+        save_fit(map_posterior, nuts_posterior, ref_points, truth_params)
+    except OSError as _exc:
+        print(f"  WARNING: could not cache the fit ({_exc}); continuing")
+
+print(f"  Posterior: {nuts_posterior.n_chains} chains × {nuts_posterior.n_draws} draws")
 acc = nuts_posterior.sampler_stats["acceptance_rate"]
 print(f"  Mean acceptance rate: {float(jnp.mean(acc)):.3f}")
 # Divergences first: a divergent transition means the integrator blew up rather

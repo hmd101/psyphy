@@ -162,6 +162,29 @@ class MCMCPosterior:
     # -----------------------------------------------
 
     @property
+    def samples(self) -> dict:
+        """All draws, chain structure preserved.
+
+        Returns
+        -------
+        dict
+            ``{name: array of shape (n_chains, n_draws, *param_shape)}``.
+            For WPPM: ``{"W": (n_chains, n_draws, d0, d1, d2, d3)}``.
+
+        Notes
+        -----
+        This is the raw posterior, not a summary: use it to persist a fit, to
+        pass the draws to another library, or for any computation that needs
+        the per-chain layout (diagnostics do). For a random subset of draws use
+        :meth:`sample`; for the posterior mean parameter use :attr:`params`.
+
+        The returned dict is a fresh mapping, so adding or removing keys does
+        not affect the posterior, but the arrays themselves are shared. JAX
+        arrays are immutable, so that is safe.
+        """
+        return dict(self._samples)
+
+    @property
     def n_chains(self) -> int:
         """Number of chains."""
         first = next(iter(self._samples.values()))

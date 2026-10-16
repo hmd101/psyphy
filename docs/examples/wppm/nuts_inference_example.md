@@ -58,6 +58,19 @@ The companion script can be found at
     python nuts_inference_example.py --mode full
     ```
 
+    Only the MAP and NUTS steps are expensive, and the script caches their result.
+    Everything after them — the diagnostics, every figure on this page — is
+    post-processing of the stored draws, so it can be redone without a GPU:
+
+    ```bash
+    # rebuild every figure and every printed diagnostic from the cached fit
+    python nuts_inference_example.py --mode balanced --from-fit
+    ```
+
+    The cache (`fits/nuts_balanced_fit.npz`) is committed, and it records the settings it
+    was produced with: a run whose settings disagree with it refuses to load rather than
+    quietly drawing a `balanced` figure from `quick` draws.
+
     `quick` is a smoke test for the code path: about a minute on an A100 GPU, about 20
     minutes on a CPU. Its chains are far too short to converge, so don't read its
     diagnostics as a result.
