@@ -33,7 +33,7 @@ The companion script can be found at
     | extra | brings in | what it is for |
     |---|---|---|
     | `sampling` | `blackjax>=1.4,<2` | `NUTSSampler` itself |
-    | `diagnostics` | [`arviz>=1.0`](https://python.arviz.org/en/latest/user_guide/getting_started.html) | `MCMCPosterior.to_arviz()`, R-hat, ESS, the trace plot |
+    | `diagnostics` | [`arviz>=1.0`](https://python.arviz.org/en/latest/user_guide/getting_started.html) | `covariance_to_arviz`, `MCMCPosterior.to_arviz()`, R-hat, ESS, the diagnostic plots |
     | `viz` | `matplotlib>=3.5` | every figure on this page |
 
 
@@ -44,15 +44,17 @@ The companion script can be found at
     # smoke test: 9 refs, 50 MC samples, 2 chains x (100 warmup + 150 draws)
     python nuts_inference_example.py --mode quick
 
-    # 25 refs, 500 MC samples, 4 chains x (500 + 500). A real fit.
+    # 25 refs, 500 MC samples, 4 chains x (500 + 500). A real fit; ~35 min on an A100.
     python nuts_inference_example.py --mode balanced
 
     # 25 refs, 2000 MC samples, 4 chains x (1000 + 1000). Paper scale; a batch job.
     python nuts_inference_example.py --mode full
     ```
 
-    `quick` exists so the page can be regenerated quickly (about a minute on an A100). Its
-    diagnostics are deliberately not publication grade; see Step 5.
+    `quick` exists so the page can be regenerated quickly: about a minute on an A100 GPU,
+    about 20 minutes on a CPU. Its diagnostics are deliberately not publication grade; see
+    Step 5. Expect the heavier modes to take correspondingly longer on a CPU than the GPU
+    times above; the script prints a projected run time before it starts sampling.
 
 ---
 
@@ -188,7 +190,7 @@ back is an `MCMCPosterior`, and these are the three things you will use from it:
 |---|---|---|
 | `nuts_posterior.sample(n, key=...)` | `n` draws `{"W": (n, *W_shape)}` | Step 6, the ellipse ensemble |
 | `PosteriorMeanCovarianceField(nuts_posterior)` | the posterior mean covariance field E[Σ(x)] | Step 6, the red "posterior mean" ellipses |
-| `nuts_posterior.to_arviz()` | all chains, for diagnostics | Step 5 |
+| `covariance_to_arviz(nuts_posterior, points)` | Σ at chosen points for every draw, in ArviZ's format, for diagnostics | Step 5 |
 
 `MCMCPosterior` and `MAPPosterior` share this interface, so code written for a MAP fit,
 for example `WPPMPredictivePosterior`, accepts a NUTS fit unchanged.
@@ -261,6 +263,45 @@ thoroughness of the fit changes, never what is being fit:
 | Adaptive (default, `step_size=None`) | Best quality; adapts step size and mass matrix per chain via `blackjax.window_adaptation`, starting from a prior-scaled metric. Chains vmapped; each adapts independently. | `NUTSSampler(num_warmup=200, num_samples=500)` |
 | Fixed (`step_size=<float>`) | Faster with many chains; no adaptation. All chains vmapped in one compiled call. User must choose a good step size. | `NUTSSampler(..., step_size=0.01)` |
 
+??? note "Using a different BlackJAX sampler, e.g. MALA"
+
+    psyphy ships NUTS only, but BlackJAX offers other samplers, such as MALA
+    (`blackjax.mala`), plain HMC or random-walk Metropolis. Here is what using one would take.
+
+    **What psyphy needs from a sampler.** A subclass of
+    [`InferenceEngine`](../../reference/inference.md#psyphy.inference.base.InferenceEngine)
+    whose `fit(model, data)` returns an `MCMCPosterior`, with draws shaped
+    `(n_chains, n_draws, *W_shape)`. Once it does, everything downstream works unchanged:
+    `to_arviz`, `covariance_to_arviz`, `PosteriorMeanCovarianceField`,
+    `WPPMPredictivePosterior` and every figure on this page.
+
+    **What BlackJAX needs from psyphy.** Only a log-density function. In
+    [`nuts.py`](https://github.com/flatironinstitute/psyphy/blob/main/src/psyphy/inference/nuts.py)
+    the block marked "BlackJAX API boundary" builds it from
+    `model.log_posterior_from_data`, with the frozen Monte Carlo key from
+    [A note on the likelihood](#a-note-on-the-likelihood).
+
+    **For MALA specifically**, the change at the centre is replacing the kernel,
+    `blackjax.nuts(logdensity_fn, step_size=..., inverse_mass_matrix=...)`, with
+    `blackjax.mala(logdensity_fn, step_size)`. Three things differ:
+
+    - **No automatic tuning.** `window_adaptation` (Mode A above) tunes a mass matrix, which
+      MALA does not have, so its step size must be chosen some other way.
+    - **Fewer diagnostics.** MALA reports only an acceptance rate and whether each proposal
+      was accepted, so there are no divergences, energies or tree sizes in `sampler_stats`.
+    - **Same caveats.** The frozen-key likelihood applies to any gradient-based sampler,
+      and the rotation symmetry of `W` (Step 5) is a property of the model, not of NUTS.
+
+    **How much work that is today.** It is copy-and-adapt rather than configuration. The
+    psyphy-specific parts live inside
+    [`NUTSSampler.fit`](../../reference/inference.md#psyphy.inference.NUTSSampler), not in a
+    shared base class: the log density with the frozen key, the prior preconditioning,
+    running chains in parallel and wrapping the result in `MCMCPosterior`. A MALA sampler
+    would copy those (about a hundred lines, mostly the fixed-step-size path) and swap the
+    kernel. The unimplemented
+    [`LangevinSampler`](../../reference/inference.md#psyphy.inference.langevin.LangevinSampler)
+    stub is the natural place for it.
+
 ### Step 5: Diagnostics with ArviZ
 
 Sampling gives you draws; it does not tell you whether to trust them. MCMC fails
@@ -273,107 +314,207 @@ function references below link into them:
 and ESS) and [arviz-plots](https://python.arviz.org/projects/plots/en/latest/) (figures),
 both on top of arviz-base (the data format). `import arviz as az` gives you all three.
 
-psyphy hands your chains over in one call:
+#### What to diagnose: Σ, not W
 
-```python
-idata = nuts_posterior.to_arviz()
-```
+The obvious thing to check would be the parameters themselves:
+`nuts_posterior.to_arviz()` hands the raw draws of `W` to ArviZ. For the WPPM that is
+misleading. `W` is only defined up to a rotation: rotating `W` along its embedding axis
+(its last axis) leaves every covariance matrix Σ(x) unchanged, and the prior too. So
+different chains can settle at different rotations. They then disagree about `W` while
+agreeing about every ellipse, and diagnostics computed on `W` report a failure that no
+ellipse, threshold or prediction is affected by. (It is the same symmetry that makes the
+naive posterior mean too small; see the note in Step 6.)
 
-`to_arviz()` converts the `(n_chains, n_draws, *W_shape)` arrays, plus the sampler
-statistics, into ArviZ's format, an
-[`xarray.DataTree`](https://docs.xarray.dev/en/stable/user-guide/hierarchical-data.html)
-with a `posterior` group (the draws of `W`) and a `sample_stats` group (acceptance rate,
-divergences, energy, tree size). No reshaping is needed: ArviZ handles arbitrary-rank
-variables natively and computes diagnostics per scalar element of `W`. Everything ArviZ
-offers is then available on `idata`.
+So psyphy diagnoses Σ itself.
+[`covariance_to_arviz`](../../reference/model.md#psyphy.model.covariance_to_arviz)
+evaluates Σ for every posterior draw at points you choose and returns the result in
+ArviZ's format, an
+[`xarray.DataTree`](https://docs.xarray.dev/en/stable/user-guide/hierarchical-data.html).
+For each draw and point, the 2×2 matrix is summarised by three numbers that together
+determine it:
+
+| quantity | meaning |
+|---|---|
+| `log_var_0` | log of the variance along stimulus dimension 1, log Σ₁₁ |
+| `log_var_1` | log of the variance along stimulus dimension 2, log Σ₂₂ |
+| `corr_0_1` | correlation Σ₁₂/√(Σ₁₁Σ₂₂), which carries the ellipse's orientation |
+
+The result holds one variable, `Sigma`, with dimensions `(chain, draw, point, quantity)`.
+The evaluation points are stored with it as the coordinates `location_0` and
+`location_1`, and the sampler statistics (divergences, energy, tree size) are carried
+over, so everything below works on it directly.
+
+#### Choosing where to evaluate Σ
+
+`W` is one fixed set of numbers, but Σ is a function of the stimulus location x. A
+diagnostic of Σ is therefore always a diagnostic *at some x*, and with the current
+implementation **you choose those locations**: `covariance_to_arviz` deliberately has no
+default for `points`.
+
+- **Start with the locations you report.** If you plot or interpret ellipses at certain
+  points, check convergence there. This script uses the reference points, the same
+  ellipses Step 6 plots.
+- **Add coverage where it matters.** Between and beyond the data points the posterior is
+  shaped more by the prior and can mix differently. A modest grid over the whole stimulus
+  space catches that, for example 7×7 points:
+  `g = jnp.linspace(-1, 1, 7); grid = jnp.stack(jnp.meshgrid(g, g), -1).reshape(-1, 2)`.
+- **Report the worst value** over all points and quantities.
+- **A few points are enough.** Σ(x) is a low-degree polynomial in x (degree 2 here), so it
+  varies smoothly, and a dense grid mostly adds near-duplicates.
+
+Choosing points is a property of this approach, not a law of nature. Quantities of `W`
+that are unchanged by the rotation, such as `W Wᵀ` summed over the embedding axis, would
+allow a point-free check; psyphy does not implement that.
+
+#### Running the diagnostics
 
 ```python title="ArviZ diagnostics"
 --8<-- "docs/examples/wppm/nuts_inference_example.py:arviz_diagnostics"
 ```
 
 [`az.summary`](https://python.arviz.org/projects/stats/en/latest/api/generated/arviz_stats.summary.html)
-returns one row per scalar element of `W`, 54 rows here. The script prints only the
-spread of each column, because 54 rows are not readable. If you print `summary` itself,
-the columns mean:
+returns one row per point and quantity: 27 rows in `quick` (9 points × 3) and 75 in
+`balanced` (25 × 3). The script prints only the spread of each column, because that many
+rows are not readable. If you print `summary` itself, the columns mean:
 
 | column | meaning |
 |---|---|
-| `mean`, `sd` | posterior mean and standard deviation of that coefficient |
-| `eti89_lb`, `eti89_ub` | lower and upper end of the 89% credible interval: the coefficient lies in this range with 89% posterior probability (equal-tailed by default; `ci_kind="hdi"` and `ci_prob=` change it) |
+| `mean`, `sd` | posterior mean and standard deviation of that quantity |
+| `eti89_lb`, `eti89_ub` | lower and upper end of the 89% credible interval: the quantity lies in this range with 89% posterior probability (equal-tailed by default; `ci_kind="hdi"` and `ci_prob=` change it) |
 | `ess_bulk`, `ess_tail` | effective sample size in the middle and in the tails of the distribution ([`az.ess`](https://python.arviz.org/projects/stats/en/latest/api/generated/arviz_stats.ess.html)) |
-| `r_hat` | between-chain agreement ([`az.rhat`](https://python.arviz.org/projects/stats/en/latest/api/generated/arviz_stats.rhat.html)) |
+| `r_hat` | between-chain agreement ([`az.rhat`](https://python.arviz.org/projects/stats/en/latest/api/generated/arviz_stats.rhat.html)); explained below |
 | `mcse_mean`, `mcse_sd` | Monte Carlo error of `mean` and `sd`: how much they would move if you re-ran the sampler |
 
 The single row to look at first is the one with the **largest** `r_hat` and the
-**smallest** `ess_bulk`. If the worst coefficient passes, all of them do.
+**smallest** `ess_bulk`. If the worst quantity passes, all of them do.
 
-```python title="Trace plot"
+The snippet also prints R-hat on `W`, for comparison only. Expect it to be much larger,
+for the reason above. It is not the convergence criterion.
+
+#### W and Σ side by side
+
+The two figures below put the difference in front of you. They come from
+`--mode balanced` (4 chains × 500 draws), because `quick` is too short for chains to
+settle and shows both problems mixed together. Running the script in `balanced` mode
+writes them under these names.
+
+```python title="Trace plot: worst W coefficient vs worst Σ quantity"
 --8<-- "docs/examples/wppm/nuts_inference_example.py:trace_plot"
 ```
 
 <div align="center">
-  <img src="../plots/nuts_trace_plot.png" width="700"/>
-  <p><em>Posterior traces for the slice <code>W[:, :, 0, 0]</code>.</em></p>
+  <img src="../plots/nuts_trace_W_vs_Sigma_balanced.png" width="800"/>
+  <p><em>Left: the W coefficient with the highest R-hat. Right: the Σ quantity with the
+  highest R-hat, here the log variance along dimension 2 at reference point 15. One
+  colour per chain, from <code>--mode balanced</code>.</em></p>
 </div>
-
-**How to read it.** `W` has shape `(3, 3, 2, 3)` = `(deg_x, deg_y, U_row, U_col)`: the
-first two axes index the Chebyshev basis, giving degree along stimulus dimension 1 and
-along dimension 2. The last two index the entry of `U(x)`, where `Σ = U Uᵀ + diag_term·I`.
-That is 54 scalars, past ArviZ's `plot.max_subplots` limit and illegible anyway, so the
-figure fixes `U[0, 0]` and plots the remaining 3×3 coefficient grid, laid out *as* that
-grid by `col_wrap=3`.
 
 | element of the figure | what it is |
 |---|---|
-| one panel | one Chebyshev coefficient; the title `i, j` is degree `i` × degree `j` |
 | x axis | draw index **within a chain**, post-warmup (warmup draws are discarded, not plotted) |
-| y axis | the value of that coefficient |
-| one coloured line per panel | one chain |
-| black ticks along the bottom | divergences; they appear because `sampler_stats` carries `diverging` under ArviZ's standard name |
+| y axis | the value of that coefficient or quantity |
+| one coloured line | one chain |
+| black ticks along the bottom | divergences, if any; they appear because the sampler statistics carry `diverging` under ArviZ's standard name |
 
 **What good looks like:** chains overlapping each other, flat, and wiggling fast, the
-"fuzzy caterpillar". A chain that drifts steadily across the panel has not converged:
-warmup was too short and the sampler is still finding the typical set. That is the single
-most common thing this plot catches, and it is a reason to raise `--mode`, not a reason to
+"fuzzy caterpillar". The right panel shows it: all four chains cover the same range.
+The left panel shows the opposite, four chains holding four separate levels for all
+500 draws. Judged on `W` alone, that run would look broken. Judged on Σ, it is close to
+converged. Both panels show the worst case of their kind, picked by R-hat, not by hand.
+
+A chain that drifts steadily across a Σ panel is a different matter. It has not
+converged: warmup was too short and the sampler is still finding the typical set. That is
+the most common thing this plot catches, and it is a reason to raise `--mode`, not to
 distrust the model.
 
-It is generated by **ArviZ**, from `MCMCPosterior.to_arviz()`; no psyphy plotting code is
-involved. On ArviZ ≥ 1.0
-[`plot_trace`](https://python.arviz.org/projects/plots/en/latest/api/generated/arviz_plots.plot_trace.html)
-returns a
+```python title="R-hat over all quantities: W vs Σ"
+--8<-- "docs/examples/wppm/nuts_inference_example.py:rhat_plot"
+```
+
+<div align="center">
+  <img src="../plots/nuts_rhat_W_vs_Sigma_balanced.png" width="600"/>
+  <p><em>R-hat for all 54 coefficients of W (top) and all 75 Σ quantities (bottom),
+  from <code>--mode balanced</code>. The dashed line marks 1.01.</em></p>
+</div>
+
+**How to read it.** Each curve is cumulative: its height at a given R-hat is the fraction
+of quantities whose R-hat is at or below that value. The ideal curve jumps from 0 to 1
+right at the dashed 1.01 line. Both panels share the x-axis, so they can be compared
+directly. In this run:
+
+- **W:** median 1.12, none of the 54 coefficients below 1.01, maximum 2.03.
+- **Σ:** median 1.01, 35% of the quantities below 1.01, maximum 1.08.
+
+So most of the alarm on `W` is the rotation symmetry. Σ is close to converged, but not
+fully by the strict 1.01 standard. Longer runs (`--mode full`) are the remedy for that
+remainder.
+
+#### What R-hat measures, and what "rank-normalized" means
+
+The classic R-hat ([Gelman and Rubin, 1992](https://doi.org/10.1214/ss/1177011136))
+compares the spread *between* chains with the spread *within* each chain. If every chain
+explores the same distribution, the two agree and R-hat is about 1. If the chains sit in
+different places, the between-chain spread is larger and R-hat rises above 1. It needs at
+least two chains: a single chain cannot tell you it is stuck.
+
+ArviZ computes the improved version of
+[Vehtari et al. (2021)](https://doi.org/10.1214/20-BA1221) by default (`az.rhat` uses
+`method="rank"`; `az.summary` and `diagnostics=["rhat_rank"]` above use the same). Three
+changes make it stricter and more robust:
+
+1. **Split chains.** Each chain is cut in half and the halves are compared as separate
+   chains. A single chain that drifts slowly then shows up as its first half disagreeing
+   with its second half.
+2. **Rank-normalize.** All draws from all chains are pooled and replaced by their ranks
+   (1 for the smallest), and the ranks are mapped onto a standard normal scale. The classic
+   formula is then applied to these scores rather than to the raw values. This makes the
+   result robust to heavy tails and outliers, and unchanged by any order-preserving
+   transform: taking the log of a variance does not change its R-hat.
+3. **Check the tails as well.** The computation is repeated on the distance of each draw
+   from the median, which catches chains that agree on location but differ in spread. The
+   larger of the two values is reported.
+
+That is also where the `< 1.01` threshold comes from, together with `> 100` effective
+draws per chain: they are recommendations from the same paper, which explains why the
+older `< 1.1` rule turned out to be too lenient. The extra steps matter in practice: on
+the `balanced` run above, the classic R-hat on `W` peaks at 1.77, the rank-normalized one
+at 2.03.
+
+**ESS** (effective sample size) is computed with the same rank-normalization. It answers
+how many *independent* draws your correlated chain is worth. To make it concrete: 1000
+draws with an ESS of 50 carry about as much information as 50 independent draws, because
+neighbouring draws in a chain partly repeat each other.
+
+#### Figures ArviZ gives you
+
+All of these work on the result of `covariance_to_arviz` directly; for Σ, pick a point or
+quantity with `coords`, e.g. `coords={"point": 0}`. The first two produce the figures above.
+
+| function | what it shows | what bad looks like |
+|---|---|---|
+| [`az.plot_trace`](https://python.arviz.org/projects/plots/en/latest/api/generated/arviz_plots.plot_trace.html) | value at every draw, one line per chain | chains at separate levels, or drifting |
+| [`az.plot_convergence_dist`](https://python.arviz.org/projects/plots/en/latest/api/generated/arviz_plots.plot_convergence_dist.html) | distribution of R-hat (or ESS) over all quantities | the curve rising far to the right of 1.01 |
+| [`az.plot_rank`](https://python.arviz.org/projects/plots/en/latest/api/generated/arviz_plots.plot_rank.html) | for each chain, how its draws rank among *all* chains' draws | one chain's curve leaving the band: it is exploring somewhere else |
+| [`az.plot_trace_dist`](https://python.arviz.org/projects/plots/en/latest/api/generated/arviz_plots.plot_trace_dist.html) | each quantity's distribution per chain, next to its trace | one chain's distribution sitting apart from the others |
+| [`az.plot_energy`](https://python.arviz.org/projects/plots/en/latest/api/generated/arviz_plots.plot_energy.html) | NUTS-specific: whether the sampler moves freely between energy levels (BFMI) | the two energy distributions differ clearly in width, or BFMI < 0.3 |
+
+On ArviZ ≥ 1.0 these return a
 [`PlotCollection`](https://python.arviz.org/projects/plots/en/latest/api/generated/arviz_plots.PlotCollection.html)
-(not an array of matplotlib axes), so it is saved with `pc.savefig()`; the 0.x kwargs
-`compact=` and `figsize=` no longer exist and raise if passed.
-
-??? tip "Three more ArviZ plots worth a look on your own run"
-
-    Each takes the same `idata`, and the same `var_names` / `coords` selection as the trace
-    plot above.
-
-    | plot | what it shows | what bad looks like |
-    |---|---|---|
-    | [`az.plot_trace_dist`](https://python.arviz.org/projects/plots/en/latest/api/generated/arviz_plots.plot_trace_dist.html) | the classic pairing: each coefficient's marginal density next to its trace | one chain's density sitting apart from the others |
-    | [`az.plot_rank`](https://python.arviz.org/projects/plots/en/latest/api/generated/arviz_plots.plot_rank.html) | for each chain, how its draws rank among *all* chains' draws | one chain's curve leaving the band: it is exploring somewhere else |
-    | [`az.plot_energy`](https://python.arviz.org/projects/plots/en/latest/api/generated/arviz_plots.plot_energy.html) | NUTS-specific: whether the momentum resampling can move the chain between energy levels (BFMI) | the two energy distributions differ clearly in width, or BFMI < 0.3 |
-
-    The [arviz-plots gallery](https://arviz-plots.readthedocs.io/en/latest/gallery/index.html)
-    shows every plot type with example output.
+rather than an array of matplotlib axes, so they are saved with `pc.savefig()`; the 0.x
+keyword arguments `compact=` and `figsize=` no longer exist and raise if passed. The
+[arviz-plots gallery](https://arviz-plots.readthedocs.io/en/latest/gallery/index.html)
+shows every plot type with example output.
 
 #### Interpreting diagnostics
 
-The most important diagnostics to check in order:
+The most important diagnostics, in the order to check them:
 
 | Diagnostic | What it measures | Good value |
 |---|---|---|
 | **Divergences** | Transitions where the integrator blew up, usually in a region of high curvature the step size cannot resolve. | **0.** Any divergence makes the run suspect, whatever R-hat says. |
-| [**R-hat**](https://python.arviz.org/projects/stats/en/latest/api/generated/arviz_stats.rhat.html) | Between-chain variance over within-chain variance; near 1 means the chains agree on the same distribution. | < 1.01 |
-| [**ESS (bulk)**](https://python.arviz.org/projects/stats/en/latest/api/generated/arviz_stats.ess.html) | Effective sample size: how many independent draws the chains are worth once autocorrelation is accounted for. | > 100 per chain |
+| [**R-hat**](https://python.arviz.org/projects/stats/en/latest/api/generated/arviz_stats.rhat.html) on Σ | Whether the chains agree on the same distribution; see above. | < 1.01 |
+| [**ESS (bulk)**](https://python.arviz.org/projects/stats/en/latest/api/generated/arviz_stats.ess.html) on Σ | How many independent draws the chains are worth. | > 100 per chain |
 | **Acceptance rate** | Fraction of NUTS proposals accepted. Far below target means the step size is too large; far above means it is inefficiently small. | 0.6 to 0.9 |
-
-
-To make ESS concrete: 1000 draws with an ESS of 50 carry about as much information as
-50 independent draws. Neighbouring draws in a chain are correlated, so they partly
-repeat each other.
 
 **Divergences come first**, because the other three can all look healthy while the sampler
 is systematically missing part of the posterior. A divergence means the simulated trajectory
@@ -381,21 +522,13 @@ blew up rather than following the posterior's geometry, which usually points at 
 curvature the step size cannot resolve, and the draws you keep are then biased in a way no
 amount of extra sampling fixes. Betancourt's
 [*Conceptual Introduction*](https://arxiv.org/abs/1701.02434) is the place to read what they
-mean geometrically. psyphy records them for you: `sampler_stats` carries `diverging`,
-`energy` and `n_steps` under ArviZ's standard names, so
-[`az.plot_energy(idata)`](https://python.arviz.org/projects/plots/en/latest/api/generated/arviz_plots.plot_energy.html)
-and the divergence ticks on the trace plot work with no extra wiring.
-
-**R-hat** compares chains against each other, so it needs at least two of them; a single
-chain cannot tell you it is stuck. The idea goes back to
-[Gelman and Rubin (1992)](https://doi.org/10.1214/ss/1177011136), but the version ArviZ
-computes is the rank-normalized, split variant of
-[Vehtari et al. (2021)](https://doi.org/10.1214/20-BA1221), which is also where the
-`< 1.01` and `> 100` thresholds above come from. They are recommendations from that paper.
+mean geometrically. psyphy records them for you: the sampler statistics carry `diverging`,
+`energy` and `n_steps` under ArviZ's standard names, so `az.plot_energy` and the
+divergence ticks on the trace plot work with no extra wiring.
 
 With `--mode quick` (2 chains and 150 draws) R-hat and ESS will not reach these
-thresholds, and they are not meant to. Use `--mode balanced` or `--mode full`, which exist
-for exactly this reason, before drawing any conclusion from the numbers.
+thresholds, even on Σ, and they are not meant to. Use `--mode balanced` or `--mode full`,
+which exist for exactly this reason, before drawing any conclusion from the numbers.
 
 ### Step 6: Posterior predictive uncertainty
 
@@ -483,7 +616,11 @@ covariance matrices over all draws:
 
 ## Further reading
 
-- API reference: [`NUTSSampler`](../../reference/inference.md), [`MCMCPosterior`](../../reference/posterior.md)
+- API reference: [`NUTSSampler`](../../reference/inference.md#psyphy.inference.NUTSSampler),
+  [`MCMCPosterior`](../../reference/posterior.md#psyphy.posterior.MCMCPosterior),
+  [`covariance_to_arviz`](../../reference/model.md#psyphy.model.covariance_to_arviz),
+  [`PosteriorMeanCovarianceField`](../../reference/model.md#psyphy.model.PosteriorMeanCovarianceField),
+  [`InferenceEngine`](../../reference/inference.md#psyphy.inference.base.InferenceEngine)
 - MAP fitting tutorial: [`full_wppm_fit_example`](full_wppm_fit_example.md)
 - Model details: [`wppm_tutorial`](wppm_tutorial.md)
 - BlackJAX documentation: [blackjax-devs.github.io/blackjax](https://blackjax-devs.github.io/blackjax/)
