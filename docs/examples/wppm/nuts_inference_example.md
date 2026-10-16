@@ -2,7 +2,7 @@
 
 This tutorial demonstrates **full posterior inference** using the No-U-Turn Sampler (NUTS) for the Wishart Process Psychophysical Model (WPPM).
 
-The [MAP tutorial](full_wppm_fit_example.md) ends with *one* threshold ellipse per reference
+The [Maximum A Posteriori (MAP) tutorial](full_wppm_fit_example.md) ends with *one* threshold ellipse per reference
 point: the model's single best guess. This page ends with a *distribution* of ellipses per reference
 point. Where the distribution is
 tight, the data pin the threshold down. Where it fans out, they do not, and a single MAP
@@ -11,7 +11,7 @@ ellipse would have hidden that.
 The companion script can be found at
 [`nuts_inference_example.py`](https://github.com/flatironinstitute/psyphy/blob/main/docs/examples/wppm/nuts_inference_example.py).
 
-**The route through this page:**
+**Outline:**
 
 | step | what you do | what you get |
 |---|---|---|
@@ -23,7 +23,7 @@ The companion script can be found at
 
 ??? note "How to run the script"
 
-    An install of psyphy on its own is not enough. This page needs three optional
+    This page needs three optional
     dependencies, none of which psyphy requires by default.
 
     ```bash
@@ -47,14 +47,13 @@ The companion script can be found at
     # 25 refs, 500 MC samples, 4 chains x (500 + 500). A real fit; ~35 min on an A100.
     python nuts_inference_example.py --mode balanced
 
-    # 25 refs, 2000 MC samples, 4 chains x (1000 + 1000). Paper scale; a batch job.
+    # 25 refs, 2000 MC samples, 4 chains x (1000 + 1000).
     python nuts_inference_example.py --mode full
     ```
 
     `quick` exists so the page can be regenerated quickly: about a minute on an A100 GPU,
-    about 20 minutes on a CPU. Its diagnostics are deliberately not publication grade; see
-    Step 5. Expect the heavier modes to take correspondingly longer on a CPU than the GPU
-    times above; the script prints a projected run time before it starts sampling.
+    about 20 minutes on a CPU. Don't expect good diagnostics from these settings yet.
+
 
 ---
 
@@ -81,9 +80,9 @@ visiting frequency *is* that distribution. Run it long enough and the places it 
 form a sample from the posterior, which is all you need: averages over the sample
 approximate averages over the posterior, and the spread of the sample is the uncertainty.
 Nothing is ever normalized, which is the trick, because the intractable integral is exactly
-the normalising constant.
+the normalizing constant.
 
-The challenge is building a walk that explores efficiently. A naive random walk works in two or
+The challenge is building a walk that explores efficiently. A naive random walk works maybe in two or
 three dimensions and fails badly in fifty, where almost every direction you could step in
 leads somewhere less probable, so nearly all proposals are rejected and the chain crawls.
 [Hamiltonian Monte Carlo](https://en.wikipedia.org/wiki/Hamiltonian_Monte_Carlo) fixes this
@@ -93,8 +92,7 @@ can travel a long way and still be accepted. **NUTS**, the No-U-Turn Sampler of
 [Hoffman and Gelman (2014)](https://jmlr.org/papers/v15/hoffman14a.html), removes the one
 awkward tuning knob by extending each trajectory until it starts to double back on itself.
 Betancourt's [*Conceptual Introduction to Hamiltonian Monte Carlo*](https://arxiv.org/abs/1701.02434)
-is the readable account of why this works and where it fails; it is worth an hour if you
-intend to trust these numbers.
+is the readable account of why this works and where it fails; it is worth skimming.
 
 Two things follow for psyphy:
 
@@ -189,14 +187,14 @@ back is an `MCMCPosterior`, and these are the three things you will use from it:
 | call | returns | used in |
 |---|---|---|
 | `nuts_posterior.sample(n, key=...)` | `n` draws `{"W": (n, *W_shape)}` | Step 6, the ellipse ensemble |
-| `PosteriorMeanCovarianceField(nuts_posterior)` | the posterior mean covariance field E[Σ(x)] | Step 6, the red "posterior mean" ellipses |
-| `covariance_to_arviz(nuts_posterior, points)` | Σ at chosen points for every draw, in ArviZ's format, for diagnostics | Step 5 |
+| `PosteriorMeanCovarianceField(nuts_posterior)` | the posterior mean covariance field $\mathbb{E}[\Sigma(x)]$ | Step 6, the red "posterior mean" ellipses |
+| `covariance_to_arviz(nuts_posterior, points)` | $\Sigma$ at chosen points for every draw, in ArviZ's format, for diagnostics | Step 5 |
 
 `MCMCPosterior` and `MAPPosterior` share this interface, so code written for a MAP fit,
 for example `WPPMPredictivePosterior`, accepts a NUTS fit unchanged.
 
 !!! warning "Don't draw ellipses from `nuts_posterior.params`"
-    `nuts_posterior.params` is the average **parameter** E[W]. It is a valid parameter set
+    `nuts_posterior.params` is the average **parameter** $\mathbb{E}[W]$. It is a valid parameter set
     (you can pass it as `init_params`), but the covariance field built from it,
     `WPPMCovarianceField(model, nuts_posterior.params)`, comes out far too small. Step 6
     shows why and what to use instead. `WPPMCovarianceField.from_posterior` builds exactly
@@ -218,7 +216,7 @@ The arguments you are most likely to touch:
 | `num_warmup` | tuning steps per chain, discarded | trace plots still drift at the start |
 | `num_samples` | kept draws per chain | ESS is too low |
 | `num_chains` | independent chains; R-hat needs ≥ 2 | you want a stronger convergence check |
-| `max_num_doublings` | tree-depth cap, ≤ 2^k − 1 gradients per draw | most draws hit the cap (the script prints this) |
+| `max_num_doublings` | tree-depth cap, $\le 2^k - 1$ gradients per draw | most draws hit the cap (the script prints this) |
 | `target_acceptance_rate` | how cautious the tuned step size is | you see divergences (try 0.9) |
 
 **Compute settings.** The script takes `--mode`, which selects a preset (see
@@ -240,13 +238,12 @@ thoroughness of the fit changes, never what is being fit:
       **times one gradient and prints a bracketed projection** before sampling starts, so you
       can see whether a run fits inside a Slurm time limit before committing to it.
     - **Tree depth is capped.** `NUTSSampler(max_num_doublings=8)` (the default) limits a draw
-      to at most 2^8 − 1 = 255 gradient evaluations; BlackJAX's own default of 10 allows 1023.
+      to at most $2^8 - 1 = 255$ gradient evaluations; BlackJAX's own default of 10 allows 1023.
       If `sampler_stats["n_steps"]` sits at the cap for most draws, trajectories are being
       truncated: still valid MCMC, but slower mixing. Raise the cap or reparameterize.
     - **Warmup starts from a prior-scaled metric.** By default the sampler works in
       `z = W / prior_std` (`prior_preconditioning=True`), so adaptation does not begin from an
-      identity mass matrix that is badly mismatched to coefficients whose scales span
-      0.06 to 0.01. Without this, early warmup runs every draw to the maximum tree depth.
+      identity mass matrix that is badly mismatched to coefficients. Without this, early warmup runs every draw to the maximum tree depth.
     - **Chains are vmapped, in both warmup modes.** All chains advance in one compiled call per
       phase, so XLA compiles once rather than once per chain. Under vmap each step costs as much
       as the *deepest* tree across chains, which is one more reason for the depth cap. On a
@@ -314,12 +311,12 @@ function references below link into them:
 and ESS) and [arviz-plots](https://python.arviz.org/projects/plots/en/latest/) (figures),
 both on top of arviz-base (the data format). `import arviz as az` gives you all three.
 
-#### What to diagnose: Σ, not W
+#### What to diagnose: $\Sigma$, not $W$
 
 The obvious thing to check would be the parameters themselves:
 `nuts_posterior.to_arviz()` hands the raw draws of `W` to ArviZ. For the WPPM that is
 misleading. `W` is only defined up to a rotation: rotating `W` along its embedding axis
-(its last axis) leaves every covariance matrix Σ(x) unchanged, and the prior too. So
+(its last axis) leaves every covariance matrix $\Sigma(x)$ unchanged, and the prior too. So
 different chains can settle at different rotations. They then disagree about `W` while
 agreeing about every ellipse, and diagnostics computed on `W` report a failure that no
 ellipse, threshold or prediction is affected by. (It is the same symmetry that makes the
@@ -327,12 +324,12 @@ naive posterior mean too small; see the note in Step 6.)
 
 If you run diagnostics on `W` yourself, for example
 `az.summary(nuts_posterior.to_arviz())`, expect them to look bad: in our `balanced` runs,
-R-hat on `W` reaches about 2, while on Σ it stays around 1.07. That is the symmetry, not a
+R-hat on `W` reaches about 2, while on $\Sigma$ it stays around 1.07. That is the symmetry, not a
 failed fit.
 
-So psyphy diagnoses Σ itself.
+So psyphy diagnoses $\Sigma$ itself.
 [`covariance_to_arviz`](../../reference/model.md#psyphy.model.covariance_to_arviz)
-evaluates Σ for every posterior draw at points you choose and returns the result in
+evaluates $\Sigma$ for every posterior draw at points you choose and returns the result in
 ArviZ's format, an
 [`xarray.DataTree`](https://docs.xarray.dev/en/stable/user-guide/hierarchical-data.html).
 For each draw and point, the 2×2 matrix is summarised by three numbers that together
@@ -340,19 +337,19 @@ determine it:
 
 | quantity | meaning |
 |---|---|
-| `log_var_0` | log of the variance along stimulus dimension 1, log Σ₁₁ |
-| `log_var_1` | log of the variance along stimulus dimension 2, log Σ₂₂ |
-| `corr_0_1` | correlation Σ₁₂/√(Σ₁₁Σ₂₂), which carries the ellipse's orientation |
+| `log_var_0` | log of the variance along stimulus dimension 1, $\log \Sigma_{11}$ |
+| `log_var_1` | log of the variance along stimulus dimension 2, $\log \Sigma_{22}$ |
+| `corr_0_1` | correlation $\Sigma_{12}/\sqrt{\Sigma_{11}\Sigma_{22}}$, which carries the ellipse's orientation |
 
 The result holds one variable, `Sigma`, with dimensions `(chain, draw, point, quantity)`.
 The evaluation points are stored with it as the coordinates `location_0` and
 `location_1`, and the sampler statistics (divergences, energy, tree size) are carried
 over, so everything below works on it directly.
 
-#### Choosing where to evaluate Σ
+#### Choosing where to evaluate $\Sigma$
 
-`W` is one fixed set of numbers, but Σ is a function of the stimulus location x. A
-diagnostic of Σ is therefore always a diagnostic *at some x*, and with the current
+`W` is one fixed set of numbers, but $\Sigma$ is a function of the stimulus location $x$. A
+diagnostic of $\Sigma$ is therefore always a diagnostic *at some $x$*, and with the current
 implementation **you choose those locations**: `covariance_to_arviz` deliberately has no
 default for `points`.
 
@@ -364,11 +361,11 @@ default for `points`.
   space catches that, for example 7×7 points:
   `g = jnp.linspace(-1, 1, 7); grid = jnp.stack(jnp.meshgrid(g, g), -1).reshape(-1, 2)`.
 - **Report the worst value** over all points and quantities.
-- **A few points are enough.** Σ(x) is a low-degree polynomial in x (degree 2 here), so it
+- **A few points are enough.** $\Sigma(x)$ is a low-degree polynomial in $x$ (degree 2 here), so it
   varies smoothly, and a dense grid mostly adds near-duplicates.
 
 Choosing points is a property of this approach, not a law of nature. Quantities of `W`
-that are unchanged by the rotation, such as `W Wᵀ` summed over the embedding axis, would
+that are unchanged by the rotation, such as $W W^\top$ summed over the embedding axis, would
 allow a point-free check; psyphy does not implement that.
 
 #### Running the diagnostics
@@ -406,7 +403,7 @@ so its plots show little beyond "not converged yet". Running the script with
 
 <div align="center">
   <img src="../plots/nuts_trace_sigma_balanced.png" width="800"/>
-  <p><em>The three Σ quantities at the reference point with the highest R-hat, one
+  <p><em>The three \(\Sigma\) quantities at the reference point with the highest R-hat, one
   colour per chain, from <code>--mode balanced</code>.</em></p>
 </div>
 
@@ -438,13 +435,13 @@ model.
 
 <div align="center">
   <img src="../plots/nuts_convergence_sigma_balanced.png" width="800"/>
-  <p><em>Bulk ESS, tail ESS and R-hat for all 75 Σ quantities (25 reference points × 3),
+  <p><em>Bulk ESS, tail ESS and R-hat for all 75 \(\Sigma\) quantities (25 reference points × 3),
   from <code>--mode balanced</code>, with ArviZ's default settings.</em></p>
 </div>
 
 **How to read it.** There is one panel per diagnostic, titled with ArviZ's name for it
 (`ess_bulk`, `ess_tail`, `rhat`). Each panel is a cumulative curve over all 75 quantities:
-its height at a value x is the **fraction of quantities** whose diagnostic is at or below x.
+its height at a value $x$ is the **fraction of quantities** whose diagnostic is at or below $x$.
 The dashed lines are ArviZ's reference values: 1.01 for R-hat, and 100 effective draws
 per chain for ESS, which is 400 here with 4 chains (200 in `quick` with 2).
 
@@ -455,7 +452,7 @@ per chain for ESS, which is 400 here with 4 chains (200 in `quick` with 2).
 
 In this run, about 40% of the quantities have R-hat below 1.01, and the largest is 1.066.
 Roughly three quarters have a bulk ESS below 400 (the smallest is 50), and about one in six
-has a tail ESS below 400. So the fit is close to converged on Σ but does not meet the strict
+has a tail ESS below 400. So the fit is close to converged on $\Sigma$ but does not meet the strict
 thresholds, mainly because it collected too few effective draws. That fits another number
 the script prints: every draw ran to the tree-depth cap of 255 integration steps, so the
 trajectories are cut short and consecutive draws stay correlated. The remedy is more
@@ -491,9 +488,9 @@ draws per chain: they are recommendations from the same paper, which explains wh
 older `< 1.1` rule turned out to be too lenient.
 
 The extra steps matter in practice. On a `balanced` run, the classic R-hat puts 61% of
-the Σ quantities below 1.01. Splitting each chain in half (step 1) catches slow drift
+the $\Sigma$ quantities below 1.01. Splitting each chain in half (step 1) catches slow drift
 within a chain, and drops that to 35%. Rank-normalization adds almost nothing on top
-here, because the Σ quantities have no heavy tails.
+here, because the $\Sigma$ quantities have no heavy tails.
 
 **ESS** (effective sample size) is computed with the same rank-normalization. It answers
 how many *independent* draws your correlated chain is worth. To make it concrete: 1000
@@ -502,7 +499,7 @@ neighbouring draws in a chain partly repeat each other.
 
 #### Figures ArviZ gives you
 
-All of these work on the result of `covariance_to_arviz` directly; for Σ, pick a point or
+All of these work on the result of `covariance_to_arviz` directly; for $\Sigma$, pick a point or
 quantity with `coords`, e.g. `coords={"point": 0}`. The first two produce the figures above.
 
 | function | what it shows | what bad looks like |
@@ -527,8 +524,8 @@ The most important diagnostics, in the order to check them:
 | Diagnostic | What it measures | Good value |
 |---|---|---|
 | **Divergences** | Transitions where the integrator blew up, usually in a region of high curvature the step size cannot resolve. | **0.** Any divergence makes the run suspect, whatever R-hat says. |
-| [**R-hat**](https://python.arviz.org/projects/stats/en/latest/api/generated/arviz_stats.rhat.html) on Σ | Whether the chains agree on the same distribution; see above. | < 1.01 |
-| [**ESS (bulk)**](https://python.arviz.org/projects/stats/en/latest/api/generated/arviz_stats.ess.html) on Σ | How many independent draws the chains are worth. | > 100 per chain |
+| [**R-hat**](https://python.arviz.org/projects/stats/en/latest/api/generated/arviz_stats.rhat.html) on $\Sigma$ | Whether the chains agree on the same distribution; see above. | < 1.01 |
+| [**ESS (bulk)**](https://python.arviz.org/projects/stats/en/latest/api/generated/arviz_stats.ess.html) on $\Sigma$ | How many independent draws the chains are worth. | > 100 per chain |
 | **Acceptance rate** | Fraction of NUTS proposals accepted. Far below target means the step size is too large; far above means it is inefficiently small. | 0.6 to 0.9 |
 
 **Divergences come first**, because the other three can all look healthy while the sampler
@@ -542,7 +539,7 @@ mean geometrically. psyphy records them for you: the sampler statistics carry `d
 divergence ticks on the trace plot work with no extra wiring.
 
 With `--mode quick` (2 chains and 150 draws) R-hat and ESS will not reach these
-thresholds, even on Σ, and they are not meant to. Use `--mode balanced` or `--mode full`,
+thresholds, even on $\Sigma$, and they are not meant to. Use `--mode balanced` or `--mode full`,
 which exist for exactly this reason, before drawing any conclusion from the numbers.
 
 ### Step 6: Posterior predictive uncertainty
@@ -552,39 +549,39 @@ which exist for exactly this reason, before drawing any conclusion from the numb
 ```
 
 Each draw gives one complete covariance field, so every blue ellipse below is a field the
-data cannot rule out. For a single summary field, the *posterior mean* E[Σ(x)], average the
+data cannot rule out. For a single summary field, the *posterior mean* $\mathbb{E}[\Sigma(x)]$, average the
 covariance matrices over all draws:
 
 ```python title="Posterior mean covariance field"
 --8<-- "docs/examples/wppm/nuts_inference_example.py:posterior_mean"
 ```
 
-??? note "Why the mean is computed from Σ, not from W"
+??? note "Why the mean is computed from \(\Sigma\), not from \(W\)"
 
     The tempting shortcut is to average the parameters and build one field from the
-    result, `WPPMCovarianceField(model, nuts_posterior.params)`. That computes Σ(E[W]),
+    result, `WPPMCovarianceField(model, nuts_posterior.params)`. That computes $\Sigma(\mathbb{E}[W])$,
     and for the WPPM it gives ellipses that are far too small.
 
-    The reason is that Σ(x) = U(x) U(x)ᵀ + λI, with U linear in W, so Σ is roughly
-    *W squared*. Squaring and then averaging is not the same as averaging and then
-    squaring. A one-number example with two draws, W = +1 and W = −1:
+    The reason is that $\Sigma(x) = U(x)\,U(x)^\top + \lambda I$, with $U$ linear in $W$, so $\Sigma$ is roughly
+    *$W$ squared*. Squaring and then averaging is not the same as averaging and then
+    squaring. A one-number example with two draws, $W = +1$ and $W = -1$:
 
     | | draw 1 | draw 2 | average |
     |---|---|---|---|
-    | W | +1 | −1 | **0** |
-    | Σ = W² | 1 | 1 | **1** |
+    | $W$ | $+1$ | $-1$ | $\mathbf{0}$ |
+    | $\Sigma = W^2$ | $1$ | $1$ | $\mathbf{1}$ |
 
-    Both draws describe the same ellipse, Σ = 1. Averaging Σ gives 1, the right answer.
-    Averaging W first gives 0, and 0² = 0: the ellipse disappears.
+    Both draws describe the same ellipse, $\Sigma = 1$. Averaging $\Sigma$ gives $1$, the right answer.
+    Averaging $W$ first gives $0$, and $0^2 = 0$: the ellipse disappears.
 
     The WPPM has this situation built in. Rotating `W` along its embedding axis (its
-    last axis) leaves Σ unchanged, so many different `W`s produce the same ellipses, and
+    last axis) leaves $\Sigma$ unchanged, so many different `W`s produce the same ellipses, and
     different draws, especially from different chains, settle on different ones. On their
     own each draw is fine. Averaged, they partly cancel. Even without that symmetry,
-    E[Σ] = Σ(E[W]) + Cov[U] holds exactly, so averaging W first always loses the spread
+    $\mathbb{E}[\Sigma] = \Sigma(\mathbb{E}[W]) + \operatorname{Cov}[U]$ holds exactly, so averaging $W$ first always loses the spread
     term and never gives larger ellipses.
 
-    `PosteriorMeanCovarianceField` computes Σ for every draw first and averages afterwards,
+    `PosteriorMeanCovarianceField` computes $\Sigma$ for every draw first and averages afterwards,
     so neither effect applies. One thing to keep in mind: an average of covariance matrices
     is somewhat larger than a typical single draw, because draws differ in size. That is
     what a mean does, not an error.
@@ -595,7 +592,7 @@ covariance matrices over all draws:
 
 <div align="center">
   <img src="../plots/nuts_ellipses_uncertainty.jpg" width="600"/>
-  <p><em>Faint blue: 30 covariance fields sampled from the posterior. Red: posterior mean E[Σ(x)], averaged over all draws. Black: ground truth. The spread of blue ellipses shows where the model is uncertain.</em></p>
+  <p><em>Faint blue: 30 covariance fields sampled from the posterior. Red: posterior mean \(\mathbb{E}[\Sigma(x)]\), averaged over all draws. Black: ground truth. The spread of blue ellipses shows where the model is uncertain.</em></p>
 </div>
 
 
