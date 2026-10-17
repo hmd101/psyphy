@@ -352,9 +352,9 @@ misleading, because `W` is [not identified](#a-note-on-the-parameters-w-is-not-i
 chains settle at different rotations, disagree about `W`, and agree about every ellipse.
 
 The size of the effect is worth seeing once. On the `balanced` run behind this page, R-hat
-on `W` reaches about **2**, while on $\Sigma$ it stays around **1.07**. Same draws, same fit:
-one number says the sampler failed and the other says it nearly converged, and only the
-second one is about something the model predicts.
+on `W` reaches **1.92** (median 1.16), while the worst of the 75 $\Sigma$ quantities is
+**1.033**. Same draws, same fit: one number says the sampler failed badly, the other says it
+very nearly converged, and only the second is about something the model predicts.
 
 So psyphy diagnoses $\Sigma$ itself.
 [`covariance_to_arviz`](../../reference/model.md#psyphy.model.covariance_to_arviz)
@@ -403,6 +403,35 @@ allow a point-free check; psyphy does not implement that.
 --8<-- "docs/examples/wppm/nuts_inference_example.py:arviz_diagnostics"
 ```
 
+This is what the `balanced` run behind this page prints — the four checks above, then the
+spread of `az.summary` over all 75 quantities:
+
+```text
+  Posterior: 4 chains × 500 draws
+  Mean acceptance rate: 0.829
+  Divergences: 0 / 2000 draws (0.0%)
+  Leapfrog steps/draw: mean 255, 100% at the cap (255)
+[5/7] Computing ArviZ diagnostics...
+            mean         sd      r_hat    ess_bulk
+count  75.000000  75.000000  75.000000   75.000000
+mean   -2.784946   0.192950   1.011855  362.983317
+std     1.863292   0.068891   0.007068  127.539086
+min    -5.496049   0.105605   1.001537   92.115776
+25%    -4.115109   0.142034   1.006049  261.257309
+50%    -3.712249   0.184550   1.011402  359.231943
+75%    -0.450456   0.218587   1.015118  455.414667
+max     0.230358   0.435962   1.032867  681.069768
+  R-hat max on Σ: 1.033  (target < 1.01)
+  ESS min on Σ:   92    (target > 100 per chain)
+```
+
+Read in the order of the table above: **no divergences**, so the geometry was never
+pathological and the draws are unbiased; acceptance 0.83, comfortably in range; R-hat at
+worst 1.033, just over the threshold; ESS the weakest of the four. Every draw ran to the
+tree-depth cap of 255 integration steps, which is the reason — trajectories are cut short,
+so consecutive draws stay correlated and 2000 draws are worth fewer independent ones than
+they should be.
+
 [`az.summary`](https://python.arviz.org/projects/stats/en/latest/api/generated/arviz_stats.summary.html)
 returns one row per point and quantity: 27 rows in `quick` (9 points × 3) and 75 in
 `balanced` (25 × 3). The script prints only the spread of each column, because that many
@@ -450,10 +479,11 @@ one panel per quantity:
 | one coloured line | one chain |
 | black ticks along the bottom | divergences, if any; they appear because the sampler statistics carry `diverging` under ArviZ's standard name |
 
-**What good looks like:** chains overlapping each other, flat, and wiggling fast, the
-"fuzzy caterpillar". That is what this run shows: the four chains cover the same range in
-all three panels, and only one chain sits a little high in `log_var_0` for its first
-50 or so draws.
+**What good looks like:** chains overlapping each other, flat, and wiggling fast — the
+"fuzzy caterpillar". That is what this run shows: in all three panels the four chains cover
+the same range, none drifts, and none sits at its own level. There are no black ticks along
+the bottom either, because this run had no divergences; on a run that did, that is where
+they would appear.
 
 A chain that drifts steadily across a panel, or sits at its own level, has not converged:
 warmup was too short and the sampler is still finding the typical set. That is the most
@@ -481,15 +511,21 @@ per chain for ESS, which is 400 here with 4 chains (200 in `quick` with 2).
 - **ESS:** you want the opposite, the curve still at 0 at the dashed line, meaning every
   quantity has more effective draws than the threshold.
 
-In this run, about 40% of the quantities have R-hat below 1.01 — that is ArviZ's default,
+In this run, **44%** of the quantities have an R-hat below 1.01 — that is ArviZ's default,
 rank-normalized split R-hat; the comparison below shows what the variants give — and the
-largest is 1.066.
-Roughly three quarters have a bulk ESS below 400 (the smallest is 50), and about one in six
-has a tail ESS below 400. So the fit is close to converged on $\Sigma$ but does not meet the strict
-thresholds, mainly because it collected too few effective draws. That fits another number
-the script prints: every draw ran to the tree-depth cap of 255 integration steps, so the
-trajectories are cut short and consecutive draws stay correlated. The remedy is more
-draws, from `--mode full` (4 × 1000) or a larger `num_samples`.
+largest is **1.033**. For ESS, **57%** have a bulk ESS below 400 (the smallest is 92) and
+**11%** a tail ESS below 400 (smallest 194).
+
+So: close to converged on $\Sigma$, but not meeting the strict thresholds, and the binding
+constraint is ESS rather than R-hat. The reason is the one the sampler statistics already
+gave away — every draw ran to the tree-depth cap, so consecutive draws stay correlated. The
+remedy is more draws (`--mode full`, 4 × 1000) or a larger `max_num_doublings`, not a
+different model.
+
+It is worth being clear about what that means for the figures in Step 6. Nothing here says
+the posterior is wrong: there are no divergences, R-hat is within 3.3% of 1 everywhere, and
+the chains overlap. What it says is that the Monte Carlo error on those ellipses is larger
+than a publication-quality fit would accept — the shape is right, the last digit is not.
 
 #### What R-hat measures, and what "rank-normalized" means
 
@@ -526,14 +562,16 @@ the 75 $\Sigma$ quantities that pass `< 1.01` depends on which version you compu
 
 | R-hat variant | share below 1.01 |
 |---|---|
-| classic (Gelman & Rubin, 1992) | 61% |
-| + split chains (step 1) | 35% |
-| + rank-normalization (step 2) — ArviZ's default, and the figure above | ~40% |
+| classic (Gelman & Rubin, 1992) | 79% |
+| + split chains (step 1) | 45% |
+| + rank-normalization (step 2) — ArviZ's default, and the figure above | 44% |
 
-Splitting is what does the work here: slow drift inside a single chain is invisible to the
-classic formula and is most of what this fit suffers from. Rank-normalization barely moves
-the number, because the $\Sigma$ quantities have no heavy tails. The lesson is that "R-hat
-looked fine" is not a claim until you say which R-hat.
+Splitting is what does the work here: it nearly halves the share that passes. Slow drift
+inside a single chain is invisible to a formula that only compares whole chains with each
+other, and that is most of what this fit has. Rank-normalization then moves the number by
+one quantity out of 75, because these quantities have no heavy tails — on a posterior that
+did, it would matter more. The lesson is that "R-hat looked fine" is not a claim until you
+say which R-hat: the same draws pass at 79% or at 44% depending on the answer.
 
 **ESS** (effective sample size) is computed with the same rank-normalization. It answers
 how many *independent* draws your correlated chain is worth. To make it concrete: 1000
@@ -646,6 +684,26 @@ to measure.
 ```python title="Pointwise credible band on the threshold contour"
 --8<-- "docs/examples/wppm/nuts_inference_example.py:credible_band"
 ```
+
+<div align="center">
+  <img src="../plots/nuts_threshold_band_balanced.jpg" width="620"/>
+  <p><em>Pointwise 89% credible band on each threshold contour (blue fill), the posterior
+  median contour (blue line) and ground truth (black), from <code>--mode balanced</code>
+  over 400 draws.</em></p>
+</div>
+
+The band is narrow where the data pin the threshold down and wide where they do not: its
+width runs from **18%** of the contour's own radius at the best-determined reference point
+to **94%** at the worst, with a median of **33%**. A MAP fit reports the same ellipses with
+no way to tell those two cases apart.
+
+The black contour leaves the band in a few places, which is worth looking at rather than
+away from. An 89% pointwise band is *supposed* to miss about 11% of directions. Counted
+over all 25 × 181 (point, direction) pairs, the truth falls inside this band **96%** of the
+time, and **20 of the 25** points are covered in every direction — so if anything the band
+is slightly conservative here. One ground truth makes that an anecdote, not a calibration
+check: establishing coverage properly means repeating the whole simulate-and-fit loop many
+times and counting how often the band catches the truth.
 
 !!! warning "This band is pointwise, not simultaneous"
     The interval above covers the true radius **in each direction separately** with
