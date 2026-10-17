@@ -750,22 +750,22 @@ print("[6b/7] Pointwise credible band on the threshold contours...")
 # --8<-- [start:credible_band]
 # Pointwise credible band on the threshold contours:
 
-# More draws than the visual ensemble: quantiles need samples, and the band is a
-# summary of of the posterior
-N_BAND = min(400, NUM_CHAINS * NUM_SAMPLES)
+N_BAND = min(400, NUM_CHAINS * NUM_SAMPLES)  # num posterior draws to use for the band.
 CI_PROB = 0.89  # matches ArviZ's default ci_prob, so the band and az.summary agree
 
-# Direction grid: phi closes the loop so the filled polygon has no seam
-phi = jnp.linspace(0.0, 2 * jnp.pi, 181)
-u = jnp.stack([jnp.cos(phi), jnp.sin(phi)], axis=-1)  # (n_phi, 2)
+# Direction grid: define a bunch of angles phi to approximate a circle.
+phi = jnp.linspace(0.0, 2 * jnp.pi, 181)  # radians
+u = jnp.stack([jnp.cos(phi), jnp.sin(phi)], axis=-1)  # to x,y coordinates (n_phi, 2)
 
 
 def contour_radii(cov):
-    """Radius of the Mahalanobis-1 contour of one 2x2 covariance, per direction.
+    """
+    Compute distance from the reference point to the threshold contour in each direction u.
 
-    r(phi) = 1 / sqrt(u(phi)^T Sigma^-1 u(phi)). Along an eigenvector this is
-    sqrt(lambda), i.e. exactly the semi-axis `plot_ellipses` draws at scale 1,
-    so a band and an ellipse on the same axes are the same object.
+    The threshold contour is the ellipse defined by the covariance matrix `cov`.
+    find intersection of the ellipse with the line in direction u from the reference point.
+    Compute the distance from reference point to the intersection point.
+    The distance is computed as the Mahalanobis distance in the direction of u.
     """
     prec = jnp.linalg.inv(cov)
     return 1.0 / jnp.sqrt(jnp.einsum("pi,ij,pj->p", u, prec, u))
