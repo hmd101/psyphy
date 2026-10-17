@@ -154,8 +154,8 @@ probability of a correct response by simulating the observer: for every trial it
 the odd one out is picked. That has two consequences you will feel on this page:
 
 - **It is expensive.** Every gradient NUTS asks for repeats that simulation for every
-  trial, and NUTS asks for many gradients per draw. This is why the run-time notes in
-  Step 4 exist.
+  trial, and NUTS asks for many gradients per draw. This is what the
+  [runtime notes](#runtime) are about.
 - **It is noisy.** Two calls with different random keys give slightly different answers.
   NUTS needs the *same* answer every time, so psyphy freezes one key for the whole run
   (`logdensity_key_seed` in `NUTSSampler`). The sampler then explores the posterior implied
@@ -296,84 +296,11 @@ page, and Step 6 is where it gets built.
    [`window_adaptation`](https://blackjax-devs.github.io/blackjax/autoapi/blackjax/adaptation/window_adaptation/index.html).
 2. **Sampling** (`num_samples` steps). The tuning is frozen, and every draw is kept.
 
-The arguments you are most likely to touch:
-
-| argument | what it controls | turn it up when |
-|---|---|---|
-| `num_warmup` | tuning steps per chain, discarded | trace plots still drift at the start |
-| `num_samples` | kept draws per chain | ESS is too low |
-| `num_chains` | independent chains; R-hat needs ≥ 2 | you want a stronger convergence check |
-| `max_num_doublings` | tree-depth cap, $\le 2^k - 1$ gradients per draw | most draws hit the cap (the script prints this) |
-| `target_acceptance_rate` | how cautious the tuned step size is | you see divergences (try 0.9) |
-
-**Compute settings.** The script takes `--mode`, which selects a preset (see *How to run
-the script* at the top). The model class and its 54 parameters are the same in every mode.
-What the presets scale is three different things, and only the third is "how hard the
-sampler works":
-
-- **how much data** there is (9 reference points × 50 trials in `quick`, 25 × 200 in `full`),
-- **how accurately the likelihood is estimated** (`mc_samples` 50 → 2000),
-- **how long the sampler runs** (chains, warmup, draws).
-
-The first two change the posterior *being targeted*, not just how well it is explored, so a
-`quick` fit is not a rough version of a `full` fit — it is a different, smaller problem.
-
-```python
---8<-- "docs/examples/wppm/nuts_inference_example.py:compute_settings"
-```
-
-??? note "Runtime notes"
-
-    - **The MC likelihood dominates everything.** Each gradient evaluation simulates
-      `mc_samples` Monte Carlo draws for every trial, so cost scales with
-      `mc_samples × n_trials`. Going from `quick` to `full` raises that product by ~440×,
-      which is why `full` is a batch job and not something to run interactively.
-    - **NUTS cost per draw is not fixed.** It is `O(2^tree_depth)` gradient evaluations, and
-      the depth is data-dependent, commonly 16 to 64 evaluations per draw. The script therefore
-      **times one gradient and prints a bracketed projection** before sampling starts, so you
-      can see whether a run fits inside a Slurm time limit before committing to it.
-    - **Tree depth is capped.** `NUTSSampler(max_num_doublings=8)` (the default) limits a draw
-      to at most $2^8 - 1 = 255$ gradient evaluations; BlackJAX's own default of 10 allows 1023.
-      If `sampler_stats["n_steps"]` sits at the cap for most draws, trajectories are being
-      truncated: still valid MCMC, but slower mixing. Raise the cap or reparameterize.
-    - **Warmup starts from a prior-scaled metric.** By default the sampler works in
-      `z = W / prior_std` (`prior_preconditioning=True`), so adaptation does not begin from an
-      identity mass matrix that is badly mismatched to coefficients. Without this, early warmup runs every draw to the maximum tree depth.
-    - **Chains are vmapped, in both warmup modes.** All chains advance in one compiled call per
-      phase, so XLA compiles once rather than once per chain. Under vmap each step costs as much
-      as the *deepest* tree across chains, which is one more reason for the depth cap. On a
-      GPU, four chains cost about as much as one; on a CPU, many chains can be slower than
-      running them one by one.
-      Note: the progress bar moves only when each phase (warmup, sampling) finishes.
-
-
-
-#### Two warmup modes
-
-| Mode | When | How |
-|------|------|-----|
-| Adaptive (default, `step_size=None`) | Best quality; adapts step size and mass matrix per chain via `blackjax.window_adaptation`, starting from a prior-scaled metric. Chains vmapped; each adapts independently. | `NUTSSampler(num_warmup=200, num_samples=500)` |
-| Fixed (`step_size=<float>`) | Faster with many chains; no adaptation. All chains vmapped in one compiled call. User must choose a good step size. | `NUTSSampler(..., step_size=0.01)` |
-
-!!! info "Samplers other than NUTS"
-    psyphy ships NUTS only. Nothing *downstream* of the sampler is NUTS-specific, though:
-    any engine that returns an `MCMCPosterior` whose draws are shaped
-    `(n_chains, n_draws, *W_shape)` works unchanged with `to_arviz`, `covariance_to_arviz`,
-    `PosteriorMeanCovarianceField`, `WPPMPredictivePosterior` and every figure on this page.
-    BlackJAX itself offers MALA, plain HMC and random-walk Metropolis.
-
-    What is missing is the *upstream* half: the pieces that make a sampler a psyphy
-    sampler — the log density with the frozen Monte Carlo key, the prior preconditioning,
-    the vmapped chains — currently live inside `NUTSSampler.fit` rather than in a shared
-    base class, so adding a second engine today means copying them rather than setting an
-    option. Factoring them out is planned.
-
-    Two caveats would carry over to any gradient-based sampler, because they belong to the
-    model and the likelihood rather than to NUTS: the
-    [frozen-key likelihood](#a-note-on-the-likelihood) and the
-    [rotation symmetry of `W`](#a-note-on-the-parameters-w-is-not-identified). What does not
-    carry over is the diagnostics — a sampler without trajectories has no divergences, no
-    energies and no tree sizes, so parts of Step 5 would simply not apply.
+The knobs behind all of this — the arguments, the `--mode` presets, the runtime behaviour
+and the two warmup modes — are gathered in
+[Reference: tuning and runtime](#reference-tuning-and-runtime) at the end of the page, so
+that the walkthrough can go straight on to the question that matters more: whether the
+draws can be trusted at all.
 
 ### Step 5: Diagnostics with ArviZ
 
@@ -386,6 +313,36 @@ function references below link into them:
 [arviz-stats](https://python.arviz.org/projects/stats/en/latest/) (numbers such as R-hat
 and ESS) and [arviz-plots](https://python.arviz.org/projects/plots/en/latest/) (figures),
 both on top of arviz-base (the data format). `import arviz as az` gives you all three.
+
+#### What to check, and in what order
+
+Four numbers decide whether the draws are usable. Check them in this order:
+
+| Diagnostic | What it measures | Good value |
+|---|---|---|
+| **Divergences** | Transitions where the integrator blew up, usually in a region of high curvature the step size cannot resolve. | **0.** Any divergence makes the run suspect, whatever R-hat says. |
+| [**R-hat**](https://python.arviz.org/projects/stats/en/latest/api/generated/arviz_stats.rhat.html) on $\Sigma$ | Whether the chains agree on the same distribution ([below](#what-r-hat-measures-and-what-rank-normalized-means)). | < 1.01 |
+| [**ESS (bulk)**](https://python.arviz.org/projects/stats/en/latest/api/generated/arviz_stats.ess.html) on $\Sigma$ | How many independent draws the chains are worth. | > 100 per chain |
+| **Acceptance rate** | Fraction of NUTS proposals accepted. Far below target means the step size is too large; far above means it is inefficiently small. | 0.6 to 0.9 |
+
+**Divergences come first**, because the other three can all look healthy while the sampler
+is systematically missing part of the posterior. A divergence means the simulated trajectory
+blew up rather than following the posterior's geometry, which usually points at a region of
+curvature the step size cannot resolve, and the draws you keep are then biased in a way no
+amount of extra sampling fixes. Betancourt's
+[*Conceptual Introduction*](https://arxiv.org/abs/1701.02434) is the place to read what they
+mean geometrically. psyphy records them for you: the sampler statistics carry `diverging`,
+`energy` and `n_steps` under ArviZ's standard names, so `az.plot_energy` and the
+divergence ticks on the trace plot work with no extra wiring, and the script prints the
+count as soon as sampling finishes — before any of the figures, because a divergent run is
+not worth plotting.
+
+With `--mode quick` (2 chains and 150 draws) R-hat and ESS will not reach these
+thresholds, even on $\Sigma$, and they are not meant to. Use `--mode balanced` or `--mode full`
+before drawing any conclusion from the numbers.
+
+The rest of this step is how to compute these four for the WPPM: *on what* (next), *where*
+(after that), and then how to read the two figures and what R-hat is actually doing.
 
 #### What to diagnose: $\Sigma$, not $W$
 
@@ -449,15 +406,17 @@ allow a point-free check; psyphy does not implement that.
 [`az.summary`](https://python.arviz.org/projects/stats/en/latest/api/generated/arviz_stats.summary.html)
 returns one row per point and quantity: 27 rows in `quick` (9 points × 3) and 75 in
 `balanced` (25 × 3). The script prints only the spread of each column, because that many
-rows are not readable. If you print `summary` itself, the columns mean:
+rows are not readable.
 
-| column | meaning |
-|---|---|
-| `mean`, `sd` | posterior mean and standard deviation of that quantity |
-| `eti89_lb`, `eti89_ub` | lower and upper end of the 89% credible interval: the quantity lies in this range with 89% posterior probability (equal-tailed by default; `ci_kind="hdi"` and `ci_prob=` change it) |
-| `ess_bulk`, `ess_tail` | effective sample size in the middle and in the tails of the distribution ([`az.ess`](https://python.arviz.org/projects/stats/en/latest/api/generated/arviz_stats.ess.html)) |
-| `r_hat` | between-chain agreement ([`az.rhat`](https://python.arviz.org/projects/stats/en/latest/api/generated/arviz_stats.rhat.html)); explained below |
-| `mcse_mean`, `mcse_sd` | Monte Carlo error of `mean` and `sd`: how much they would move if you re-ran the sampler |
+??? note "What the columns of `az.summary` mean"
+
+    | column | meaning |
+    |---|---|
+    | `mean`, `sd` | posterior mean and standard deviation of that quantity |
+    | `eti89_lb`, `eti89_ub` | lower and upper end of the 89% credible interval: the quantity lies in this range with 89% posterior probability (equal-tailed by default; `ci_kind="hdi"` and `ci_prob=` change it). This is the pointwise interval that [Step 6](#from-a-cloud-of-curves-to-an-interval) turns into a band on the threshold contour |
+    | `ess_bulk`, `ess_tail` | effective sample size in the middle and in the tails of the distribution ([`az.ess`](https://python.arviz.org/projects/stats/en/latest/api/generated/arviz_stats.ess.html)) |
+    | `r_hat` | between-chain agreement ([`az.rhat`](https://python.arviz.org/projects/stats/en/latest/api/generated/arviz_stats.rhat.html)); explained below |
+    | `mcse_mean`, `mcse_sd` | Monte Carlo error of `mean` and `sd`: how much they would move if you re-ran the sampler |
 
 The single row to look at first is the one with the **largest** `r_hat` and the
 **smallest** `ess_bulk`. If the worst quantity passes, all of them do.
@@ -540,26 +499,27 @@ explores the same distribution, the two agree and R-hat is about 1. If the chain
 different places, the between-chain spread is larger and R-hat rises above 1. It needs at
 least two chains: a single chain cannot tell you it is stuck.
 
-ArviZ computes the improved version of
-[Vehtari et al. (2021)](https://doi.org/10.1214/20-BA1221) by default (`az.rhat` uses
-`method="rank"`; `az.summary` and `az.plot_convergence_dist` above use the same). Three
-changes make it stricter and more robust:
+ArviZ does not compute that classic version. By default it computes the improved R-hat of
+[Vehtari et al. (2021)](https://doi.org/10.1214/20-BA1221) (`az.rhat` uses `method="rank"`;
+`az.summary` and `az.plot_convergence_dist` above use the same), which is stricter in three
+ways — and that is also where the `< 1.01` threshold comes from, together with `> 100`
+effective draws per chain. Both are recommendations from that paper, which is why the older
+`< 1.1` rule is now considered too lenient.
 
-1. **Split chains.** Each chain is cut in half and the halves are compared as separate
-   chains. A single chain that drifts slowly then shows up as its first half disagreeing
-   with its second half.
-2. **Rank-normalize.** All draws from all chains are pooled and replaced by their ranks
-   (1 for the smallest), and the ranks are mapped onto a standard normal scale. The classic
-   formula is then applied to these scores rather than to the raw values. This makes the
-   result robust to heavy tails and outliers, and unchanged by any order-preserving
-   transform: taking the log of a variance does not change its R-hat.
-3. **Check the tails as well.** The computation is repeated on the distance of each draw
-   from the median, which catches chains that agree on location but differ in spread. The
-   larger of the two values is reported.
+??? note "The three changes, and why each one exists"
 
-That is also where the `< 1.01` threshold comes from, together with `> 100` effective
-draws per chain: they are recommendations from the same paper, which explains why the
-older `< 1.1` rule turned out to be too lenient.
+    1. **Split chains.** Each chain is cut in half and the halves are compared as separate
+       chains. A single chain that drifts slowly then shows up as its first half
+       disagreeing with its second half — something no between-chain comparison of whole
+       chains can see.
+    2. **Rank-normalize.** All draws from all chains are pooled and replaced by their ranks
+       (1 for the smallest), and the ranks are mapped onto a standard normal scale. The
+       classic formula is then applied to these scores rather than to the raw values. This
+       makes the result robust to heavy tails and outliers, and unchanged by any
+       order-preserving transform: taking the log of a variance does not change its R-hat.
+    3. **Check the tails as well.** The computation is repeated on the distance of each
+       draw from the median, which catches chains that agree on location but differ in
+       spread. The larger of the two values is reported.
 
 The extra steps matter in practice. On the `balanced` run behind this page, the share of
 the 75 $\Sigma$ quantities that pass `< 1.01` depends on which version you compute:
@@ -582,16 +542,19 @@ neighbouring draws in a chain partly repeat each other.
 
 #### Figures ArviZ gives you
 
-All of these work on the result of `covariance_to_arviz` directly; for $\Sigma$, pick a point or
-quantity with `coords`, e.g. `coords={"point": 0}`. The first two produce the figures above.
+The two figures above are `az.plot_trace` and `az.plot_convergence_dist`. Three more are
+worth knowing about when those two leave you unsure.
 
-| function | what it shows | what bad looks like |
-|---|---|---|
-| [`az.plot_trace`](https://python.arviz.org/projects/plots/en/latest/api/generated/arviz_plots.plot_trace.html) | value at every draw, one line per chain | chains at separate levels, or drifting |
-| [`az.plot_convergence_dist`](https://python.arviz.org/projects/plots/en/latest/api/generated/arviz_plots.plot_convergence_dist.html) | distribution of ESS (bulk and tail) and R-hat over all quantities | the R-hat curve reaching 1 far to the right of 1.01, or the ESS curves rising before their dashed line |
-| [`az.plot_rank`](https://python.arviz.org/projects/plots/en/latest/api/generated/arviz_plots.plot_rank.html) | for each chain, how its draws rank among *all* chains' draws | one chain's curve leaving the band: it is exploring somewhere else |
-| [`az.plot_trace_dist`](https://python.arviz.org/projects/plots/en/latest/api/generated/arviz_plots.plot_trace_dist.html) | each quantity's distribution per chain, next to its trace | one chain's distribution sitting apart from the others |
-| [`az.plot_energy`](https://python.arviz.org/projects/plots/en/latest/api/generated/arviz_plots.plot_energy.html) | NUTS-specific: whether the sampler moves freely between energy levels (BFMI) | the two energy distributions differ clearly in width, or BFMI < 0.3 |
+??? note "Three further ArviZ figures, and what bad looks like in each"
+
+    All of these work on the result of `covariance_to_arviz` directly; for $\Sigma$, pick a
+    point or quantity with `coords`, e.g. `coords={"point": 0}`.
+
+    | function | what it shows | what bad looks like |
+    |---|---|---|
+    | [`az.plot_rank`](https://python.arviz.org/projects/plots/en/latest/api/generated/arviz_plots.plot_rank.html) | for each chain, how its draws rank among *all* chains' draws | one chain's curve leaving the band: it is exploring somewhere else |
+    | [`az.plot_trace_dist`](https://python.arviz.org/projects/plots/en/latest/api/generated/arviz_plots.plot_trace_dist.html) | each quantity's distribution per chain, next to its trace | one chain's distribution sitting apart from the others |
+    | [`az.plot_energy`](https://python.arviz.org/projects/plots/en/latest/api/generated/arviz_plots.plot_energy.html) | NUTS-specific: whether the sampler moves freely between energy levels (BFMI) | the two energy distributions differ clearly in width, or BFMI < 0.3 |
 
 On ArviZ ≥ 1.0 these return a
 [`PlotCollection`](https://python.arviz.org/projects/plots/en/latest/api/generated/arviz_plots.PlotCollection.html)
@@ -599,31 +562,6 @@ rather than an array of matplotlib axes, so they are saved with `pc.savefig()`; 
 keyword arguments `compact=` and `figsize=` no longer exist and raise if passed. The
 [arviz-plots gallery](https://arviz-plots.readthedocs.io/en/latest/gallery/index.html)
 shows every plot type with example output.
-
-#### Interpreting diagnostics
-
-The most important diagnostics, in the order to check them:
-
-| Diagnostic | What it measures | Good value |
-|---|---|---|
-| **Divergences** | Transitions where the integrator blew up, usually in a region of high curvature the step size cannot resolve. | **0.** Any divergence makes the run suspect, whatever R-hat says. |
-| [**R-hat**](https://python.arviz.org/projects/stats/en/latest/api/generated/arviz_stats.rhat.html) on $\Sigma$ | Whether the chains agree on the same distribution; see above. | < 1.01 |
-| [**ESS (bulk)**](https://python.arviz.org/projects/stats/en/latest/api/generated/arviz_stats.ess.html) on $\Sigma$ | How many independent draws the chains are worth. | > 100 per chain |
-| **Acceptance rate** | Fraction of NUTS proposals accepted. Far below target means the step size is too large; far above means it is inefficiently small. | 0.6 to 0.9 |
-
-**Divergences come first**, because the other three can all look healthy while the sampler
-is systematically missing part of the posterior. A divergence means the simulated trajectory
-blew up rather than following the posterior's geometry, which usually points at a region of
-curvature the step size cannot resolve, and the draws you keep are then biased in a way no
-amount of extra sampling fixes. Betancourt's
-[*Conceptual Introduction*](https://arxiv.org/abs/1701.02434) is the place to read what they
-mean geometrically. psyphy records them for you: the sampler statistics carry `diverging`,
-`energy` and `n_steps` under ArviZ's standard names, so `az.plot_energy` and the
-divergence ticks on the trace plot work with no extra wiring.
-
-With `--mode quick` (2 chains and 150 draws) R-hat and ESS will not reach these
-thresholds, even on $\Sigma$, and they are not meant to. Use `--mode balanced` or `--mode full`,
-which exist for exactly this reason, before drawing any conclusion from the numbers.
 
 ### Step 6: Posterior predictive uncertainty
 
@@ -755,6 +693,98 @@ reads it as a significance test.
     accepts `scale="auto"`, which sizes the median ellipse to a fraction of the grid
     spacing and can return the factor it used via `return_scale=True`, so a figure can
     report its own magnification.
+
+---
+
+## Reference: tuning and runtime
+
+Everything in this section is a knob, not a step. It is here rather than inside
+[Step 4](#step-4-nuts-sampling) so that the walkthrough stays a walkthrough.
+
+### Sampler arguments
+
+The ones you are most likely to touch:
+
+| argument | what it controls | turn it up when |
+|---|---|---|
+| `num_warmup` | tuning steps per chain, discarded | trace plots still drift at the start |
+| `num_samples` | kept draws per chain | ESS is too low |
+| `num_chains` | independent chains; R-hat needs ≥ 2 | you want a stronger convergence check |
+| `max_num_doublings` | tree-depth cap, $\le 2^k - 1$ gradients per draw | most draws hit the cap (the script prints this) |
+| `target_acceptance_rate` | how cautious the tuned step size is | you see divergences (try 0.9) |
+
+### Compute presets
+
+The script takes `--mode`, which selects a preset (see *How to run
+the script* at the top). The model class and its 54 parameters are the same in every mode.
+What the presets scale is three different things, and only the third is "how hard the
+sampler works":
+
+- **how much data** there is (9 reference points × 50 trials in `quick`, 25 × 200 in `full`),
+- **how accurately the likelihood is estimated** (`mc_samples` 50 → 2000),
+- **how long the sampler runs** (chains, warmup, draws).
+
+The first two change the posterior *being targeted*, not just how well it is explored, so a
+`quick` fit is not a rough version of a `full` fit — it is a different, smaller problem.
+
+```python
+--8<-- "docs/examples/wppm/nuts_inference_example.py:compute_settings"
+```
+
+### Runtime
+
+??? note "Why a run costs what it costs"
+
+    - **The MC likelihood dominates everything.** Each gradient evaluation simulates
+      `mc_samples` Monte Carlo draws for every trial, so cost scales with
+      `mc_samples × n_trials`. Going from `quick` to `full` raises that product by ~440×,
+      which is why `full` is a batch job and not something to run interactively.
+    - **NUTS cost per draw is not fixed.** It is `O(2^tree_depth)` gradient evaluations, and
+      the depth is data-dependent, commonly 16 to 64 evaluations per draw. The script therefore
+      **times one gradient and prints a bracketed projection** before sampling starts, so you
+      can see whether a run fits inside a Slurm time limit before committing to it.
+    - **Tree depth is capped.** `NUTSSampler(max_num_doublings=8)` (the default) limits a draw
+      to at most $2^8 - 1 = 255$ gradient evaluations; BlackJAX's own default of 10 allows 1023.
+      If `sampler_stats["n_steps"]` sits at the cap for most draws, trajectories are being
+      truncated: still valid MCMC, but slower mixing. Raise the cap or reparameterize.
+    - **Warmup starts from a prior-scaled metric.** By default the sampler works in
+      `z = W / prior_std` (`prior_preconditioning=True`), so adaptation does not begin from an
+      identity mass matrix that is badly mismatched to coefficients. Without this, early warmup runs every draw to the maximum tree depth.
+    - **Chains are vmapped, in both warmup modes.** All chains advance in one compiled call per
+      phase, so XLA compiles once rather than once per chain. Under vmap each step costs as much
+      as the *deepest* tree across chains, which is one more reason for the depth cap. On a
+      GPU, four chains cost about as much as one; on a CPU, many chains can be slower than
+      running them one by one.
+      Note: the progress bar moves only when each phase (warmup, sampling) finishes.
+
+
+
+### Two warmup modes
+
+| Mode | When | How |
+|------|------|-----|
+| Adaptive (default, `step_size=None`) | Best quality; adapts step size and mass matrix per chain via `blackjax.window_adaptation`, starting from a prior-scaled metric. Chains vmapped; each adapts independently. | `NUTSSampler(num_warmup=200, num_samples=500)` |
+| Fixed (`step_size=<float>`) | Faster with many chains; no adaptation. All chains vmapped in one compiled call. User must choose a good step size. | `NUTSSampler(..., step_size=0.01)` |
+
+!!! info "Samplers other than NUTS"
+    psyphy ships NUTS only. Nothing *downstream* of the sampler is NUTS-specific, though:
+    any engine that returns an `MCMCPosterior` whose draws are shaped
+    `(n_chains, n_draws, *W_shape)` works unchanged with `to_arviz`, `covariance_to_arviz`,
+    `PosteriorMeanCovarianceField`, `WPPMPredictivePosterior` and every figure on this page.
+    BlackJAX itself offers MALA, plain HMC and random-walk Metropolis.
+
+    What is missing is the *upstream* half: the pieces that make a sampler a psyphy
+    sampler — the log density with the frozen Monte Carlo key, the prior preconditioning,
+    the vmapped chains — currently live inside `NUTSSampler.fit` rather than in a shared
+    base class, so adding a second engine today means copying them rather than setting an
+    option. Factoring them out is planned.
+
+    Two caveats would carry over to any gradient-based sampler, because they belong to the
+    model and the likelihood rather than to NUTS: the
+    [frozen-key likelihood](#a-note-on-the-likelihood) and the
+    [rotation symmetry of `W`](#a-note-on-the-parameters-w-is-not-identified). What does not
+    carry over is the diagnostics — a sampler without trajectories has no divergences, no
+    energies and no tree sizes, so parts of Step 5 would simply not apply.
 
 ---
 
