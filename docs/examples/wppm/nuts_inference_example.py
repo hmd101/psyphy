@@ -620,6 +620,7 @@ try:
     # bbox_inches="tight" only affects saving: without it, ArviZ's two-line
     # panel titles are clipped at the top edge of the image.
     # --8<-- [start:trace_plot]
+    # pick the reference point with the worst R-hat
     worst_point = int(az.rhat(dt_sigma)["Sigma"].max("quantity").argmax(dim="point"))
     pc = az.plot_trace(dt_sigma, var_names=["Sigma"], coords={"point": worst_point})
     pc.savefig(plot_path("nuts_trace_sigma.png"), bbox_inches="tight")
@@ -666,7 +667,7 @@ def ensemble_covs(param_samples, points):
 
 # Draw posterior parameter samples
 # --8<-- [start:posterior_samples]
-n_ensemble = N_ENSEMBLE
+n_ensemble = N_ENSEMBLE  # number of draws to visualize
 param_samples = nuts_posterior.sample(n_ensemble, key=jr.PRNGKey(0))
 # param_samples["W"].shape == (n_ensemble, *W_shape)
 # --8<-- [end:posterior_samples]
@@ -745,12 +746,16 @@ save_ellipse_figure(fig, "nuts_ellipses_uncertainty")
 # ---------------------------------------------------------------------------
 print("[6b/7] Pointwise credible band on the threshold contours...")
 
-# More draws than the visual ensemble: quantiles need samples, lines do not.
+
+# --8<-- [start:credible_band]
+# Pointwise credible band on the threshold contours:
+
+# More draws than the visual ensemble: quantiles need samples, and the band is a
+# summary of of the posterior
 N_BAND = min(400, NUM_CHAINS * NUM_SAMPLES)
 CI_PROB = 0.89  # matches ArviZ's default ci_prob, so the band and az.summary agree
 
-# --8<-- [start:credible_band]
-# Direction grid: phi closes the loop so the filled polygon has no seam.
+# Direction grid: phi closes the loop so the filled polygon has no seam
 phi = jnp.linspace(0.0, 2 * jnp.pi, 181)
 u = jnp.stack([jnp.cos(phi), jnp.sin(phi)], axis=-1)  # (n_phi, 2)
 
