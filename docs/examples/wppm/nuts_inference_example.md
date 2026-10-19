@@ -99,22 +99,21 @@ curve, where what you want to report is that curve together with the cloud of cu
 data cannot rule out.
 
 What we actually want instead is the posterior $p(\theta \mid \mathcal{D})$, the full distribution
-over parameters given the data. Bayes' rule writes it down in one line, but the line
-contains an integral over all of parameter space that nobody can evaluate here: $W$ has 54
+over parameters given the data. Bayes' rule gives this to us in one line, but the line
+contains an integral over all of parameter space that is intractable to  evaluate here: $W$ has 54
 entries, in every setting on this page. We cannot plot the posterior, and we cannot
 integrate against it directly.
 
 [Markov chain Monte Carlo](https://en.wikipedia.org/wiki/Markov_chain_Monte_Carlo) sidesteps
-that. Instead of computing the distribution, you construct a random walk whose long-run
+that. Instead of computing the distribution, we construct a random walk whose long-run
 visiting frequency *is* that distribution. Run it long enough and the places it has been
-form a sample from the posterior, which is all you need: averages over the sample
+form a sample from the posterior, which is all we need: averages over the sample
 approximate averages over the posterior, and the spread of the sample is the uncertainty.
-Nothing is ever normalized, which is the trick, because the intractable integral is exactly
-the normalizing constant.
+
 
 The challenge is building a walk that explores efficiently. A naive random walk works maybe in two or
 three dimensions and fails badly in fifty, where almost every direction you could step in
-leads somewhere less probable, so nearly all proposals are rejected and the chain crawls.
+leads somewhere less probable, so nearly all proposals are rejected.
 [Hamiltonian Monte Carlo](https://en.wikipedia.org/wiki/Hamiltonian_Monte_Carlo) fixes this
 by using the *gradient* of the log posterior: it gives the parameter vector a random
 momentum and simulates it rolling along the posterior's own geometry, so a single proposal
@@ -122,7 +121,7 @@ can travel a long way and still be accepted. **NUTS**, the No-U-Turn Sampler of
 [Hoffman and Gelman (2014)](https://jmlr.org/papers/v15/hoffman14a.html), removes the one
 awkward tuning knob by extending each trajectory until it starts to double back on itself.
 Betancourt's [*Conceptual Introduction to Hamiltonian Monte Carlo*](https://arxiv.org/abs/1701.02434)
-is the readable account of why this works and where it fails; it is worth skimming.
+is a good source of why this works and where it fails; it is worth skimming.
 
 Two things follow for psyphy:
 
@@ -130,7 +129,7 @@ Two things follow for psyphy:
    why psyphy's `NUTSSampler` can hand it straight to BlackJAX.
 2. **The sampler needs the log density to be a fixed function.** psyphy's oddity likelihood
    is estimated by Monte Carlo simulation, so it is *not* fixed; it returns a slightly
-   different number each call. That tension is real, and the determinism note below explains
+   different number each call. To fix this  non-determinism, the note below explains
    what is done about it.
 
 What we get in exchange for the extra compute:
