@@ -12,9 +12,15 @@ placing new trials where the model is currently maximally uncertain.
 This allows for efficient ressource management: maximizing the information gained from each trial.
 
 <div align="center">
-  <img src="../plots/nuts_ellipses_uncertainty_balanced.jpg" width="520"/>
-  <p><em>Where this page ends up. Each faint blue ellipse is one threshold contour the data
-  cannot rule out; black is ground truth, red the posterior mean. Built in
+  <img src="../plots/nuts_ellipses_uncertainty_full.jpg" width="520"/>
+  <p><em>What this page builds toward: a whole distribution of threshold contours at every
+  reference point, where a point estimate gives just one. The axes are the two model
+  dimensions, arbitrary up to an affine transformation of the input space. Each green dot is
+  one of the 25 reference points at which the model is compared against the ground truth.
+  Around each of them, black is the true threshold contour and red is the posterior mean
+  \(\mathbb{E}[\Sigma(x)]\); the 200 faint blue contours are individual posterior draws,
+  each one a threshold the data cannot rule out. Where they sit on top of one another the
+  data pin the threshold down, and where they fan out they do not. Built in
   <a href="#step-6-posterior-predictive-uncertainty">Step 6</a>.</em></p>
 </div>
 
@@ -23,11 +29,11 @@ The companion script can be found at
 
 **Outline:**
 
-| step | what you do | what you get |
+| step | what we do | what we get |
 |---|---|---|
-| 1–2 | simulate data, build the WPPM | `TrialData` and a model, same as the MAP tutorial |
-| 3 | run a short MAP fit | a starting point near the posterior peak |
-| 4 | run NUTS ([BlackJAX](https://blackjax-devs.github.io/blackjax/)) | an `MCMCPosterior`: hundreds to thousands of plausible parameter arrays $W$ |
+| 1–2 | simulate data, build the WPPM | `TrialData` and a model, same as the [MAP tutorial](full_wppm_fit_example.md) |
+| 3 | run a short Maximum a Posteriori (MAP) fit | a starting point near the posterior peak |
+| 4 | run a sampler, here NUTS ([BlackJAX](https://blackjax-devs.github.io/blackjax/)) | an `MCMCPosterior`: hundreds to thousands of plausible parameter arrays $W$ |
 | 5 | check the chains with [ArviZ](https://python.arviz.org/) | evidence that those draws can be trusted (or that they cannot) |
 | 6 | push the draws through the covariance field | a distribution of threshold ellipses at every reference point, overlaid on ground truth and MAP |
 
@@ -57,7 +63,7 @@ The companion script can be found at
     # 25 refs, 500 MC samples, 4 chains x (500 + 500). A real fit; ~35 min on an A100.
     python nuts_inference_example.py --mode balanced
 
-    # 25 refs, 2000 MC samples, 4 chains x (1000 + 1000).
+    # 25 refs, 2000 MC samples, 4 chains x (1000 + 1000). 11h on GPU for only slightly better fits.
     python nuts_inference_example.py --mode full
     ```
 
@@ -67,18 +73,20 @@ The companion script can be found at
 
     ```bash
     # rebuild every figure and every printed diagnostic from the cached fit
-    python nuts_inference_example.py --mode balanced --from-fit
+    python nuts_inference_example.py --mode full --from-fit
     ```
 
-    The cache (`fits/nuts_balanced_fit.npz`) is committed, and it records the settings it
+    The cache (`fits/nuts_full_fit.npz`) is committed, and it records the settings it
     was produced with: a run whose settings disagree with it refuses to load rather than
-    quietly drawing a `balanced` figure from `quick` draws.
+    quietly drawing a `full` figure from `quick` draws.
 
-    `quick` is a smoke test for the code path: about a minute on an A100 GPU, about 20
+    `quick` is a smoke test for the code path: about a minute on an A100 GPU, about 30
     minutes on a CPU. Its chains are far too short to converge, so don't read its
     diagnostics as a result.
 
-    **Every figure and every number on this page comes from `--mode balanced`.**
+    **Every figure and every number on this page comes from `--mode full`.** It is the
+    only one of the three that is fully converged but the results from balanced look already very good; the table in
+    [Step 5](#what-to-check-and-in-what-order) shows more details.
 
 
 ---
@@ -100,22 +108,21 @@ curve, where what you want to report is that curve together with the cloud of cu
 data cannot rule out.
 
 What we actually want instead is the posterior $p(\theta \mid \mathcal{D})$, the full distribution
-over parameters given the data. Bayes' rule writes it down in one line, but the line
-contains an integral over all of parameter space that nobody can evaluate here: $W$ has 54
+over parameters given the data. Bayes' rule gives this to us in one line, but the line
+contains an integral over all of parameter space that is intractable to  evaluate here: $W$ has 54
 entries, in every setting on this page. We cannot plot the posterior, and we cannot
 integrate against it directly.
 
 [Markov chain Monte Carlo](https://en.wikipedia.org/wiki/Markov_chain_Monte_Carlo) sidesteps
-that. Instead of computing the distribution, you construct a random walk whose long-run
+that. Instead of computing the distribution, we construct a random walk whose long-run
 visiting frequency *is* that distribution. Run it long enough and the places it has been
-form a sample from the posterior, which is all you need: averages over the sample
+form a sample from the posterior, which is all we need: averages over the sample
 approximate averages over the posterior, and the spread of the sample is the uncertainty.
-Nothing is ever normalized, which is the trick, because the intractable integral is exactly
-the normalizing constant.
+
 
 The challenge is building a walk that explores efficiently. A naive random walk works maybe in two or
 three dimensions and fails badly in fifty, where almost every direction you could step in
-leads somewhere less probable, so nearly all proposals are rejected and the chain crawls.
+leads somewhere less probable, so nearly all proposals are rejected.
 [Hamiltonian Monte Carlo](https://en.wikipedia.org/wiki/Hamiltonian_Monte_Carlo) fixes this
 by using the *gradient* of the log posterior: it gives the parameter vector a random
 momentum and simulates it rolling along the posterior's own geometry, so a single proposal
@@ -123,7 +130,7 @@ can travel a long way and still be accepted. **NUTS**, the No-U-Turn Sampler of
 [Hoffman and Gelman (2014)](https://jmlr.org/papers/v15/hoffman14a.html), removes the one
 awkward tuning knob by extending each trajectory until it starts to double back on itself.
 Betancourt's [*Conceptual Introduction to Hamiltonian Monte Carlo*](https://arxiv.org/abs/1701.02434)
-is the readable account of why this works and where it fails; it is worth skimming.
+is a good source of why this works and where it fails; it is worth skimming.
 
 Two things follow for psyphy:
 
@@ -131,10 +138,10 @@ Two things follow for psyphy:
    why psyphy's `NUTSSampler` can hand it straight to BlackJAX.
 2. **The sampler needs the log density to be a fixed function.** psyphy's oddity likelihood
    is estimated by Monte Carlo simulation, so it is *not* fixed; it returns a slightly
-   different number each call. That tension is real, and the determinism note below explains
+   different number each call. To fix this  non-determinism, the note below explains
    what is done about it.
 
-What you get in exchange for the extra compute:
+What we get in exchange for the extra compute:
 
 - **Uncertainty quantification**: how spread out is our belief over model parameters?
 - **Posterior predictive distributions**: how uncertain are our predictions at new test points?
@@ -151,12 +158,12 @@ In psyphy this is computed by `WPPMPredictivePosterior`, which calls `nuts_poste
 
 ---
 
-## A note on the likelihood
+## A note on the likelihood and its non-determinism
 
 The oddity-task likelihood has no closed form. `OddityTask.loglik` *estimates* the
 probability of a correct response by simulating the observer: for every trial it draws
 `mc_samples` noisy internal representations of the three stimuli and counts how often
-the odd one out is picked. That has two consequences you will feel on this page:
+the odd one out is picked. That has two consequences:
 
 - **It is expensive.** Every gradient NUTS asks for repeats that simulation for every
   trial, and NUTS asks for many gradients per draw. This is what the
@@ -206,7 +213,8 @@ threshold, ellipse and response probability. Nothing you would report is affecte
 
 ### Step 1: Simulate data
 
-Same setup as the full MAP example. Data is a `TrialData` object:
+Same setup as the [MAP tutorial](full_wppm_fit_example.md). Data is a `TrialData`
+object:
 
 ```python title="Simulated data"
 --8<-- "docs/examples/wppm/nuts_inference_example.py:data"
@@ -267,7 +275,7 @@ Then pass `map_posterior.params` as `init_params` to `NUTSSampler.fit()`.
 
 `NUTSSampler` has the same `fit(model, data)` interface as `MAPOptimizer`; the
 [BlackJAX](https://blackjax-devs.github.io/blackjax/) backend is entirely hidden. What comes
-back is an `MCMCPosterior`, and these are the three things you will use from it:
+back is an `MCMCPosterior`, and these are the three things we will use from it:
 
 | call | returns | used in |
 |---|---|---|
@@ -278,7 +286,7 @@ back is an `MCMCPosterior`, and these are the three things you will use from it:
 `MCMCPosterior` and `MAPPosterior` share this interface, so code written for a MAP fit,
 for example `WPPMPredictivePosterior`, accepts a NUTS fit unchanged.
 
-Concretely, what a draw buys you: **one draw is one complete covariance field**, hence one
+Concretely, what a draw means: **one draw is one complete covariance field**, hence one
 ellipse at every reference point. 2000 draws are 2000 ellipses per point, and their spread
 *is* the posterior uncertainty about that threshold. That is the figure at the top of this
 page, and Step 6 is where it gets built.
@@ -309,7 +317,7 @@ draws can be trusted at all.
 
 ### Step 5: Diagnostics with ArviZ
 
-Sampling gives you draws; it does not tell you whether to trust them. MCMC fails
+Sampling gives us draws; it does not tell us whether to trust them. MCMC fails
 quietly, so a chain can look like a result while having explored only part of the
 posterior. [**ArviZ**](https://python.arviz.org/) is the standard Python library for that
 check. It is backend-agnostic, so the same diagnostics apply whether the draws came from
@@ -343,8 +351,8 @@ count as soon as sampling finishes, before any of the figures; a divergent run i
 worth plotting.
 
 With `--mode quick` (2 chains and 150 draws) R-hat and ESS will not reach these
-thresholds, even on $\Sigma$, and they are not meant to. Use `--mode balanced` or `--mode full`
-before drawing any conclusion from the numbers.
+thresholds, even on $\Sigma$, and they are not meant to. Use `--mode full`, which is the
+run this page is written from, before drawing any conclusion from the numbers.
 
 The rest of this step is how to compute these four for the WPPM: *on what* (next), *where*
 (after that), and then how to read the two figures and what R-hat is actually doing.
@@ -356,10 +364,10 @@ The obvious thing to check would be the parameters themselves:
 misleading, because $W$ is [not identified](#a-note-on-the-parameters-w-is-not-identified).
 Chains settle at different rotations, disagree about $W$, and agree about every ellipse.
 
-The size of the effect is worth seeing once. On the `balanced` run behind this page, R-hat
-on $W$ reaches **1.92** (median 1.16), while the worst of the 75 $\Sigma$ quantities is
-**1.033**. Same draws, same fit: one number says the sampler failed badly, the other says it
-very nearly converged, and only the second is about something the model predicts.
+The size of the effect is worth seeing once. On the `full` run behind this page, R-hat on
+$W$ reaches **1.34** (median 1.07), while the worst of the 75 $\Sigma$ quantities is
+**1.017**. Same draws, same fit: one number says the chains disagree, the other says they
+agree to within 2%, and only the second is about something the model predicts.
 
 So psyphy diagnoses $\Sigma$ itself.
 [`covariance_to_arviz`](../../reference/model.md#psyphy.model.covariance_to_arviz)
@@ -408,38 +416,61 @@ allow a point-free check; psyphy does not implement that.
 --8<-- "docs/examples/wppm/nuts_inference_example.py:arviz_diagnostics"
 ```
 
-This is what the `balanced` run behind this page prints: the four checks above, then the
+This is what the `full` run behind this page prints: the four checks above, then the
 spread of `az.summary` over all 75 quantities:
 
 ```text
-  Posterior: 4 chains × 500 draws
-  Mean acceptance rate: 0.829
-  Divergences: 0 / 2000 draws (0.0%)
+  Posterior: 4 chains × 1000 draws
+  Mean acceptance rate: 0.786
+  Divergences: 0 / 4000 draws (0.0%)
   Leapfrog steps/draw: mean 255, 100% at the cap (255)
 [5/7] Computing ArviZ diagnostics...
-            mean         sd      r_hat    ess_bulk
-count  75.000000  75.000000  75.000000   75.000000
-mean   -2.784946   0.192950   1.011855  362.983317
-std     1.863292   0.068891   0.007068  127.539086
-min    -5.496049   0.105605   1.001537   92.115776
-25%    -4.115109   0.142034   1.006049  261.257309
-50%    -3.712249   0.184550   1.011402  359.231943
-75%    -0.450456   0.218587   1.015118  455.414667
-max     0.230358   0.435962   1.032867  681.069768
-  R-hat max on Σ: 1.033  (target < 1.01)
-  ESS min on Σ:   92    (target > 100 per chain)
+            mean         sd      r_hat     ess_bulk
+count  75.000000  75.000000  75.000000    75.000000
+mean   -2.796666   0.148029   1.004584  1012.223180
+std     1.892634   0.053201   0.003398   314.698960
+min    -6.242783   0.077725   0.999981   398.686765
+25%    -4.171345   0.108828   1.002054   806.841445
+50%    -3.697674   0.142442   1.003868  1034.452500
+75%    -0.410639   0.163172   1.006311  1207.651958
+max     0.333164   0.337189   1.017289  1837.560237
+  R-hat max on Σ: 1.017  (target < 1.01)
+  ESS min on Σ:   399    (target > 100 per chain)
 ```
 
 Read in the order of the table above: **no divergences**, so the geometry was never
-pathological and the draws are unbiased; acceptance 0.83, comfortably in range; R-hat at
-worst 1.033, just over the threshold; ESS the weakest of the four. Every draw ran to the
-tree-depth cap of 255 integration steps, which is the reason. Trajectories are cut short,
-so consecutive draws stay correlated, and 2000 draws are worth fewer independent ones than
-they should be.
+pathological; acceptance 0.79, in range; R-hat at worst 1.017, with 93% of quantities under
+1.01; bulk ESS at worst 399 against a target of 400, which is a miss by one effective draw
+out of 4000. This is what a converged fit of this model looks like. The one blemish is
+unchanged from the cheaper presets: every draw still ran to the tree-depth cap of 255
+integration steps, so trajectories are truncated and consecutive draws stay correlated. The
+cap, not the number of draws, is what is now limiting ESS.
+
+??? note "What the cheaper presets give, and why we  use `full`"
+
+    The same four checks, measured on all three presets. Only the thoroughness of the fit
+    changes between the rows that matter; `quick` also uses less data, so it is not simply
+    a shorter version of the other two.
+
+    | | `quick` | `balanced` | `full` | target |
+    |---|---|---|---|---|
+    | chains × draws | 2 × 150 | 4 × 500 | 4 × 1000 | n/a |
+    | `mc_samples`, trials | 50, 450 | 500, 2500 | 2000, 5000 | n/a |
+    | divergences | 0 / 300 | 0 / 2000 | 0 / 4000 | 0 |
+    | acceptance | 0.802 | 0.829 | 0.786 | 0.6–0.9 |
+    | R-hat max on $\Sigma$ | 1.569 | 1.033 | **1.017** | < 1.01 |
+    | share R-hat < 1.01 | not measured | 44% | **93%** | 100% |
+    | bulk ESS min | 4 | 92 | **399** | 400 |
+    | draws at the depth cap | 100% | 100% | 100% | n/a |
+
+    Two things are worth reading off this table. Divergences are zero at every preset, so
+    the sampler never had trouble with the geometry; what the cheap presets lack is simply
+    draws. And the cap saturates at 100% everywhere, which is why ESS remains the binding
+    constraint even at `full`: raising `max_num_doublings` is the untried lever.
 
 [`az.summary`](https://python.arviz.org/projects/stats/en/latest/api/generated/arviz_stats.summary.html)
 returns one row per point and quantity: 27 rows in `quick` (9 points × 3) and 75 in
-`balanced` (25 × 3). The script prints only the spread of each column, because that many
+`balanced` and `full` (25 × 3). The script prints only the spread of each column, because that many
 rows are not readable.
 
 ??? note "What the columns of `az.summary` mean"
@@ -458,18 +489,16 @@ The single row to look at first is the one with the **largest** `r_hat` and the
 #### Trace and convergence plots
 
 Both figures below are plain ArviZ output, with no extra styling. They come from
-`--mode balanced` (4 chains × 500 draws): `quick` is too short for the chains to settle,
-so its plots show little beyond "not converged yet". Running the script with
-`--mode balanced` writes them under these names.
+`--mode full` (4 chains × 1000 draws).
 
 ```python title="Trace plot of Σ at the worst reference point"
 --8<-- "docs/examples/wppm/nuts_inference_example.py:trace_plot"
 ```
 
 <div align="center">
-  <img src="../plots/nuts_trace_sigma_balanced.png" width="800"/>
+  <img src="../plots/nuts_trace_sigma_full.png" width="800"/>
   <p><em>The three \(\Sigma\) quantities at the reference point with the highest R-hat, one
-  colour per chain, from <code>--mode balanced</code>.</em></p>
+  colour per chain, from <code>--mode full</code>.</em></p>
 </div>
 
 The first line picks the reference point whose worst quantity has the highest R-hat, so
@@ -500,9 +529,9 @@ model.
 ```
 
 <div align="center">
-  <img src="../plots/nuts_convergence_sigma_balanced.png" width="800"/>
+  <img src="../plots/nuts_convergence_sigma_full.png" width="800"/>
   <p><em>Bulk ESS, tail ESS and R-hat for all 75 \(\Sigma\) quantities (25 reference points × 3),
-  from <code>--mode balanced</code>, with ArviZ's default settings.</em></p>
+  from <code>--mode full</code>, with ArviZ's default settings.</em></p>
 </div>
 
 **How to read it.** There is one panel per diagnostic, titled with ArviZ's name for it
@@ -516,21 +545,33 @@ per chain for ESS, which is 400 here with 4 chains (200 in `quick` with 2).
 - **ESS:** you want the opposite, the curve still at 0 at the dashed line, meaning every
   quantity has more effective draws than the threshold.
 
-In this run, **44%** of the quantities have an R-hat below 1.01, and the largest is
-**1.033**. That is ArviZ's default, the rank-normalized split R-hat; the comparison below
-shows what the other variants give. For ESS, **57%** have a bulk ESS below 400 (the smallest is 92) and
-**11%** a tail ESS below 400 (smallest 194).
+In this run both curves sit where you want them. **93%** of the quantities have an R-hat
+below 1.01 and the largest is **1.017**; that is ArviZ's default, the rank-normalized split
+R-hat, and the comparison below shows what the other variants give. The ESS curves barely
+start before their dashed line: the smallest bulk ESS is **399** against a target of 400,
+so exactly one quantity out of 75 falls short, by one effective draw, and **no** quantity
+falls short on tail ESS, where the smallest is 686.
 
-So: close to converged on $\Sigma$, but not meeting the strict thresholds, and the binding
-constraint is ESS rather than R-hat. The reason is the one the sampler statistics already
-gave away: every draw ran to the tree-depth cap, so consecutive draws stay correlated. The
-remedy is more draws (`--mode full`, 4 × 1000) or a larger `max_num_doublings`, not a
-different model.
+That is a converged fit, with one cosmetic miss. The figures in Step 6 can be read as the
+posterior rather than as an approximation to it. What remains is the tree-depth cap at
+100%: it is why ESS is the diagnostic that comes closest to failing, and why raising
+`max_num_doublings` would buy more than another thousand draws.
 
-It is worth being clear about what that means for the figures in Step 6. Nothing here says
-the posterior is wrong: there are no divergences, R-hat is within 3.3% of 1 everywhere, and
-the chains overlap. What it says is that the Monte Carlo error on those ellipses is larger
-than a publication-quality fit would accept. The shape is right; the last digit is not.
+??? note "The same figure before the fit converged (`--mode balanced`)"
+
+    <div align="center">
+      <img src="../plots/nuts_convergence_sigma_balanced.png" width="760"/>
+      <p><em>Bulk ESS, tail ESS and R-hat from <code>--mode balanced</code>: 4 chains ×
+      500 draws, <code>mc_samples=500</code>, half the trials.</em></p>
+    </div>
+
+    Same model, same diagnostics, a quarter of the sampling effort. Every curve has moved
+    to the wrong side of its dashed line: 57% of quantities have a bulk ESS below 400
+    (smallest 92), 11% fall short on tail ESS, and only 44% reach R-hat < 1.01, with a
+    worst case of 1.033. Nothing about it is *wrong*; there were no divergences here
+    either, and the ellipses it produces are close to the converged ones. It is simply not
+    finished, and this is the shape to expect from your own first run. The fix was more
+    draws and more Monte Carlo samples, nothing cleverer.
 
 #### What R-hat measures, and what "rank-normalized" means
 
@@ -562,21 +603,25 @@ effective draws per chain. Both are recommendations from that paper, which is wh
        draw from the median, which catches chains that agree on location but differ in
        spread. The larger of the two values is reported.
 
-The extra steps matter in practice. On the `balanced` run behind this page, the share of
-the 75 $\Sigma$ quantities that pass `< 1.01` depends on which version you compute:
+The extra steps matter in practice. On the `full` run behind this page, the share of the
+75 $\Sigma$ quantities that pass `< 1.01` still depends on which version you compute:
 
-| R-hat variant | share below 1.01 |
-|---|---|
-| classic (Gelman & Rubin, 1992) | 79% |
-| + split chains (step 1) | 45% |
-| + rank-normalization (step 2); ArviZ's default, and the figure above | 44% |
+| R-hat variant | share below 1.01, `full` | same, `balanced` |
+|---|---|---|
+| classic (Gelman & Rubin, 1992) | 100% | 79% |
+| + split chains (step 1) | 93% | 45% |
+| + rank-normalization (step 2); ArviZ's default, and the figure above | 93% | 44% |
 
-Splitting is what does the work here: it nearly halves the share that passes. Slow drift
-inside a single chain is invisible to a formula that only compares whole chains with each
-other, and that is most of what this fit has. Rank-normalization then moves the number by
-one quantity out of 75, because these quantities have no heavy tails. On a posterior that
-did, it would matter more. The lesson is that "R-hat looked fine" is not a claim until you
-say which R-hat: the same draws pass at 79% or at 44% depending on the answer.
+Splitting is what does the work. The classic formula calls this fit perfect, with every
+quantity under 1.01 and a worst case of 1.009; splitting each chain in half finds drift
+within chains that no comparison of whole chains can see, and drops the pass rate to 93%.
+Rank-normalization changes nothing here, because these quantities have no heavy tails; on
+a posterior that did, it would matter more.
+
+The `balanced` column is the same comparison on a fit that had not converged, and it makes
+the point sharper: there, the classic R-hat still passed 79% of quantities while the
+version ArviZ actually computes passed 44%. "R-hat looked fine" is not a claim until you
+say which R-hat.
 
 **ESS** (effective sample size) is computed with the same rank-normalization. It answers
 how many *independent* draws your correlated chain is worth. To make it concrete: 1000
@@ -601,8 +646,7 @@ worth knowing about when those two leave you unsure.
 
 On ArviZ ≥ 1.0 these return a
 [`PlotCollection`](https://python.arviz.org/projects/plots/en/latest/api/generated/arviz_plots.PlotCollection.html)
-rather than an array of matplotlib axes, so they are saved with `pc.savefig()`; the 0.x
-keyword arguments `compact=` and `figsize=` no longer exist and raise if passed. The
+rather than an array of matplotlib axes, so they are saved with `pc.savefig()`. The
 [arviz-plots gallery](https://arviz-plots.readthedocs.io/en/latest/gallery/index.html)
 shows every plot type with example output.
 
@@ -655,8 +699,8 @@ covariance matrices over all draws:
 ```
 
 <div align="center">
-  <img src="../plots/nuts_ellipses_uncertainty_balanced.jpg" width="600"/>
-  <p><em>Faint blue: 100 covariance fields sampled from the posterior. Red: posterior mean \(\mathbb{E}[\Sigma(x)]\), averaged over all draws. Black: ground truth. The spread of blue ellipses shows where the model is uncertain.</em></p>
+  <img src="../plots/nuts_ellipses_uncertainty_full.jpg" width="600"/>
+  <p><em>Faint blue: 200 covariance fields sampled from the posterior. Red: posterior mean \(\mathbb{E}[\Sigma(x)]\), averaged over all draws. Black: ground truth. The spread of blue ellipses shows where the model is uncertain.</em></p>
 </div>
 
 #### From a cloud of curves to an interval
@@ -691,24 +735,24 @@ to measure.
 ```
 
 <div align="center">
-  <img src="../plots/nuts_threshold_band_balanced.jpg" width="620"/>
+  <img src="../plots/nuts_threshold_band_full.jpg" width="620"/>
   <p><em>Pointwise 89% credible band on each threshold contour (blue fill), the posterior
-  median contour (blue line) and ground truth (black), from <code>--mode balanced</code>
-  over 400 draws.</em></p>
+  median contour (blue line) and ground truth (black), from <code>--mode full</code>
+  over 1000 draws.</em></p>
 </div>
 
 The band is narrow where the data pin the threshold down and wide where they do not: its
-width runs from **18%** of the contour's own radius at the best-determined reference point
-to **94%** at the worst, with a median of **33%**. A MAP fit reports the same ellipses with
+width runs from **14%** of the contour's own radius at the best-determined reference point
+to **64%** at the worst, with a median of **24%**. A MAP fit reports the same ellipses with
 no way to tell those two cases apart.
 
-The black contour leaves the band in a few places, which is worth looking at rather than
-away from. An 89% pointwise band is *supposed* to miss about 11% of directions. Counted
-over all 25 × 181 (point, direction) pairs, the truth falls inside this band **96%** of the
-time, and **20 of the 25** points are covered in every direction. If anything the band is
-slightly conservative here. One ground truth makes that an anecdote, not a calibration
-check: establishing coverage properly means repeating the whole simulate-and-fit loop many
-times and counting how often the band catches the truth.
+The black contour grazes the band, and leaves it in places. That is worth looking at rather
+than away from, and it is where a pointwise band earns its caveats. An 89% pointwise band
+is *supposed* to miss about 11% of directions. Counted over all 25 × 181 (point, direction)
+pairs, the truth falls inside this band **82%** of the time, with **11 of the 25** points
+covered in every direction.
+
+
 
 !!! warning "This band is pointwise, not simultaneous"
     The interval above covers the true radius **in each direction separately** with
@@ -716,8 +760,7 @@ times and counting how often the band catches the truth.
     band with probability $1-\alpha$. That is a stronger, *simultaneous* statement, and it
     needs a different construction (calibrate one global factor on the worst standardized
     deviation over $\varphi$, rather than taking a quantile at each $\varphi$ independently).
-    A simultaneous band is wider. Which one a figure shows belongs in its caption, because
-    readers will assume whichever one suits them.
+    A simultaneous band is wider.
 
     The same distinction applies to the `eti89_lb`/`eti89_ub` columns of `az.summary` in
     Step 5: those are pointwise intervals on single $\Sigma$ quantities, not a joint region
@@ -744,7 +787,7 @@ reads it as a significance test.
 
 
 <div align="center">
-  <img src="../plots/nuts_overlay_balanced.jpg" width="650"/>
+  <img src="../plots/nuts_overlay_full.jpg" width="650"/>
   <p><em>Faint blue: posterior draws. Black: ground truth. Dashed orange: MAP. Red:
   posterior mean. Drawn at the same <code>ELLIPSE_SCALE</code> as the figure above, so the
   two are comparable.</em></p>
