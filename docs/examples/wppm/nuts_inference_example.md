@@ -10,8 +10,14 @@ ellipse would have hidden that.
 
 <div align="center">
   <img src="../plots/nuts_ellipses_uncertainty_full.jpg" width="520"/>
-  <p><em> Each faint blue ellipse is one threshold contour the data
-  cannot rule out; black is ground truth, red the posterior mean. Built in
+  <p><em>What this page builds toward: a whole distribution of threshold contours at every
+  reference point, where a point estimate gives just one. The axes are the two model
+  dimensions, arbitrary up to an affine transformation of the input space. Each green dot is
+  one of the 25 reference points at which the model is compared against the ground truth.
+  Around each of them, black is the true threshold contour and red is the posterior mean
+  \(\mathbb{E}[\Sigma(x)]\); the 200 faint blue contours are individual posterior draws,
+  each one a threshold the data cannot rule out. Where they sit on top of one another the
+  data pin the threshold down, and where they fan out they do not. Built in
   <a href="#step-6-posterior-predictive-uncertainty">Step 6</a>.</em></p>
 </div>
 
@@ -637,8 +643,7 @@ worth knowing about when those two leave you unsure.
 
 On ArviZ ≥ 1.0 these return a
 [`PlotCollection`](https://python.arviz.org/projects/plots/en/latest/api/generated/arviz_plots.PlotCollection.html)
-rather than an array of matplotlib axes, so they are saved with `pc.savefig()`; the 0.x
-keyword arguments `compact=` and `figsize=` no longer exist and raise if passed. The
+rather than an array of matplotlib axes, so they are saved with `pc.savefig()`. The
 [arviz-plots gallery](https://arviz-plots.readthedocs.io/en/latest/gallery/index.html)
 shows every plot type with example output.
 
@@ -730,7 +735,7 @@ to measure.
   <img src="../plots/nuts_threshold_band_full.jpg" width="620"/>
   <p><em>Pointwise 89% credible band on each threshold contour (blue fill), the posterior
   median contour (blue line) and ground truth (black), from <code>--mode full</code>
-  over 400 draws.</em></p>
+  over 1000 draws.</em></p>
 </div>
 
 The band is narrow where the data pin the threshold down and wide where they do not: its
@@ -744,26 +749,7 @@ is *supposed* to miss about 11% of directions. Counted over all 25 × 181 (point
 pairs, the truth falls inside this band **82%** of the time, with **11 of the 25** points
 covered in every direction.
 
-??? note "The same count on the `balanced` fit, and why the two disagree"
 
-    On the `balanced` fit the same calculation gives **96%** coverage with 20 of 25 points
-    fully covered, against 82% here. The band did not get worse; it got *narrower*. More
-    data and four times the Monte Carlo samples shrank the posterior, its median width
-    falling from 33% of the contour radius to 24%, and a narrower band is less forgiving of
-    any systematic offset between the posterior and the truth.
-
-    Two candidate explanations, and this page cannot separate them. The first is ordinary
-    sampling variability: there is **one** ground truth here, and the 181 directions at a
-    reference point are nearly perfectly correlated, so the effective sample size behind
-    "82%" is closer to 25 than to 4525. The second is the frozen Monte Carlo key from
-    [A note on the likelihood](#a-note-on-the-likelihood): the sampler targets the posterior
-    implied by one noise realization, which is a biased target, and a bias that was hidden
-    inside a wide band becomes visible once the band tightens.
-
-    Deciding between them needs the simulate-and-fit loop repeated over many ground truths,
-    counting how often the band catches each one. That is a calibration study, not a
-    tutorial figure. Until someone runs it, read these two numbers as "the band is roughly
-    the right size", not as a coverage guarantee.
 
 !!! warning "This band is pointwise, not simultaneous"
     The interval above covers the true radius **in each direction separately** with
@@ -771,8 +757,7 @@ covered in every direction.
     band with probability $1-\alpha$. That is a stronger, *simultaneous* statement, and it
     needs a different construction (calibrate one global factor on the worst standardized
     deviation over $\varphi$, rather than taking a quantile at each $\varphi$ independently).
-    A simultaneous band is wider. Which one a figure shows belongs in its caption, because
-    readers will assume whichever one suits them.
+    A simultaneous band is wider.
 
     The same distinction applies to the `eti89_lb`/`eti89_ub` columns of `az.summary` in
     Step 5: those are pointwise intervals on single $\Sigma$ quantities, not a joint region
