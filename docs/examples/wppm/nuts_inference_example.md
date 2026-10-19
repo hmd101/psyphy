@@ -149,12 +149,12 @@ In psyphy this is computed by `WPPMPredictivePosterior`, which calls `nuts_poste
 
 ---
 
-## A note on the likelihood
+## A note on the likelihood and its non-determinism
 
 The oddity-task likelihood has no closed form. `OddityTask.loglik` *estimates* the
 probability of a correct response by simulating the observer: for every trial it draws
 `mc_samples` noisy internal representations of the three stimuli and counts how often
-the odd one out is picked. That has two consequences you will feel on this page:
+the odd one out is picked. That has two consequences:
 
 - **It is expensive.** Every gradient NUTS asks for repeats that simulation for every
   trial, and NUTS asks for many gradients per draw. This is what the
@@ -204,7 +204,8 @@ threshold, ellipse and response probability. Nothing you would report is affecte
 
 ### Step 1: Simulate data
 
-Same setup as the full MAP example. Data is a `TrialData` object:
+Same setup as the [MAP tutorial](full_wppm_fit_example.md). Data is a `TrialData`
+object:
 
 ```python title="Simulated data"
 --8<-- "docs/examples/wppm/nuts_inference_example.py:data"
@@ -265,7 +266,7 @@ Then pass `map_posterior.params` as `init_params` to `NUTSSampler.fit()`.
 
 `NUTSSampler` has the same `fit(model, data)` interface as `MAPOptimizer`; the
 [BlackJAX](https://blackjax-devs.github.io/blackjax/) backend is entirely hidden. What comes
-back is an `MCMCPosterior`, and these are the three things you will use from it:
+back is an `MCMCPosterior`, and these are the three things we will use from it:
 
 | call | returns | used in |
 |---|---|---|
@@ -276,7 +277,7 @@ back is an `MCMCPosterior`, and these are the three things you will use from it:
 `MCMCPosterior` and `MAPPosterior` share this interface, so code written for a MAP fit,
 for example `WPPMPredictivePosterior`, accepts a NUTS fit unchanged.
 
-Concretely, what a draw buys you: **one draw is one complete covariance field**, hence one
+Concretely, what a draw means: **one draw is one complete covariance field**, hence one
 ellipse at every reference point. 2000 draws are 2000 ellipses per point, and their spread
 *is* the posterior uncertainty about that threshold. That is the figure at the top of this
 page, and Step 6 is where it gets built.
@@ -307,7 +308,7 @@ draws can be trusted at all.
 
 ### Step 5: Diagnostics with ArviZ
 
-Sampling gives you draws; it does not tell you whether to trust them. MCMC fails
+Sampling gives us draws; it does not tell us whether to trust them. MCMC fails
 quietly, so a chain can look like a result while having explored only part of the
 posterior. [**ArviZ**](https://python.arviz.org/) is the standard Python library for that
 check. It is backend-agnostic, so the same diagnostics apply whether the draws came from
