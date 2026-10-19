@@ -437,7 +437,7 @@ unchanged from the cheaper presets: every draw still ran to the tree-depth cap o
 integration steps, so trajectories are truncated and consecutive draws stay correlated. The
 cap, not the number of draws, is what is now limiting ESS.
 
-??? note "What the cheaper presets give, and why the page uses `full`"
+??? note "What the cheaper presets give, and why we  use `full`"
 
     The same four checks, measured on all three presets. Only the thoroughness of the fit
     changes between the rows that matter; `quick` also uses less data, so it is not simply
@@ -480,8 +480,7 @@ The single row to look at first is the one with the **largest** `r_hat` and the
 #### Trace and convergence plots
 
 Both figures below are plain ArviZ output, with no extra styling. They come from
-`--mode full` (4 chains × 1000 draws). Running the script in that mode writes them under
-these names.
+`--mode full` (4 chains × 1000 draws).
 
 ```python title="Trace plot of Σ at the worst reference point"
 --8<-- "docs/examples/wppm/nuts_inference_example.py:trace_plot"
