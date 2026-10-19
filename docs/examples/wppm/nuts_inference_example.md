@@ -71,13 +71,13 @@ The companion script can be found at
     was produced with: a run whose settings disagree with it refuses to load rather than
     quietly drawing a `full` figure from `quick` draws.
 
-    `quick` is a smoke test for the code path: about a minute on an A100 GPU, about 20
+    `quick` is a smoke test for the code path: about a minute on an A100 GPU, about 30
     minutes on a CPU. Its chains are far too short to converge, so don't read its
     diagnostics as a result.
 
     **Every figure and every number on this page comes from `--mode full`.** It is the
-    only one of the three that is converged; the table in
-    [Step 5](#what-to-check-and-in-what-order) shows what the other two give.
+    only one of the three that is fully converged but the results from balanced look already very good; the table in
+    [Step 5](#what-to-check-and-in-what-order) shows more details.
 
 
 ---
