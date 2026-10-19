@@ -10,7 +10,7 @@ ellipse would have hidden that.
 
 <div align="center">
   <img src="../plots/nuts_ellipses_uncertainty_balanced.jpg" width="520"/>
-  <p><em>Where this page ends up. Each faint blue ellipse is one threshold contour the data
+  <p><em> Each faint blue ellipse is one threshold contour the data
   cannot rule out; black is ground truth, red the posterior mean. Built in
   <a href="#step-6-posterior-predictive-uncertainty">Step 6</a>.</em></p>
 </div>
@@ -20,11 +20,11 @@ The companion script can be found at
 
 **Outline:**
 
-| step | what you do | what you get |
+| step | what we do | what we get |
 |---|---|---|
-| 1–2 | simulate data, build the WPPM | `TrialData` and a model, same as the MAP tutorial |
-| 3 | run a short MAP fit | a starting point near the posterior peak |
-| 4 | run NUTS ([BlackJAX](https://blackjax-devs.github.io/blackjax/)) | an `MCMCPosterior`: hundreds to thousands of plausible parameter arrays $W$ |
+| 1–2 | simulate data, build the WPPM | `TrialData` and a model, same as the [MAP tutorial](full_wppm_fit_example.md) |
+| 3 | run a short Maximum a Posteriori (MAP) fit | a starting point near the posterior peak |
+| 4 | run a sampler, here NUTS ([BlackJAX](https://blackjax-devs.github.io/blackjax/)) | an `MCMCPosterior`: hundreds to thousands of plausible parameter arrays $W$ |
 | 5 | check the chains with [ArviZ](https://python.arviz.org/) | evidence that those draws can be trusted (or that they cannot) |
 | 6 | push the draws through the covariance field | a distribution of threshold ellipses at every reference point, overlaid on ground truth and MAP |
 
@@ -54,7 +54,7 @@ The companion script can be found at
     # 25 refs, 500 MC samples, 4 chains x (500 + 500). A real fit; ~35 min on an A100.
     python nuts_inference_example.py --mode balanced
 
-    # 25 refs, 2000 MC samples, 4 chains x (1000 + 1000).
+    # 25 refs, 2000 MC samples, 4 chains x (1000 + 1000). 11h on GPU for only slightly better fits.
     python nuts_inference_example.py --mode full
     ```
 
