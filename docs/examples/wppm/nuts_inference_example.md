@@ -4,9 +4,12 @@ This tutorial demonstrates **full posterior inference** using the No-U-Turn Samp
 
 The [Maximum A Posteriori (MAP) tutorial](full_wppm_fit_example.md) ends with *one* threshold ellipse per reference
 point: the model's single best guess. This page ends with a *distribution* of ellipses per reference
-point. Where the distribution is
-tight, the data pin the threshold down. Where it fans out, they do not, and a single MAP
+point (green dots in figure below). Where the distribution is
+concentrated, the data pin the threshold down. Where  the ellipses fan out, the data do not, and a single MAP
 ellipse would have hidden that.
+This then allows for adaptive trial placement where we care about
+placing new trials where the model is currently maximally uncertain.
+This allows for efficient ressource management: maximizing the information gained from each trial.
 
 <div align="center">
   <img src="../plots/nuts_ellipses_uncertainty_balanced.jpg" width="520"/>
