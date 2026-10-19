@@ -27,7 +27,7 @@ Requirements
     # viz         -> matplotlib>=3.5
     #
     # There is no `nuts` extra. On a GPU add `cuda` (jax[cuda12]), and do NOT
-    # `module load cuda cudnn` alongside it -- see CONTRIBUTING.md.
+    # `module load cuda cudnn` alongside it; see CONTRIBUTING.md.
     #
     # Add `progress` for the progress bars; without it `show_progress=True` is
     # silently a no-op and a long fit prints nothing for hours.
@@ -40,7 +40,7 @@ Usage
     python nuts_inference_example.py --mode balanced --from-fit   # figures only
 
 `quick` is the default so the docs build and a laptop run stay fast. It is NOT a
-fit to interpret -- 450 trials and 50 MC samples leave the frozen-key posterior
+fit to interpret: 450 trials and 50 MC samples leave the frozen-key posterior
 visibly biased, and 150 draws cannot support R-hat or ESS. Use `balanced` or
 `full` for anything you intend to read.
 
@@ -116,9 +116,9 @@ def plot_path(name: str) -> str:
     The documentation embeds the `--mode balanced` figures,
     plots/nuts_*_balanced.{png,jpg}: a `quick` fit is not converged, so its
     plots show little beyond "not converged yet". Every mode other than `quick`
-    therefore suffixes its filenames with the mode -- the same convention
-    hong2025_reproduction.py uses -- and `quick` writes the unsuffixed names as
-    throwaway smoke-test output, which must never be what the docs embed.
+    therefore suffixes its filenames with the mode, the same convention
+    hong2025_reproduction.py uses. `quick` writes the unsuffixed names as throwaway
+    smoke-test output, which must never be what the docs embed.
     """
     if MODE == "quick":
         return os.path.join(PLOTS_DIR, name)
@@ -193,7 +193,7 @@ BANDWIDTH = 1e-2
 #                    likelihood is only deterministic because NUTSSampler
 #                    freezes one PRNG key, which makes the sampled posterior
 #                    the one implied by that noise draw. The bias shrinks as
-#                    mc_samples grows -- 50 is a smoke test, 200 the documented
+#                    mc_samples grows. 50 is a smoke test, 200 the documented
 #                    minimum, 2000 the paper's.
 #   trials 5000      25 reference points x 200 trials. 450 trials (quick) is
 #                    thin for this many coefficients, and under-determined
@@ -258,7 +258,7 @@ NUM_SAMPLES = _cfg["draws"]
 NUM_CHAINS = _cfg["chains"]
 # Tree-depth cap: a draw costs at most 2**MAX_NUM_DOUBLINGS - 1 gradient
 # evaluations (255 here; BlackJAX's default 10 would allow 1023). Check
-# sampler_stats["n_steps"] after the run -- if most draws hit 255, raise it.
+# sampler_stats["n_steps"] after the run; if most draws hit 255, raise it.
 MAX_NUM_DOUBLINGS = 8
 # Sampling seed, and the frozen key the Monte Carlo likelihood is evaluated
 # with. Both define *which* posterior was sampled, not just how, so they are
@@ -310,8 +310,8 @@ def save_fit(map_posterior, nuts_posterior, ref_points, truth_params) -> None:
     Stores the draws with their chain structure intact (diagnostics need it),
     the sampler statistics, the MAP estimate the chains were warm-started
     from, and the ground truth and reference grid the figures are drawn
-    against -- plus RUN_SETTINGS, which is what makes the file self-describing
-    rather than a bag of arrays whose provenance you have to remember.
+    against. It also stores RUN_SETTINGS, which is what makes the file
+    self-describing rather than a bag of arrays whose provenance you must remember.
     """
     os.makedirs(FITS_DIR, exist_ok=True)
     stats = {
@@ -422,7 +422,7 @@ L = jnp.linalg.cholesky(Sigmas_ref)
 deltas = 2.8 * jnp.einsum("nij,nj->ni", L, unit_dirs)
 comparisons = jnp.clip(refs + deltas, -1.0, 1.0)
 
-# Stimuli are packed (N, K, d) with K=2 -- slot 0 reference, slot 1 comparison.
+# Stimuli are packed (N, K, d) with K=2: slot 0 reference, slot 1 comparison.
 # The oddity task presents three stimuli but stores two: the reference is shown
 # twice, and that duplication lives in OddityTask, not in the data.
 stimuli = jnp.stack([refs, comparisons], axis=1)
@@ -522,7 +522,7 @@ else:
     # EXCLUDES XLA compilation of the warmup scan, which is a one-off cost but can
     # take minutes and, on a short run like --mode quick, dominates everything the
     # projection above reports. If the run seems stuck right after "[4/7]", it is
-    # almost certainly still compiling -- not hung.
+    # almost certainly still compiling, not hung.
     print("    (excludes one-off XLA compilation of the warmup scan: can be minutes)")
     # --8<-- [end:cost_probe]
 
@@ -943,7 +943,7 @@ plot_ellipses(
 
 # plot_ellipses builds its legend from `labels`, one entry per field. The
 # ensemble is n_ensemble fields sharing one colour, so it gets a proxy handle
-# instead -- labelling it there would produce n_ensemble identical entries.
+# instead; labelling it there would produce n_ensemble identical entries.
 ax.plot(
     [],
     [],

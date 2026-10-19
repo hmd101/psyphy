@@ -24,7 +24,7 @@ The companion script can be found at
 |---|---|---|
 | 1–2 | simulate data, build the WPPM | `TrialData` and a model, same as the MAP tutorial |
 | 3 | run a short MAP fit | a starting point near the posterior peak |
-| 4 | run NUTS ([BlackJAX](https://blackjax-devs.github.io/blackjax/)) | an `MCMCPosterior`: hundreds to thousands of plausible sets of parameter `W`s |
+| 4 | run NUTS ([BlackJAX](https://blackjax-devs.github.io/blackjax/)) | an `MCMCPosterior`: hundreds to thousands of plausible parameter arrays $W$ |
 | 5 | check the chains with [ArviZ](https://python.arviz.org/) | evidence that those draws can be trusted (or that they cannot) |
 | 6 | push the draws through the covariance field | a distribution of threshold ellipses at every reference point, overlaid on ground truth and MAP |
 
@@ -59,8 +59,8 @@ The companion script can be found at
     ```
 
     Only the MAP and NUTS steps are expensive, and the script caches their result.
-    Everything after them — the diagnostics, every figure on this page — is
-    post-processing of the stored draws, so it can be redone without a GPU:
+    Everything after them is post-processing of the stored draws: the diagnostics, and
+    every figure on this page. All of it can be redone without a GPU:
 
     ```bash
     # rebuild every figure and every printed diagnostic from the cached fit
@@ -82,9 +82,11 @@ The companion script can be found at
 
 ## Background: why Markov Chain Monte Carlo (MCMC), and what it is
 
-Throughout this page $\theta$ and `W` are the same object: the WPPM's single parameter
+Throughout this page $\theta$ and $W$ are the same object: the WPPM's single parameter
 array, the basis coefficients that define the covariance field $\Sigma(x)$ (Step 2 says what
-is in it). MAP estimation returns one value of it:
+is in it). $\theta$ is used where a statement is about Bayesian inference in general and
+$W$ where it is about this model; in code the same array is the entry `"W"` of the
+parameter dict. MAP estimation returns one value of it:
 
 $$\theta_\text{MAP} = \arg\max_\theta \left[\log p(\mathcal{D} \mid \theta) + \log p(\theta)\right]$$
 
@@ -96,7 +98,7 @@ data cannot rule out.
 
 What we actually want instead is the posterior $p(\theta \mid \mathcal{D})$, the full distribution
 over parameters given the data. Bayes' rule writes it down in one line, but the line
-contains an integral over all of parameter space that nobody can evaluate here: `W` has 54
+contains an integral over all of parameter space that nobody can evaluate here: $W$ has 54
 entries, in every setting on this page. We cannot plot the posterior, and we cannot
 integrate against it directly.
 
@@ -171,29 +173,29 @@ differentiate, which removes both problems.
 
 ---
 
-## A note on the parameters: `W` is not identified
+## A note on the parameters: $W$ is not identified
 
-`W` is not uniquely determined by the data, and not because the data are too few. Look again
+$W$ is not uniquely determined by the data, and not because the data are too few. Look again
 at how the field is built, $\Sigma(x) = U(x)U(x)^\top + \lambda I$ with $U(x) = \sum_j W_j \phi_j(x)$:
-the last axis of `W` is the *embedding* axis, and it is summed over in $UU^\top$. Rotate `W`
+the last axis of $W$ is the *embedding* axis, and it is summed over in $UU^\top$. Rotate $W$
 along that axis, $W \mapsto WR$ with $R$ orthogonal, and every $U(x)R$ gives
 $U(x)RR^\top U(x)^\top = U(x)U(x)^\top$. So $\Sigma$ is unchanged, the likelihood is unchanged,
-and the prior — being isotropic in that axis — is unchanged too. The posterior over `W` is
+and the prior, being isotropic in that axis, is unchanged too. The posterior over $W$ is
 therefore a continuum of orthogonal copies of itself, and different chains, started from
 different points, happily settle on different ones.
 
 This is a property of the model, not of NUTS or of any sampler, and it has exactly two
-consequences on this page. Both are about treating `W` as if it meant something on its own:
+consequences on this page. Both are about treating $W$ as if it meant something on its own:
 
-- **Diagnostics on `W` report failures that do not exist.** Chains that disagree about `W`
+- **Diagnostics on $W$ report failures that do not exist.** Chains that disagree about $W$
   while agreeing about every ellipse look non-convergent. So psyphy diagnoses $\Sigma$
   instead ([Step 5](#what-to-diagnose-sigma-not-w)).
-- **Averaging `W` destroys the answer.** Draws at different rotations cancel, so the mean
+- **Averaging $W$ destroys the answer.** Draws at different rotations cancel, so the mean
   parameter $\mathbb{E}[W]$ gives ellipses that are far too small. So psyphy averages
   $\Sigma$ instead ([Step 6](#step-6-posterior-predictive-uncertainty)).
 
-Everything the model predicts — every covariance, threshold, ellipse and response
-probability — is invariant under the rotation, so nothing you would report is affected.
+Everything the model predicts is invariant under the rotation: every covariance,
+threshold, ellipse and response probability. Nothing you would report is affected.
 
 ---
 
@@ -222,13 +224,13 @@ $$\Sigma(x) = U(x)\,U(x)^\top + \lambda I, \qquad U(x) = \sum_{j} W_j \,\phi_j(x
 where the $\phi_j$ are fixed polynomial basis functions (Chebyshev, here up to degree 2 per
 input dimension) and the coefficients $W_j$ are the only thing being fitted. With
 `input_dim=2`, `basis_degree=2` and `extra_embedding_dims=1` that is an array of shape
-`(3, 3, 2, 3)` — the 54 numbers the background section referred to. $\lambda$ is
+`(3, 3, 2, 3)`. Those are the 54 numbers the background section referred to. $\lambda$ is
 `diag_term`, a small floor that keeps $\Sigma$ invertible.
 
 Two consequences come straight out of this form:
 
-- $\Sigma$ is *quadratic* in `W`. Averaging draws of `W` and squaring is not the same as
-  squaring and averaging, which is why Step 6 never averages `W`.
+- $\Sigma$ is *quadratic* in $W$. Averaging draws of $W$ and squaring is not the same as
+  squaring and averaging, which is why Step 6 never averages $W$.
 - The prior shrinks the coefficients as their total degree rises (`decay_rate`), so a
   degree-0 coefficient and a degree-4 one live on genuinely different scales. That is what
   the sampler's mass matrix has to discover, and why Step 4 preconditions by the prior
@@ -280,9 +282,9 @@ page, and Step 6 is where it gets built.
 
 !!! warning "Don't draw ellipses from `nuts_posterior.params`"
     `nuts_posterior.params` is the average **parameter** $\mathbb{E}[W]$. It is a valid parameter
-    set — you can pass it as `init_params` — but the covariance field built from it,
+    set; you can pass it as `init_params`. But the covariance field built from it,
     `WPPMCovarianceField(model, nuts_posterior.params)`, comes out far too small, for the
-    reason given in [`W` is not identified](#a-note-on-the-parameters-w-is-not-identified).
+    reason given in [$W$ is not identified](#a-note-on-the-parameters-w-is-not-identified).
     Use `PosteriorMeanCovarianceField` instead ([Step 6](#step-6-posterior-predictive-uncertainty)).
     `WPPMCovarianceField.from_posterior` builds the wrong one, so it warns when handed an
     MCMC posterior.
@@ -296,10 +298,10 @@ page, and Step 6 is where it gets built.
    [`window_adaptation`](https://blackjax-devs.github.io/blackjax/autoapi/blackjax/adaptation/window_adaptation/index.html).
 2. **Sampling** (`num_samples` steps). The tuning is frozen, and every draw is kept.
 
-The knobs behind all of this — the arguments, the `--mode` presets, the runtime behaviour
-and the two warmup modes — are gathered in
-[Reference: tuning and runtime](#reference-tuning-and-runtime) at the end of the page, so
-that the walkthrough can go straight on to the question that matters more: whether the
+The knobs behind all of this are gathered in
+[Reference: tuning and runtime](#reference-tuning-and-runtime) at the end of the page: the
+arguments, the `--mode` presets, the runtime behaviour and the two warmup modes. That lets
+the walkthrough go straight on to the question that matters more, which is whether the
 draws can be trusted at all.
 
 ### Step 5: Diagnostics with ArviZ
@@ -334,8 +336,8 @@ amount of extra sampling fixes. Betancourt's
 mean geometrically. psyphy records them for you: the sampler statistics carry `diverging`,
 `energy` and `n_steps` under ArviZ's standard names, so `az.plot_energy` and the
 divergence ticks on the trace plot work with no extra wiring, and the script prints the
-count as soon as sampling finishes — before any of the figures, because a divergent run is
-not worth plotting.
+count as soon as sampling finishes, before any of the figures; a divergent run is not
+worth plotting.
 
 With `--mode quick` (2 chains and 150 draws) R-hat and ESS will not reach these
 thresholds, even on $\Sigma$, and they are not meant to. Use `--mode balanced` or `--mode full`
@@ -347,12 +349,12 @@ The rest of this step is how to compute these four for the WPPM: *on what* (next
 #### What to diagnose: $\Sigma$, not $W$
 
 The obvious thing to check would be the parameters themselves:
-`nuts_posterior.to_arviz()` hands the raw draws of `W` to ArviZ. For the WPPM that is
-misleading, because `W` is [not identified](#a-note-on-the-parameters-w-is-not-identified) —
-chains settle at different rotations, disagree about `W`, and agree about every ellipse.
+`nuts_posterior.to_arviz()` hands the raw draws of $W$ to ArviZ. For the WPPM that is
+misleading, because $W$ is [not identified](#a-note-on-the-parameters-w-is-not-identified).
+Chains settle at different rotations, disagree about $W$, and agree about every ellipse.
 
 The size of the effect is worth seeing once. On the `balanced` run behind this page, R-hat
-on `W` reaches **1.92** (median 1.16), while the worst of the 75 $\Sigma$ quantities is
+on $W$ reaches **1.92** (median 1.16), while the worst of the 75 $\Sigma$ quantities is
 **1.033**. Same draws, same fit: one number says the sampler failed badly, the other says it
 very nearly converged, and only the second is about something the model predicts.
 
@@ -377,7 +379,7 @@ over, so everything below works on it directly.
 
 #### Choosing where to evaluate $\Sigma$
 
-`W` is one fixed set of numbers, but $\Sigma$ is a function of the stimulus location $x$. A
+$W$ is one fixed set of numbers, but $\Sigma$ is a function of the stimulus location $x$. A
 diagnostic of $\Sigma$ is therefore always a diagnostic *at some $x$*, and with the current
 implementation **you choose those locations**: `covariance_to_arviz` deliberately has no
 default for `points`.
@@ -393,7 +395,7 @@ default for `points`.
 - **A few points are enough.** $\Sigma(x)$ is a low-degree polynomial in $x$ (degree 2 here), so it
   varies smoothly, and a dense grid mostly adds near-duplicates.
 
-Choosing points is a property of this approach, not a law of nature. Quantities of `W`
+Choosing points is a property of this approach, not a law of nature. Quantities of $W$
 that are unchanged by the rotation, such as $W W^\top$ summed over the embedding axis, would
 allow a point-free check; psyphy does not implement that.
 
@@ -403,7 +405,7 @@ allow a point-free check; psyphy does not implement that.
 --8<-- "docs/examples/wppm/nuts_inference_example.py:arviz_diagnostics"
 ```
 
-This is what the `balanced` run behind this page prints — the four checks above, then the
+This is what the `balanced` run behind this page prints: the four checks above, then the
 spread of `az.summary` over all 75 quantities:
 
 ```text
@@ -428,8 +430,8 @@ max     0.230358   0.435962   1.032867  681.069768
 Read in the order of the table above: **no divergences**, so the geometry was never
 pathological and the draws are unbiased; acceptance 0.83, comfortably in range; R-hat at
 worst 1.033, just over the threshold; ESS the weakest of the four. Every draw ran to the
-tree-depth cap of 255 integration steps, which is the reason — trajectories are cut short,
-so consecutive draws stay correlated and 2000 draws are worth fewer independent ones than
+tree-depth cap of 255 integration steps, which is the reason. Trajectories are cut short,
+so consecutive draws stay correlated, and 2000 draws are worth fewer independent ones than
 they should be.
 
 [`az.summary`](https://python.arviz.org/projects/stats/en/latest/api/generated/arviz_stats.summary.html)
@@ -479,7 +481,7 @@ one panel per quantity:
 | one coloured line | one chain |
 | black ticks along the bottom | divergences, if any; they appear because the sampler statistics carry `diverging` under ArviZ's standard name |
 
-**What good looks like:** chains overlapping each other, flat, and wiggling fast — the
+**What good looks like:** chains overlapping each other, flat, and wiggling fast; the
 "fuzzy caterpillar". That is what this run shows: in all three panels the four chains cover
 the same range, none drifts, and none sits at its own level. There are no black ticks along
 the bottom either, because this run had no divergences; on a run that did, that is where
@@ -511,21 +513,21 @@ per chain for ESS, which is 400 here with 4 chains (200 in `quick` with 2).
 - **ESS:** you want the opposite, the curve still at 0 at the dashed line, meaning every
   quantity has more effective draws than the threshold.
 
-In this run, **44%** of the quantities have an R-hat below 1.01 — that is ArviZ's default,
-rank-normalized split R-hat; the comparison below shows what the variants give — and the
-largest is **1.033**. For ESS, **57%** have a bulk ESS below 400 (the smallest is 92) and
+In this run, **44%** of the quantities have an R-hat below 1.01, and the largest is
+**1.033**. That is ArviZ's default, the rank-normalized split R-hat; the comparison below
+shows what the other variants give. For ESS, **57%** have a bulk ESS below 400 (the smallest is 92) and
 **11%** a tail ESS below 400 (smallest 194).
 
 So: close to converged on $\Sigma$, but not meeting the strict thresholds, and the binding
 constraint is ESS rather than R-hat. The reason is the one the sampler statistics already
-gave away — every draw ran to the tree-depth cap, so consecutive draws stay correlated. The
+gave away: every draw ran to the tree-depth cap, so consecutive draws stay correlated. The
 remedy is more draws (`--mode full`, 4 × 1000) or a larger `max_num_doublings`, not a
 different model.
 
 It is worth being clear about what that means for the figures in Step 6. Nothing here says
 the posterior is wrong: there are no divergences, R-hat is within 3.3% of 1 everywhere, and
 the chains overlap. What it says is that the Monte Carlo error on those ellipses is larger
-than a publication-quality fit would accept — the shape is right, the last digit is not.
+than a publication-quality fit would accept. The shape is right; the last digit is not.
 
 #### What R-hat measures, and what "rank-normalized" means
 
@@ -538,7 +540,7 @@ least two chains: a single chain cannot tell you it is stuck.
 ArviZ does not compute that classic version. By default it computes the improved R-hat of
 [Vehtari et al. (2021)](https://doi.org/10.1214/20-BA1221) (`az.rhat` uses `method="rank"`;
 `az.summary` and `az.plot_convergence_dist` above use the same), which is stricter in three
-ways — and that is also where the `< 1.01` threshold comes from, together with `> 100`
+ways. That is also where the `< 1.01` threshold comes from, together with `> 100`
 effective draws per chain. Both are recommendations from that paper, which is why the older
 `< 1.1` rule is now considered too lenient.
 
@@ -546,7 +548,7 @@ effective draws per chain. Both are recommendations from that paper, which is wh
 
     1. **Split chains.** Each chain is cut in half and the halves are compared as separate
        chains. A single chain that drifts slowly then shows up as its first half
-       disagreeing with its second half — something no between-chain comparison of whole
+       disagreeing with its second half, which no between-chain comparison of whole
        chains can see.
     2. **Rank-normalize.** All draws from all chains are pooled and replaced by their ranks
        (1 for the smallest), and the ranks are mapped onto a standard normal scale. The
@@ -564,12 +566,12 @@ the 75 $\Sigma$ quantities that pass `< 1.01` depends on which version you compu
 |---|---|
 | classic (Gelman & Rubin, 1992) | 79% |
 | + split chains (step 1) | 45% |
-| + rank-normalization (step 2) — ArviZ's default, and the figure above | 44% |
+| + rank-normalization (step 2); ArviZ's default, and the figure above | 44% |
 
 Splitting is what does the work here: it nearly halves the share that passes. Slow drift
 inside a single chain is invisible to a formula that only compares whole chains with each
 other, and that is most of what this fit has. Rank-normalization then moves the number by
-one quantity out of 75, because these quantities have no heavy tails — on a posterior that
+one quantity out of 75, because these quantities have no heavy tails. On a posterior that
 did, it would matter more. The lesson is that "R-hat looked fine" is not a claim until you
 say which R-hat: the same draws pass at 79% or at 44% depending on the answer.
 
@@ -634,7 +636,7 @@ covariance matrices over all draws:
     Averaging $W$ first gives $0$, and $0^2 = 0$: the ellipse disappears.
 
     The $W = \pm 1$ example is not a contrivance: it is exactly the rotation symmetry of
-    [`W` is not identified](#a-note-on-the-parameters-w-is-not-identified) in one dimension,
+    [$W$ is not identified](#a-note-on-the-parameters-w-is-not-identified) in one dimension,
     where the only orthogonal transforms are $\pm 1$. Draws that each describe the same
     ellipse cancel when their parameters are averaged. And even without any symmetry,
     $\mathbb{E}[\Sigma] = \Sigma(\mathbb{E}[W]) + \operatorname{Cov}[U]$ holds exactly, so averaging $W$
@@ -658,8 +660,8 @@ covariance matrices over all draws:
 
 The figure above is a *cloud*: a hundred contours the data cannot rule out, drawn on top of
 one another. That is the honest picture, but it is not what goes in a paper caption. A
-paper reports an interval — "the threshold in this direction is 0.08, 89% CI [0.06, 0.11]"
-— and the draws already contain it.
+paper reports an interval: "the threshold in this direction is 0.08, 89% CI [0.06, 0.11]".
+The draws already contain it.
 
 The step that makes it possible is writing a contour as a **radius per direction**. The
 threshold contour of draw $i$ at reference point $x$ is the set
@@ -669,7 +671,7 @@ $u(\varphi) = (\cos\varphi, \sin\varphi)$ that set is a single point, at distanc
 $$r_i(\varphi) \;=\; \frac{1}{\sqrt{u(\varphi)^\top \Sigma_i(x)^{-1} u(\varphi)}}$$
 
 from the reference point. Along an eigenvector of $\Sigma_i$ this is $\sqrt{\lambda}$, the
-semi-axis the ellipse plots are already drawing, so nothing new is being shown — it is the
+semi-axis the ellipse plots are already drawing, so nothing new is being shown; it is the
 same contour in polar form. The gain is that $r_i(\varphi)$ is a *scalar*, one number per
 draw, so the ordinary recipe for a credible interval applies: sort the draws and take
 quantiles. For a $1-\alpha$ interval, at each direction separately,
@@ -677,8 +679,8 @@ quantiles. For a $1-\alpha$ interval, at each direction separately,
 $$\big[\,q_{\alpha/2}\{r_i(\varphi)\}_{i=1}^{N},\;\; q_{1-\alpha/2}\{r_i(\varphi)\}_{i=1}^{N}\,\big]$$
 
 and filling between the two curves over all $\varphi$ gives a band. $r_i(\varphi)$ also has a
-meaning the entries of $\Sigma$ do not: it is the discrimination threshold — the just
-noticeable difference — in direction $\varphi$, which is the quantity an experiment set out
+meaning the entries of $\Sigma$ do not. It is the discrimination threshold, the just
+noticeable difference, in direction $\varphi$, which is the quantity an experiment set out
 to measure.
 
 ```python title="Pointwise credible band on the threshold contour"
@@ -700,15 +702,15 @@ no way to tell those two cases apart.
 The black contour leaves the band in a few places, which is worth looking at rather than
 away from. An 89% pointwise band is *supposed* to miss about 11% of directions. Counted
 over all 25 × 181 (point, direction) pairs, the truth falls inside this band **96%** of the
-time, and **20 of the 25** points are covered in every direction — so if anything the band
-is slightly conservative here. One ground truth makes that an anecdote, not a calibration
+time, and **20 of the 25** points are covered in every direction. If anything the band is
+slightly conservative here. One ground truth makes that an anecdote, not a calibration
 check: establishing coverage properly means repeating the whole simulate-and-fit loop many
 times and counting how often the band catches the truth.
 
 !!! warning "This band is pointwise, not simultaneous"
     The interval above covers the true radius **in each direction separately** with
     probability $1-\alpha$. It does *not* say that the whole true contour lies inside the
-    band with probability $1-\alpha$ — that is a stronger, *simultaneous* statement, and it
+    band with probability $1-\alpha$. That is a stronger, *simultaneous* statement, and it
     needs a different construction (calibrate one global factor on the worst standardized
     deviation over $\varphi$, rather than taking a quantile at each $\varphi$ independently).
     A simultaneous band is wider. Which one a figure shows belongs in its caption, because
@@ -783,7 +785,7 @@ sampler works":
 - **how long the sampler runs** (chains, warmup, draws).
 
 The first two change the posterior *being targeted*, not just how well it is explored, so a
-`quick` fit is not a rough version of a `full` fit — it is a different, smaller problem.
+`quick` fit is not a rough version of a `full` fit; it is a different, smaller problem.
 
 ```python
 --8<-- "docs/examples/wppm/nuts_inference_example.py:compute_settings"
@@ -832,16 +834,16 @@ The first two change the posterior *being targeted*, not just how well it is exp
     BlackJAX itself offers MALA, plain HMC and random-walk Metropolis.
 
     What is missing is the *upstream* half: the pieces that make a sampler a psyphy
-    sampler — the log density with the frozen Monte Carlo key, the prior preconditioning,
-    the vmapped chains — currently live inside `NUTSSampler.fit` rather than in a shared
-    base class, so adding a second engine today means copying them rather than setting an
-    option. Factoring them out is planned.
+    sampler. The log density with the frozen Monte Carlo key, the prior preconditioning and
+    the vmapped chains all live inside `NUTSSampler.fit` rather than in a shared base class,
+    so adding a second engine today means copying them rather than setting an option.
+    Factoring them out is planned.
 
     Two caveats would carry over to any gradient-based sampler, because they belong to the
     model and the likelihood rather than to NUTS: the
     [frozen-key likelihood](#a-note-on-the-likelihood) and the
-    [rotation symmetry of `W`](#a-note-on-the-parameters-w-is-not-identified). What does not
-    carry over is the diagnostics — a sampler without trajectories has no divergences, no
+    [rotation symmetry of $W$](#a-note-on-the-parameters-w-is-not-identified). What does not
+    carry over is the diagnostics. A sampler without trajectories has no divergences, no
     energies and no tree sizes, so parts of Step 5 would simply not apply.
 
 ---
