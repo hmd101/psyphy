@@ -131,7 +131,7 @@ Two things follow for psyphy:
    different number each call. That tension is real, and the determinism note below explains
    what is done about it.
 
-What you get in exchange for the extra compute:
+What we get in exchange for the extra compute:
 
 - **Uncertainty quantification**: how spread out is our belief over model parameters?
 - **Posterior predictive distributions**: how uncertain are our predictions at new test points?
