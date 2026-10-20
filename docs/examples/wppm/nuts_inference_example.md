@@ -109,8 +109,7 @@ data cannot rule out.
 
 What we actually want instead is the posterior $p(\theta \mid \mathcal{D})$, the full distribution
 over parameters given the data. Bayes' rule gives this to us in one line, but the line
-contains an integral over all of parameter space that is intractable to  evaluate here: $W$ has 54
-entries, in every setting on this page. We cannot plot the posterior, and we cannot
+contains an integral over all of parameter space that is intractable to  evaluate here. We cannot plot the posterior, and we cannot
 integrate against it directly.
 
 [Markov chain Monte Carlo](https://en.wikipedia.org/wiki/Markov_chain_Monte_Carlo) sidesteps
@@ -235,7 +234,7 @@ $$\Sigma(x) = U(x)\,U(x)^\top + \lambda I, \qquad U(x) = \sum_{j} W_j \,\phi_j(x
 where the $\phi_j$ are fixed polynomial basis functions (Chebyshev, here up to degree 2 per
 input dimension) and the coefficients $W_j$ are the only thing being fitted. With
 `input_dim=2`, `basis_degree=2` and `extra_embedding_dims=1` that is an array of shape
-`(3, 3, 2, 3)`. Those are the 54 numbers the background section referred to. $\lambda$ is
+`(3, 3, 2, 3)`.  $\lambda$ is
 `diag_term`, a small floor that keeps $\Sigma$ invertible.
 
 Two consequences come straight out of this form:
@@ -822,7 +821,7 @@ The ones you are most likely to touch:
 ### Compute presets
 
 The script takes `--mode`, which selects a preset (see *How to run
-the script* at the top). The model class and its 54 parameters are the same in every mode.
+the script* at the top).
 What the presets scale is three different things, and only the third is "how hard the
 sampler works":
 
