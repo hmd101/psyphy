@@ -422,14 +422,14 @@ class WPPMCovarianceField:
         >>> field = WPPMCovarianceField.from_posterior(posterior)
         >>> Sigma = field.cov(x)
         """
-        # Sample-based posteriors are recognised by duck typing (they expose a
+        # Sample-based posteriors are recognized by duck typing (they expose a
         # draw count), the same criterion PosteriorMeanCovarianceField uses.
         # isinstance(posterior, MCMCPosterior) would need an import from
         # psyphy.posterior, which already imports psyphy.model -> cycle.
         #
         # This warns instead of switching to the posterior-mean field because
         # that would change the return type (and drop sqrt_cov) for existing
-        # callers; the behaviour is unchanged, only made loud.
+        # callers; the behavior is unchanged, only made loud.
         if getattr(posterior, "n_draws", None) is not None:
             warnings.warn(
                 f"from_posterior() on a {type(posterior).__name__} builds Σ from the "
@@ -765,7 +765,7 @@ def covariance_to_arviz(posterior, points):
     -------------------------
     Unlike W, Σ is a function of the stimulus location x, so a diagnostic of Σ
     is a diagnostic *at some x*. This function deliberately has no default for
-    ``points``: which locations to check is a modelling decision. Sensible
+    ``points``: which locations to check is a modeling decision. Sensible
     choices are the locations you report (e.g. the reference points of the
     plotted ellipses), optionally plus a grid covering the stimulus space,
     since away from the data the posterior relies more on the prior. Report
@@ -774,7 +774,7 @@ def covariance_to_arviz(posterior, points):
 
     Quantities
     ----------
-    For each draw and point, the d x d matrix Σ is summarised by its d log
+    For each draw and point, the d x d matrix Σ is summarized by its d log
     variances and d(d-1)/2 correlations, which together determine Σ:
 
     - ``log_var_i``  = log Σ_ii
@@ -798,7 +798,7 @@ def covariance_to_arviz(posterior, points):
     xarray.DataTree
         ``posterior`` group with variable ``Sigma`` of dims
         ``(chain, draw, point, quantity)``, coordinates ``quantity`` (names as
-        above) and ``location_0 … location_{d-1}`` (the evaluation points, one
+        above) and ``location_0 ... location_{d-1}`` (the evaluation points, one
         coordinate per stimulus axis, along ``point``). The posterior's
         ``sample_stats`` group (divergences, energy, ...) is carried over.
 

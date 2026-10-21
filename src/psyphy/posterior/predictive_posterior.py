@@ -39,7 +39,7 @@ class ThresholdConfig:
     """Configuration for :class:`WPPMPredictivePosterior`'s ``threshold_pred`` mode.
 
     Controls the oddity-task inversion that recovers a threshold covariance
-    Σ_thres(x) — the ``target_pc``-correct discrimination contour — from a
+    Σ_thres(x), the ``target_pc``-correct discrimination contour, from a
     fitted noise field. There is no closed form for this inversion (see
     :class:`~psyphy.model.likelihood.OddityTask`), so it is done numerically:
     probe ``n_theta`` directions around each reference point, brute-force
@@ -63,7 +63,7 @@ class ThresholdConfig:
         Target probability-correct defining the threshold (2/3 for the
         oddity task's standard criterion).
     chunk : int
-        Batch size for the Monte Carlo sweep, bounding peak memory —
+        Batch size for the Monte Carlo sweep, bounding peak memory;
         ``n_theta * n_length`` candidate trials are evaluated per
         (posterior sample, reference point) pair.
 
@@ -73,7 +73,7 @@ class ThresholdConfig:
     ``n_theta * n_length`` calls to the task's MC-simulated ``predict``, each
     itself an average over ``OddityTaskConfig.num_samples`` draws. Total cost
     for a call to :class:`WPPMPredictivePosterior` scales as
-    ``n_samples * n_test * n_theta * n_length * num_samples`` — a warning is
+    ``n_samples * n_test * n_theta * n_length * num_samples``; a warning is
     emitted when ``n_samples * n_test`` alone exceeds 200.
     """
 
@@ -208,10 +208,10 @@ class WPPMPredictivePosterior:
     X : jnp.ndarray
         Test stimuli. Shape depends on ``threshold_pred``:
 
-        - ``threshold_pred=False``: ``(n_test, k_stimuli, input_dim)`` —
+        - ``threshold_pred=False``: ``(n_test, k_stimuli, input_dim)``:
           pre-paired (reference, comparison) stimuli, scored directly via
           ``model.predict_prob``.
-        - ``threshold_pred=True``: ``(n_test, input_dim)`` — bare reference
+        - ``threshold_pred=True``: ``(n_test, input_dim)``: bare reference
           points. Comparison stimuli are *not* supplied; the oddity-task
           inversion generates its own by sweeping directions and distances
           around each reference (see :class:`ThresholdConfig`). Passing the
@@ -448,7 +448,7 @@ class WPPMPredictivePosterior:
     def mean(self) -> jnp.ndarray:
         """E[f(X*) | data].
 
-        Shape (n_test,) — predicted probabilities — unless
+        Shape (n_test,): predicted probabilities, unless
         ``threshold_pred=True``, in which case shape is
         (n_test, input_dim, input_dim): the posterior-mean threshold
         covariance Σ_thres at each reference point, averaged arithmetically
@@ -465,7 +465,7 @@ class WPPMPredictivePosterior:
         Shape (n_test,) unless ``threshold_pred=True``, in which case shape
         is (n_test, input_dim, input_dim): elementwise variance of the
         per-sample threshold covariances (not a variance *of* a matrix in
-        any distributional sense — just ``jnp.var`` over the sample axis,
+        any distributional sense; just ``jnp.var`` over the sample axis,
         entry by entry).
         """
         self._ensure_computed()
@@ -485,11 +485,11 @@ class WPPMPredictivePosterior:
         Returns
         -------
         jnp.ndarray
-            Shape (*sample_shape, n_test) — or, when ``threshold_pred=True``,
+            Shape (*sample_shape, n_test); or, when ``threshold_pred=True``,
             (*sample_shape, n_test, input_dim, input_dim): one recovered
             threshold covariance per draw, i.e. genuine samples of Σ_thres
             rather than a posterior-mean summary. Cost scales linearly in
-            the number of draws requested — see :class:`ThresholdConfig`.
+            the number of draws requested; see :class:`ThresholdConfig`.
         """
         n = int(jnp.prod(jnp.array(sample_shape))) if sample_shape else 1
         param_samples = self.param_posterior.sample(n, key=key)

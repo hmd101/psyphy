@@ -456,7 +456,7 @@ class WPPM(Model):
             Collected trial data.
         key : jax.Array | None, optional
             JAX random key for MC likelihood evaluation. When provided, a fresh
-            noise realization is drawn every call — required for correct stochastic
+            noise realization is drawn every call, required for correct stochastic
             gradient estimates during optimization. When None, the task falls back
             to ``OddityTaskConfig.default_key_seed`` (useful for fixed evaluation
             and testing, but should not be used during gradient-based optimization).

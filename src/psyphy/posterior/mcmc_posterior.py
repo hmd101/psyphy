@@ -85,7 +85,7 @@ class MCMCPosterior:
         dict
             Parameter PyTree with the same structure as a single draw.
             For WPPM: ``{"W": ndarray of shape (*W_shape)}``.
-            e.g. {"W": (2, 2, 2, 3)} — mean over axes 0 (chains) and 1 (draws).
+            e.g. {"W": (2, 2, 2, 3)}, mean over axes 0 (chains) and 1 (draws).
 
         Warnings
         --------
@@ -145,9 +145,9 @@ class MCMCPosterior:
             # x     : (n_chains, n_draws, *param_shape)
             #           e.g. (4, 1000, 2, 2, 2, 3)
             # pool  : (n_chains * n_draws, *param_shape)
-            #           e.g. (4000, 2, 2, 2, 3)  — all draws from all chains flattened
+            #           e.g. (4000, 2, 2, 2, 3)  : all draws from all chains flattened
             # output: (n, *param_shape)
-            #           e.g. (100, 2, 2, 2, 3)   — n draws subsampled from pool
+            #           e.g. (100, 2, 2, 2, 3)   : n draws subsampled from pool
             n_chains, n_draws = x.shape[:2]
             event_shape = x.shape[2:]
             pool = x.reshape(n_chains * n_draws, *event_shape)
@@ -220,7 +220,7 @@ class MCMCPosterior:
 
         Notes
         -----
-        ArviZ handles arbitrary-dimensional variables natively — no
+        ArviZ handles arbitrary-dimensional variables natively, no
         flattening required. R-hat and ESS are computed per scalar element.
 
         If ``sampler_stats`` were provided at construction (e.g.
@@ -257,12 +257,12 @@ class MCMCPosterior:
         # For WPPM with 4 chains, 1000 draws, W shape (2,2,2,3):
         #   {"posterior": {"W": np.ndarray (4, 1000, 2, 2, 2, 3)}}
         #
-        # Returns: xarray.DataTree  (ArviZ 1.0 — was InferenceData in ArviZ 0.x)
+        # Returns: xarray.DataTree  (ArviZ 1.0; was InferenceData in ArviZ 0.x)
         #   idata["posterior"]["W"].values  -> np.ndarray (4, 1000, 2, 2, 2, 3)
         #   list(idata.children)            -> ["posterior", "sample_stats"]
         #   az.rhat(idata).ds.data_vars     -> {"W"}  (R-hat per scalar element)
         #
-        # Note: must convert JAX arrays to numpy — ArviZ uses numpy/xarray internally.
+        # Note: must convert JAX arrays to numpy; ArviZ uses numpy/xarray internally.
         # ----------------------------------------------------------------
         data: dict = {"posterior": {k: np.asarray(v) for k, v in self._samples.items()}}
 

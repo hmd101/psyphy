@@ -2,7 +2,7 @@
 hong2025.py
 -----------
 
-Loaders for the published human colour-discrimination dataset of Hong et al.
+Loaders for the published human color-discrimination dataset of Hong et al.
 
     Hong, F., Bouhassira, R., Chow, J., Sanders, C., Shvartsman, M., Guan, P.,
     Williams, A. H., & Brainard, D. H. (2026). Comprehensive characterization of
@@ -27,7 +27,7 @@ Typical use
 Coordinate convention
 ---------------------
 All stimulus coordinates are in the paper's 2-D "W space" and already lie in the
-Chebyshev domain [-1, 1]. No normalisation is applied or needed.
+Chebyshev domain [-1, 1]. No normalization is applied or needed.
 
 See also
 --------
@@ -317,8 +317,8 @@ def fetch(
     Returns
     -------
     dict[str, Path]
-        Keys ``"trials"``, ``"weights"``, ``"thres_ellipses"``, and — when
-        requested — ``"noise_ellipses"``.
+        Keys ``"trials"``, ``"weights"``, ``"thres_ellipses"``, and, when
+        requested, ``"noise_ellipses"``.
 
     Notes
     -----
@@ -500,7 +500,7 @@ def w2d_to_rgb(coords: np.ndarray, M: np.ndarray) -> np.ndarray:
     -----
     **These are linear, non-gamma-corrected RGB values**, which is what the
     paper's own plotting code produces and passes to matplotlib. Applying an
-    sRGB gamma would give more perceptually even colours but would no longer
+    sRGB gamma would give more perceptually even colors but would no longer
     match the published figures.
 
     **The matrix is monitor-specific** -- one Dell display, calibrated on the
@@ -508,7 +508,7 @@ def w2d_to_rgb(coords: np.ndarray, M: np.ndarray) -> np.ndarray:
     is not a general W-space-to-RGB conversion, and a different display needs
     its own calibration.
 
-    Values outside the monitor gamut are clipped, so a returned colour on a
+    Values outside the monitor gamut are clipped, so a returned color on a
     channel boundary may not be the exact requested chromaticity. Over the
     paper's own [-0.7, 0.7] reference grid no clipping occurs.
 
@@ -639,7 +639,7 @@ def load_reference_W(path: str | Path, column: str = "W_org") -> jnp.ndarray:
     Returns
     -------
     jnp.ndarray
-        Shape (5, 5, 2, 3) — exactly psyphy's ``params["W"]`` layout for
+        Shape (5, 5, 2, 3), exactly psyphy's ``params["W"]`` layout for
         ``basis_degree=4, input_dim=2, extra_embedding_dims=1``, so it can be
         used directly as ``{"W": load_reference_W(...)}`` with no reshaping.
 
@@ -719,7 +719,7 @@ def load_sigma_table(
     path : str or Path
         Path to either ellipse CSV.
     value_column : str, optional
-        Which fit to read. Defaults to the file's main fit — whichever
+        Which fit to read. Defaults to the file's main fit, whichever
         ``*_org`` column is present.
 
     Returns
@@ -732,8 +732,8 @@ def load_sigma_table(
     Notes
     -----
     Because every row carries its own coordinate, the row/column ordering
-    ambiguity that affects the published ``.pkl`` files — which store bare
-    (7, 7, 2, 2) arrays with no coordinates attached — does not arise here.
+    ambiguity that affects the published ``.pkl`` files, which store bare
+    (7, 7, 2, 2) arrays with no coordinates attached, does not arise here.
     """
     with open(path, newline="") as fh:
         reader = csv.DictReader(fh)

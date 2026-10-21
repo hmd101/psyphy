@@ -42,7 +42,7 @@ class TrialData:
     N : number of trials (batch dimension)
     K : number of stimuli per trial (e.g. K=2 for a two-alternative task;
         K=2 for the oddity task, where the reference is presented twice but
-        only the unique mean is stored — the duplication is encoded in the
+        only the unique mean is stored; the duplication is encoded in the
         task likelihood, not here)
     d : dimensionality of each stimulus coordinate
     R : number of response channels (R=1 for binary; R=2 for e.g. (choice, RT))
@@ -106,7 +106,7 @@ class TrialData:
         """
         if not self.stimulus_names:
             raise ValueError(
-                "stimulus_names is empty — set it at construction time to use "
+                "stimulus_names is empty; set it at construction time to use "
                 "named access, e.g. stimulus_names=('ref', 'comp')."
             )
         if name not in self.stimulus_names:
@@ -155,8 +155,8 @@ class ResponseData:
         resp : Any
             Subject response
         """
-        input_arr = np.atleast_2d(np.asarray(input))  # (K, d) — 1D input treated as K=1
-        resp_arr = np.atleast_1d(np.asarray(resp))  # (R,)   — scalar treated as R=1
+        input_arr = np.atleast_2d(np.asarray(input))  # (K, d): 1D input treated as K=1
+        resp_arr = np.atleast_1d(np.asarray(resp))  # (R,)  : scalar treated as R=1
         if self.stimuli:
             if self.stim_shape != input_arr.shape:
                 raise ValueError(
@@ -300,7 +300,7 @@ class ResponseData:
         if c is not None and c.shape[0] != X.shape[0]:
             raise ValueError("c must contain same n_trials as X.")
 
-        # X is (n_trials, K, d) — split into per-trial tuples of K stimulus rows
+        # X is (n_trials, K, d): split into per-trial tuples of K stimulus rows
         stimuli = []
         for plane in X:
             stimuli.append(tuple(plane))
