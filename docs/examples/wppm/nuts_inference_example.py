@@ -540,7 +540,7 @@ else:
         num_warmup=NUM_WARMUP,
         num_samples=NUM_SAMPLES,
         num_chains=NUM_CHAINS,
-        logdensity_key_seed=LOGDENSITY_KEY_SEED,  # fixed MC key → deterministic
+        logdensity_key_seed=LOGDENSITY_KEY_SEED,  # fixed MC key -> deterministic
         target_acceptance_rate=TARGET_ACCEPTANCE_RATE,
         max_num_doublings=MAX_NUM_DOUBLINGS,  # cap: <= 255 grad evals per draw
         # Sample z = W / prior_std so warmup starts from a metric matched to the
