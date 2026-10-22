@@ -260,8 +260,19 @@ the reason it exists rather than `WPPMCovarianceField(model, posterior.params)`:
 
 This produces the figure at the top of the page.
 
-A cloud of contours is the full answer, but a paper reports an interval. `threshold_band`
-gives one. It writes each contour as a radius per direction: along the unit direction
+A cloud of contours is the full answer, but a paper reports an interval. psyphy computes
+one with [`threshold_band`](../../reference/model.md#psyphy.model.threshold_band), which
+takes the posterior and the points to evaluate at:
+
+| argument | what to pass |
+|---|---|
+| `posterior` | the fitted posterior, here the `MCMCPosterior` from Step 4 |
+| `points` | the reference points, `(n_points, 2)` |
+| `ci_prob` | how much posterior mass the interval holds. `0.89` by default, matching ArviZ |
+| `ci_kind` | `"eti"` for equal-tailed, `"hdi"` for the narrowest interval of that mass |
+| `n_samples`, `key` | how many draws to use, and the key to draw them with |
+
+It works by writing each contour as a radius per direction: along the unit direction
 $u(\varphi) = (\cos\varphi, \sin\varphi)$, draw $i$'s contour at reference point $x$ sits at
 
 $$r_i(\varphi) \;=\; \frac{1}{\sqrt{u(\varphi)^\top \Sigma_i(x)^{-1} u(\varphi)}}$$
@@ -280,8 +291,9 @@ at each direction. Filling between them gives us the credible band.
 
     For a $1-\alpha$ interval, at each direction separately, the band runs between
     $q_{\alpha/2}\{r_i(\varphi)\}$ and $q_{1-\alpha/2}\{r_i(\varphi)\}$ over the $N$ draws.
-    `threshold_radii` computes $r_i(\varphi)$ on its own, for anyone who wants a quantile
-    psyphy does not offer.
+    [`threshold_radii`](../../reference/model.md#psyphy.model.threshold_radii) computes
+    $r_i(\varphi)$ on its own, in any dimension, for anyone who wants a quantile psyphy does
+    not offer.
 
 ```python title="Pointwise credible band on the threshold contour"
 --8<-- "docs/examples/wppm/nuts_inference_example.py:credible_band"
@@ -296,10 +308,15 @@ at each direction. Filling between them gives us the credible band.
 The band is narrow where the data constrain the threshold and wide where they do not. A MAP
 fit reports the same contours with no way to tell those two cases apart.
 
-`ci_prob` sets how much posterior mass the interval holds, and a sequence such as
-`ci_prob=[0.5, 0.8, 0.95]` returns nested bands for one figure. `ci_kind="hdi"` takes the
-narrowest interval holding that mass instead of cutting equal tails, which differs when the
-radii are skewed, and they usually are because a radius cannot go below zero.
+What comes back is a
+[`ThresholdBand`](../../reference/model.md#psyphy.model.ThresholdBand): `lower`, `median`
+and `upper` radii, each `(n_points, n_directions)`, plus the `directions` they were measured
+along and the `ci_prob` and `ci_kind` that produced them, so a figure caption can state
+which interval it draws.
+
+Passing a sequence, `ci_prob=[0.5, 0.8, 0.95]`, returns nested bands for one figure. The
+three arrays then gain a leading level axis and keep the same shape as each other, so a loop
+over levels can index all of them.
 
 !!! warning "This band is pointwise, not simultaneous"
     The interval covers the true radius in each direction separately with probability
@@ -379,7 +396,9 @@ version of a `full` one.
 - API reference: [`NUTSSampler`](../../reference/inference.md#psyphy.inference.NUTSSampler),
   [`MCMCPosterior`](../../reference/posterior.md#psyphy.posterior.MCMCPosterior),
   [`covariance_to_arviz`](../../reference/model.md#psyphy.model.covariance_to_arviz),
-  [`PosteriorMeanCovarianceField`](../../reference/model.md#psyphy.model.PosteriorMeanCovarianceField)
+  [`PosteriorMeanCovarianceField`](../../reference/model.md#psyphy.model.PosteriorMeanCovarianceField),
+  [`threshold_band`](../../reference/model.md#psyphy.model.threshold_band),
+  [`threshold_radii`](../../reference/model.md#psyphy.model.threshold_radii)
 - MAP fitting and the model in more depth:
   [full WPPM fit](full_wppm_fit_example.md).
 - [BlackJAX](https://blackjax-devs.github.io/blackjax/) for the sampler and its arguments.
