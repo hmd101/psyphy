@@ -47,7 +47,7 @@ $$
 
 where $U(x)$ is a smooth, basis-expanded matrix-valued function and $\varepsilon$ is a small diagonal “jitter” (`diag_term`) to avoid numerical issues. Alternatively, in Gaussian Process (GP) terms, you can think of $U(x)$ defining a GP in weight space, i.e., a "Bayesian linear model".
 
-A psychophysical task model (here: `OddityTask`) uses $\Sigma$ to compute probability of a correct response on each trial, and `MAPOptimizer` fits WPPM parameters by maximizing
+A psychophysical task model (here: `OddityTask`) uses $\Sigma$ to compute probability of a correct response on each trial, and [`MAPOptimizer`](../../reference/inference.md#psyphy.inference.MAPOptimizer) fits WPPM parameters by maximizing
 
 For more details on the psychophysical task used in this example as well as some more details on the model, please checkout the paper by [Hong et al (2025)](https://elifesciences.org/reviewed-preprints/108943) and this [tutorial](`docs/examples/wppm/wppm_tutorial.md`).
 
@@ -71,7 +71,7 @@ Note on data used in this script: here, we simulate data (and hence have a groun
 ### 2 ways of representing data in `psyphy` (important)
 `psyphy` provides two lightweight containers for trial data (defined in [`src/psyphy/data/dataset.py`](https://github.com/flatironinstitute/psyphy/blob/main/src/psyphy/data/dataset.py)):
 
-**`TrialData` (compute-first; used for fitting):**
+**[`TrialData`](../../reference/data.md#psyphy.data.TrialData) (compute-first; used for fitting):**
 
 - The canonical, (batched) input expected by likelihood evaluation and optimizers (e.g., MAPOptimizer.fit(...)).
 It holds JAX arrays:
@@ -84,7 +84,7 @@ where $N$ is the number of trials, $K$ is the number of distinct stimuli per tri
 
 Context is an optional attribute which is intended to track task-wide features that vary across trials which might condition likelihoods. For example, psyiological metrics like pupil dilation could be included as context. PsyPhy does not yet have inbuilt uses for context.
 
-**`ResponseData` (collection/I/O-first; convenient for experiments):**
+**[`ResponseData`](../../reference/data.md#psyphy.data.ResponseData) (collection/I/O-first; convenient for experiments):**
 - A Python-friendly log (stores trials in lists) designed for incremental collection, saving/loading (e.g., CSV), and adaptive experiments but expensive for computation
 
 #### Typical workflow:
@@ -178,7 +178,7 @@ Like good Bayesians, we build a model by combining a **prior** and a **likelihoo
 
 In `psyphy`, `model` acts as  a container for both
 
-- Prior specific hyerparameters, owned by the `Prior`.
+- Prior specific hyerparameters, owned by the [`Prior`](../../reference/model.md#psyphy.model.Prior).
 
 - Likelihood-specific hyperparameters are owned by the `Task`
 
@@ -211,7 +211,7 @@ W_\text{MAP} = \arg\max_{W} \big[\log p(\mathcal{D}\mid W) + \log p(W)\big].
 - $\log p(W)$ is from `Prior.log_prob(params)` (see `prior.py`).
 - $\log p(\mathcal{D}\mid W)$ is computed by the task’s log-likelihood (here via Monte Carlo inside `OddityTask.loglik`).
 
-The result in this example is a `MAPPosterior` object that contains a point estimate `map_posterior.params`.
+The result in this example is a [`MAPPosterior`](../../reference/posterior.md#psyphy.posterior.MAPPosterior) object that contains a point estimate `map_posterior.params`.
 
 
 ---
@@ -272,10 +272,10 @@ instead of using relative filesystem paths.
 
 - Example script: [`docs/examples/wppm/full_wppm_fit_example.py`](full_wppm_fit_example.py)
 - Prior (how weights are initialized / regularized): [`src/psyphy/model/prior.py`](https://github.com/flatironinstitute/psyphy/blob/main/src/psyphy/model/prior.py)
-- Model definition: [`src/psyphy/model/wppm.py`](https://github.com/flatironinstitute/psyphy/blob/main/src/psyphy/model/wppm.py) (see `WPPM`)
-- Covariance field wrapper: [`src/psyphy/model/covariance_field.py`](https://github.com/flatironinstitute/psyphy/blob/main/src/psyphy/model/covariance_field.py) (see `WPPMCovarianceField`)
-- Task / likelihood: [`src/psyphy/model/likelihood/oddity.py`](https://github.com/flatironinstitute/psyphy/blob/main/src/psyphy/model/likelihood/oddity.py) (see `OddityTask`)
-- Noise model: [`src/psyphy/model/noise.py`](https://github.com/flatironinstitute/psyphy/blob/main/src/psyphy/model/noise.py) (see `GaussianNoise`)
+- Model definition: [`src/psyphy/model/wppm.py`](https://github.com/flatironinstitute/psyphy/blob/main/src/psyphy/model/wppm.py) (see [`WPPM`](../../reference/model.md#psyphy.model.WPPM))
+- Covariance field wrapper: [`src/psyphy/model/covariance_field.py`](https://github.com/flatironinstitute/psyphy/blob/main/src/psyphy/model/covariance_field.py) (see [`WPPMCovarianceField`](../../reference/model.md#psyphy.model.WPPMCovarianceField))
+- Task / likelihood: [`src/psyphy/model/likelihood/oddity.py`](https://github.com/flatironinstitute/psyphy/blob/main/src/psyphy/model/likelihood/oddity.py) (see [`OddityTask`](../../reference/model.md#psyphy.model.OddityTask))
+- Noise model: [`src/psyphy/model/noise.py`](https://github.com/flatironinstitute/psyphy/blob/main/src/psyphy/model/noise.py) (see [`GaussianNoise`](../../reference/model.md#psyphy.model.GaussianNoise))
 - MAP fitting: [`src/psyphy/inference/map_optimizer.py`](https://github.com/flatironinstitute/psyphy/blob/main/src/psyphy/inference/map_optimizer.py) (see `MAPOptimizer`)
 - Data container: [`src/psyphy/data/dataset.py`](https://github.com/flatironinstitute/psyphy/blob/main/src/psyphy/data/dataset.py) (see `ResponseData`)
 

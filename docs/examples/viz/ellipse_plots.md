@@ -88,7 +88,7 @@ the natural way to show parameter uncertainty.
 </div>
 
 This is the shape `WPPMPredictivePosterior.rsample()` returns. With a
-`MAPPosterior` every draw is identical (a point estimate has no spread), so the
+[`MAPPosterior`](../../reference/posterior.md#psyphy.posterior.MAPPosterior) every draw is identical (a point estimate has no spread), so the
 band collapses to a single field.
 
 ---

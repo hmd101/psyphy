@@ -51,7 +51,7 @@ We generate `NUM_TRIALS` oddity-task responses at a single reference stimulus
 --8<-- "docs/examples/wppm/quick_start.py:simulate_data"
 ```
 
-The `TrialData` container is the canonical input for fitting:
+The [`TrialData`](../../reference/data.md#psyphy.data.TrialData) container is the canonical input for fitting:
 
 ```python title="Data container"
 --8<-- "docs/examples/wppm/quick_start.py:data"
@@ -81,7 +81,7 @@ optimization.
 --8<-- "docs/examples/wppm/quick_start.py:fit_map"
 ```
 
-`MAPOptimizer` runs SGD + momentum and returns a `MAPPosterior` — a point
+`MAPOptimizer` runs SGD + momentum and returns a [`MAPPosterior`](../../reference/posterior.md#psyphy.posterior.MAPPosterior) — a point
 estimate at $W_\text{MAP}$.
 
 ---

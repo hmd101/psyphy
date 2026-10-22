@@ -99,7 +99,7 @@ References are drawn from `[S_MIN, S_MAX_REF] = [0.2, 1.0]`; comparisons can rea
 ## Step 2  The ground-truth Weber observer
 
 This is the synthetic participant that generates our data. It implements only the one
-method `OddityTask` needs  a square-root covariance `U`  and hard-codes Weber's law,
+method [`OddityTask`](../../reference/model.md#psyphy.model.OddityTask) needs  a square-root covariance `U`  and hard-codes Weber's law,
 $\sqrt{\Sigma(s)} = k\,s$. It receives the *same* normalized $x$ as the WPPM and converts
 back to physical $s$ internally, so simulation and fitting share one coordinate system.
 
@@ -119,7 +119,7 @@ picks the odd one out. We place each comparison a random number of JNDs (0.5–4
 reference, so the data spans easy and hard trials, then draw a binary correct/incorrect
 response from the Monte-Carlo oddity likelihood.
 
-The stored `TrialData` holds only `(stimuli, responses)`  exactly what an experimenter
+The stored [`TrialData`](../../reference/data.md#psyphy.data.TrialData) holds only `(stimuli, responses)`  exactly what an experimenter
 records. Plotting reference level $s$ against displacement $\delta = s_\mathrm{comp} -
 s_\mathrm{ref}$, with the ground-truth JND line $\delta = k\,s$, shows the structure the
 model must recover: trials above the line are mostly correct, below mostly wrong.

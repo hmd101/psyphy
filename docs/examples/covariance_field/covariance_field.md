@@ -1,6 +1,6 @@
 # Covariance Field: Visualizing Spatially-Varying Thresholds
 
-This example demonstrates how to work with the **`WPPMCovarianceField`** abstraction for visualizing spatially-varying perceptual thresholds in the Wishart Process Psychophysical Model (WPPM).
+This example demonstrates how to work with the **[`WPPMCovarianceField`](../../reference/model.md#psyphy.model.WPPMCovarianceField)** abstraction for visualizing spatially-varying perceptual thresholds in the Wishart Process Psychophysical Model (WPPM).
 
 The covariance field provides a clean, functional interface for:
 - Evaluating covariance matrices at different stimulus locations
@@ -145,7 +145,7 @@ You can sample multiple fields from the prior or create fields from custom param
 
 `from_posterior` builds the field from `posterior.params`, a single parameter set. For a
 MAP fit that is θ_MAP, which is what you want. For a **sample-based posterior** (e.g. from
-`NUTSSampler`), `params` is the average parameter E[W], and the field built from it is
+[`NUTSSampler`](../../reference/inference.md#psyphy.inference.NUTSSampler)), `params` is the average parameter E[W], and the field built from it is
 systematically too small, so `from_posterior` warns. Use
 `PosteriorMeanCovarianceField(posterior)` instead: it evaluates Σ for every posterior
 draw and averages the matrices, giving E[Σ(x)]. See the

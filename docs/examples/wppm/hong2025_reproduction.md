@@ -325,7 +325,7 @@ closest to 2/3. We thus have one boundary point per direction.
 
 Step 3 needs no optimizer, the ellipse fit is closed-form.
 
-To compute this inverse using psyphy, we construct the `WPPMPredictivePosterior`
+To compute this inverse using psyphy, we construct the [`WPPMPredictivePosterior`](../../reference/posterior.md#psyphy.posterior.WPPMPredictivePosterior)
 object with the ``threshold_pred`` argument set to ``True``, passing it the relevant arguments.
 
 ??? note "Why the ellipse fit is closed-form"
@@ -372,7 +372,7 @@ asked it to *fit* anything. That is the next step, which is the expensive part.
 Everything above started from the paper's weights. The stronger question is: given
 only the paper's **data**, does psyphy's fit find the paper's covariance field?
 
-The following block of code refits the WPPM's weights from the raw data, computes the covariance field  and then plots resulting ellipses. 
+The following block of code refits the WPPM's weights from the raw data, computes the covariance field  and then plots resulting ellipses.
 Looking at the alignment of the ellipses in the figure below, the answer to that question is yes.
 
 ```python title="MAP fit with the paper's optimizer settings"
@@ -557,4 +557,4 @@ The full refit requires **~16 min** on a single GPU. See the following table for
 - [Full WPPM fit (simulated data)](full_wppm_fit_example.md) — more on the model math with ground truth available
 - [Quick start](quick_start.md) — the minimal version
 - [Plotting ellipse fields](../viz/ellipse_plots.md) — `plot_ellipses` on its own, with synthetic data
-- `psyphy.data.published.hong2025` in [Data](../../reference/data.md); `WPPMPredictivePosterior` and `ThresholdConfig` in [Posterior](../../reference/posterior.md).
+- `psyphy.data.published.hong2025` in [Data](../../reference/data.md); `WPPMPredictivePosterior` and [`ThresholdConfig`](../../reference/posterior.md#psyphy.posterior.ThresholdConfig) in [Posterior](../../reference/posterior.md).
