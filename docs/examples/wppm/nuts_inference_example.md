@@ -217,9 +217,17 @@ choose, here the reference points, and returns it in ArviZ's format.
 
 <div align="center">
   <img src="../plots/nuts_trace_sigma_full.png" width="760"/>
-  <p><em>One panel per quantity at the reference point with the highest R-hat, one line per
-  chain.</em></p>
+  <p><em>One panel per quantity at the reference point with the worst R-hat, one colored
+  line per chain. Horizontal axis is the draw index, vertical axis the value of that
+  quantity.</em></p>
 </div>
+
+`covariance_to_arviz` summarizes each $2\times2$ $\Sigma$ by the three numbers that
+determine it: `log_var_0` and `log_var_1`, the log variances along each axis, and
+`corr_0_1`, their correlation. A trace plot shows how each of those moved over the run. We
+are looking for the four chains to overlap, to stay level, and to vary
+fast from draw to draw. A chain sitting at its own offset, or still sloping at the end of
+the run, has not mixed.
 
 ```python title="ESS and R-hat over all quantities"
 --8<-- "docs/examples/wppm/nuts_inference_example.py:convergence_plot"
@@ -227,9 +235,21 @@ choose, here the reference points, and returns it in ArviZ's format.
 
 <div align="center">
   <img src="../plots/nuts_convergence_sigma_full.png" width="760"/>
-  <p><em>Cumulative bulk ESS, tail ESS and R-hat over every $\Sigma$ quantity. Dashed lines
-  are ArviZ's reference thresholds.</em></p>
+  <p><em>Bulk ESS, tail ESS and R-hat, one panel each. The curve is the cumulative fraction
+  of quantities at or below a value, so the vertical axis runs from 0 to 1 and the
+  horizontal axis carries the diagnostic. Dashed lines are ArviZ's reference
+  thresholds.</em></p>
 </div>
+
+The trace plot covers one point, this covers all of them at once. Each curve is the
+distribution of a diagnostic over every $\Sigma$ quantity at every reference point, so a
+point on the curve reads as "this fraction of quantities scored at most this value". More is
+better for ESS and less is better for R-hat, which means we want both ESS curves to sit
+entirely to the right of their dashed line and the R-hat curve entirely to its left. A curve
+crossing its threshold says what fraction of quantities fall short.
+
+This run has no divergences, and the printed `R-hat max` and `ESS min` above are the two
+numbers to quote.
 
 A failing check is fixed by the sampler arguments, which
 [`blackjax.nuts`](https://blackjax-devs.github.io/blackjax/autoapi/blackjax/mcmc/nuts/index.html)
