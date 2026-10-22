@@ -20,7 +20,7 @@ The companion script is
 
 | step | what we do | what we get |
 |---|---|---|
-| 1–2 | simulate data, build the Wishart Process Psychophysical Model (WPPM) | a `TrialData` and a model, as in the [MAP tutorial](full_wppm_fit_example.md) |
+| 1–2 | simulate data, build the Wishart Process Psychophysical Model (WPPM) | a [`TrialData`](../../reference/data.md#psyphy.data.TrialData) and a model, as in the [MAP tutorial](full_wppm_fit_example.md) |
 | 3 | run a short MAP fit | a starting point near the posterior peak |
 | 4 | run the sampler, here the No-U-Turn Sampler (NUTS), via [BlackJAX](https://blackjax-devs.github.io/blackjax/) | an `MCMCPosterior`: thousands of plausible parameter arrays $W$ |
 | 5 | check the chains with [ArviZ](https://python.arviz.org/) | evidence that the draws are representitive of the posterior, or are not|
@@ -104,7 +104,7 @@ What we get in exchange for the extra compute:
 
 ??? note "What the frozen key costs"
 
-    `OddityTask` has no closed-form likelihood. It estimates $P(\text{correct})$ by
+    [`OddityTask`](../../reference/model.md#psyphy.model.OddityTask) has no closed-form likelihood. It estimates $P(\text{correct})$ by
     simulating `mc_samples` noisy internal representations per trial, which makes the log
     density expensive and slightly different on every call. Freezing one key removes the
     variation, at the cost of sampling the posterior implied by that one noise realization
@@ -133,7 +133,7 @@ ground-truth WPPM, so there is something to compare the fit against.
 
 ??? note "Recap: the model and its parameters"
 
-    The model is a `Prior` over the parameters, plus a task likelihood and a noise model.
+    The model is a [`Prior`](../../reference/model.md#psyphy.model.Prior) over the parameters, plus a task likelihood and a noise model.
     Every diagnostic and figure below refers to the parameters, so here is what they are.
 
     **Parameters.** The WPPM fits a covariance *field* $\Sigma(x)$: a $2\times2$ matrix at
@@ -167,7 +167,7 @@ warmup can be spent on tuning instead.
 --8<-- "docs/examples/wppm/nuts_inference_example.py:nuts_fit"
 ```
 
-`NUTSSampler` has the same `fit(model, data)` interface as `MAPOptimizer`, and the BlackJAX
+`NUTSSampler` has the same `fit(model, data)` interface as [`MAPOptimizer`](../../reference/inference.md#psyphy.inference.MAPOptimizer), and the BlackJAX
 backend stays hidden. Each chain runs a warmup phase, where the step size and mass matrix
 are tuned and the draws discarded, then a sampling phase where the tuning is frozen and
 every draw is kept. What comes back is an `MCMCPosterior`. Three things on it are used
@@ -180,12 +180,13 @@ below:
 | `covariance_to_arviz(nuts_posterior, points)` | $\Sigma$ at chosen points for every draw, in ArviZ's format | Step 5 |
 
 One draw is one complete covariance field, so one threshold contour at every reference
-point. `MCMCPosterior` and `MAPPosterior` share this interface, so code written for a MAP
-fit, `WPPMPredictivePosterior` for instance, takes a NUTS fit unchanged.
+point. `MCMCPosterior` and [`MAPPosterior`](../../reference/posterior.md#psyphy.posterior.MAPPosterior) share this interface, so code written for a MAP
+fit, [`WPPMPredictivePosterior`](../../reference/posterior.md#psyphy.posterior.WPPMPredictivePosterior) for instance, takes a NUTS fit unchanged.
 
 !!! warning "Do not build a covariance field from `nuts_posterior.params`"
     `nuts_posterior.params` is the mean *parameter* $\mathbb{E}[W]$. It is a valid parameter
-    set and works as `init_params`, but `WPPMCovarianceField(model, nuts_posterior.params)`
+    set and works as `init_params`, but
+    [`WPPMCovarianceField`](../../reference/model.md#psyphy.model.WPPMCovarianceField)`(model, nuts_posterior.params)`
     gives contours that are far too small, because $\Sigma$ is quadratic in $W$ and $W$ is
     only identified up to a rotation. Use `PosteriorMeanCovarianceField`
     ([Step 6](#step-6-threshold-uncertainty)), whose docstring has the full argument.
@@ -304,9 +305,29 @@ takes the posterior and the points to evaluate at.
     were measured along and the `ci_prob` and `ci_kind` that produced them, so a figure
     caption can state which interval it draws.
 
-    Passing a sequence, `ci_prob=[0.5, 0.8, 0.95]`, returns nested bands for one figure. The
-    three arrays then gain a leading level axis and keep the same shape as each other, so a
-    loop over levels can index all of them.
+    **`ci_prob` with several levels.** Passing a sequence gives one interval per level in a
+    single call:
+
+    ```python title="Nested bands from one call"
+    --8<-- "docs/examples/wppm/nuts_inference_example.py:nested_bands"
+    ```
+
+    `lower`, `median` and `upper` all gain the same leading level axis, so
+    `nested.lower[i]`, `nested.median[i]` and `nested.upper[i]` belong to
+    `nested.ci_prob[i]` and one loop draws every level.
+
+    <div align="center">
+      <img src="../plots/nuts_threshold_band_nested_full.jpg" width="520"/>
+      <p><em>One of the 25 reference points from <a href="#step-1-simulate-data">Step 1</a>,
+      drawn alone. Each contour is the set of comparison stimuli at the discrimination
+      threshold from that reference, so its size is how far a probe has to move before the
+      simulated observer notices, and its tilt is the correlation between the two
+      dimensions. Black is the contour of the ground-truth model the trials were simulated
+      from. Blue line is the posterior median, blue fills are the 50%, 80% and 95% bands,
+      darkest where all three overlap. Green is the reference point itself. The bands come
+      from 400 posterior draws, each giving one contour, reduced to quantiles per
+      direction.</em></p>
+    </div>
 
 It works by writing each contour as a radius per direction: along the unit direction
 $u(\varphi) = (\cos\varphi, \sin\varphi)$, draw $i$'s contour at reference point $x$ sits at
