@@ -305,30 +305,6 @@ takes the posterior and the points to evaluate at.
     were measured along and the `ci_prob` and `ci_kind` that produced them, so a figure
     caption can state which interval it draws.
 
-    **`ci_prob` with several levels.** Passing a sequence gives one interval per level in a
-    single call:
-
-    ```python title="Nested bands from one call"
-    --8<-- "docs/examples/wppm/nuts_inference_example.py:nested_bands"
-    ```
-
-    `lower`, `median` and `upper` all gain the same leading level axis, so
-    `nested.lower[i]`, `nested.median[i]` and `nested.upper[i]` belong to
-    `nested.ci_prob[i]` and one loop draws every level.
-
-    <div align="center">
-      <img src="../plots/nuts_threshold_band_nested_full.jpg" width="520"/>
-      <p><em>One of the 25 reference points from <a href="#step-1-simulate-data">Step 1</a>,
-      drawn alone. Each contour is the set of comparison stimuli at the discrimination
-      threshold from that reference, so its size is how far a probe has to move before the
-      simulated observer notices, and its tilt is the correlation between the two
-      dimensions. Black is the contour of the ground-truth model the trials were simulated
-      from. Blue line is the posterior median, blue fills are the 50%, 80% and 95% bands,
-      darkest where all three overlap. Green is the reference point itself. The bands come
-      from 400 posterior draws, each giving one contour, reduced to quantiles per
-      direction.</em></p>
-    </div>
-
 It works by writing each contour as a radius per direction: along the unit direction
 $u(\varphi) = (\cos\varphi, \sin\varphi)$, draw $i$'s contour at reference point $x$ sits at
 
@@ -364,6 +340,25 @@ at each direction. Filling between them gives us the credible band.
 
 The band is narrow where the data constrain the threshold and wide where they do not. A MAP
 fit reports the same contours with no way to tell those two cases apart.
+
+??? note "Nested bands: several levels in one call"
+
+    Passing a sequence to `ci_prob` gives one interval per level, from one set of draws:
+
+    ```python title="Nested bands from one call"
+    --8<-- "docs/examples/wppm/nuts_inference_example.py:nested_bands"
+    ```
+
+    `lower`, `median` and `upper` all gain the same leading level axis, so
+    `nested.lower[i]`, `nested.median[i]` and `nested.upper[i]` all belong to
+    `nested.ci_prob[i]` and one loop draws every level.
+
+    <div align="center">
+      <img src="../plots/nuts_threshold_band_nested_full.jpg" width="520"/>
+      <p><em>One reference point, drawn alone. Black: ground truth. Blue line: posterior
+      median. Blue fills: the 50%, 80% and 95% bands, darkest where they overlap. Green:
+      the reference point.</em></p>
+    </div>
 
 !!! warning "This band is pointwise, not simultaneous"
     The interval covers the true radius in each direction separately with probability
