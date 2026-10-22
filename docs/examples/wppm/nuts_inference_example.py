@@ -687,7 +687,7 @@ plot_ellipses(
     jax.device_get(ensemble_covs(param_samples, ref_points)),
     ax=ax,
     scale=ELLIPSE_SCALE,
-    colors="#4444cc",
+    colors="C0",
     linewidths=0.5,
     alpha=0.15,
 )
@@ -706,11 +706,11 @@ plot_ellipses(
 )
 # --8<-- [end:plot_uncertainty]
 
-ax.scatter(ref_points[:, 0], ref_points[:, 1], c="g", s=5, zorder=5)
+ax.scatter(ref_points[:, 0], ref_points[:, 1], c="C2", s=5, zorder=5)
 ax.plot(
     [],
     [],
-    color="#4444cc",
+    color="C0",
     alpha=0.5,
     linewidth=1,
     label=f"Posterior samples (n={n_ensemble})",
@@ -774,18 +774,18 @@ for k in range(_refs.shape[0]):
     ax.fill(
         np.concatenate([outer[:, 0], inner[::-1, 0]]),
         np.concatenate([outer[:, 1], inner[::-1, 1]]),
-        color="#4444cc",
+        color="C0",
         alpha=0.25,
         linewidth=0,
     )
-    for r, color, lw in ((_med[k], "#4444cc", 1.0), (_truth[k], "k", 1.0)):
+    for r, color, lw in ((_med[k], "C0", 1.0), (_truth[k], "k", 1.0)):
         pts = _refs[k] + ELLIPSE_SCALE * r[:, None] * _u
         ax.plot(pts[:, 0], pts[:, 1], color=color, linewidth=lw, alpha=0.85)
 
-ax.plot([], [], color="#4444cc", alpha=0.25, linewidth=8, label=f"{CI_PROB:.0%} CI")
-ax.plot([], [], color="#4444cc", linewidth=1, label="Posterior median contour")
+ax.plot([], [], color="C0", alpha=0.25, linewidth=8, label=f"{CI_PROB:.0%} CI")
+ax.plot([], [], color="C0", linewidth=1, label="Posterior median contour")
 ax.plot([], [], color="k", linewidth=1, label="Ground truth")
-ax.scatter(_refs[:, 0], _refs[:, 1], c="g", s=5, zorder=5)
+ax.scatter(_refs[:, 0], _refs[:, 1], c="C2", s=5, zorder=5)
 ax.set_aspect("equal")
 ax.set_xlim(-1.1, 1.1)
 ax.set_ylim(-1.1, 1.1)
@@ -799,6 +799,71 @@ ax.legend(loc="upper right", fontsize=8)
 ax.grid(True, alpha=0.3)
 plt.tight_layout()
 save_ellipse_figure(fig, "nuts_threshold_band")
+
+
+# ---------------------------------------------------------------------------
+# 6c. Nested bands: several probability levels in one call
+# ---------------------------------------------------------------------------
+print("[6c/7] Nested credible bands at one reference point...")
+
+# --8<-- [start:nested_bands]
+# A sequence of probabilities gives one interval per level in a single call.
+nested = threshold_band(
+    nuts_posterior,
+    ref_points,
+    ci_prob=[0.5, 0.8, 0.95],
+    n_samples=N_BAND,
+    key=jr.PRNGKey(1),
+)
+# nested.lower / .median / .upper  (n_levels, n_ref, n_directions)
+# nested.ci_prob                    (0.5, 0.8, 0.95), the order of that axis
+# One shape for all three, so nested.lower[i] and nested.median[i] line up and
+# a single loop over i draws every level.
+# --8<-- [end:nested_bands]
+
+# Show one reference point, the least constrained one, so the three levels are
+# far enough apart to tell apart by eye.
+_rel_width = (nested.upper[-1] - nested.lower[-1]) / nested.median[-1]
+_k = int(jnp.argmax(jnp.mean(_rel_width, axis=1)))  # widest band, (n_ref,) -> index
+
+_ref_k = jax.device_get(ref_points[_k])
+_dirs = jax.device_get(nested.directions)  # (n_directions, 2)
+fig, ax = plt.subplots(figsize=(5.5, 5.5))
+# Widest level first so the narrower fills draw on top of it.
+for level in reversed(range(len(nested.ci_prob))):
+    lo = jax.device_get(nested.lower[level][_k])  # (n_directions,)
+    hi = jax.device_get(nested.upper[level][_k])
+    outer = _ref_k + ELLIPSE_SCALE * hi[:, None] * _dirs
+    inner = _ref_k + ELLIPSE_SCALE * lo[:, None] * _dirs
+    ax.fill(
+        np.concatenate([outer[:, 0], inner[::-1, 0]]),
+        np.concatenate([outer[:, 1], inner[::-1, 1]]),
+        color="C0",
+        alpha=0.22,
+        linewidth=0,
+        label=f"{nested.ci_prob[level]:.0%} CI",
+    )
+_med_k = jax.device_get(nested.median[0][_k])
+_truth_k = jax.device_get(r_truth[_k])
+for r, color, lab in (
+    (_med_k, "C0", "Posterior median"),
+    (_truth_k, "k", "Ground truth"),
+):
+    pts = _ref_k + ELLIPSE_SCALE * r[:, None] * _dirs
+    ax.plot(pts[:, 0], pts[:, 1], color=color, linewidth=1.2, label=lab)
+ax.scatter(*_ref_k, c="C2", s=20, zorder=5)
+ax.set_aspect("equal")
+ax.set_xlabel("Model dimension 1")
+ax.set_ylabel("Model dimension 2")
+ax.set_title(
+    "Nested credible bands on one threshold contour\n"
+    f"ci_prob=[0.5, 0.8, 0.95], {N_BAND} draws"
+)
+handles, labels = ax.get_legend_handles_labels()
+ax.legend(handles[::-1], labels[::-1], loc="upper right", fontsize=8)
+ax.grid(True, alpha=0.3)
+plt.tight_layout()
+save_ellipse_figure(fig, "nuts_threshold_band_nested")
 
 # ---------------------------------------------------------------------------
 # 7. MAP vs NUTS mean comparison (side-by-side)
@@ -832,7 +897,7 @@ for ax, (field, color, label, with_ensemble) in zip(axes, configs):
             ensemble,
             ax=ax,
             scale=ELLIPSE_SCALE,
-            colors="#4444cc",
+            colors="C0",
             linewidths=0.5,
             alpha=0.15,
         )
@@ -842,7 +907,7 @@ for ax, (field, color, label, with_ensemble) in zip(axes, configs):
         ax.plot(
             [],
             [],
-            color="#4444cc",
+            color="C0",
             alpha=0.5,
             linewidth=1,
             label=f"Posterior samples (n={n_ensemble})",
@@ -856,7 +921,7 @@ for ax, (field, color, label, with_ensemble) in zip(axes, configs):
         linewidths=1.2,
         alpha=0.8,
     )
-    ax.scatter(ref_points[:, 0], ref_points[:, 1], c="g", s=5, zorder=5)
+    ax.scatter(ref_points[:, 0], ref_points[:, 1], c="C2", s=5, zorder=5)
     ax.set_aspect("equal")
     ax.set_xlim(-1.1, 1.1)
     ax.set_ylim(-1.1, 1.1)
@@ -889,7 +954,7 @@ plot_ellipses(
     ensemble,
     ax=ax,
     scale=ELLIPSE_SCALE,
-    colors="#4444cc",
+    colors="C0",
     linewidths=0.5,
     alpha=0.15,
 )
@@ -917,7 +982,7 @@ plot_ellipses(
 ax.plot(
     [],
     [],
-    color="#4444cc",
+    color="C0",
     alpha=0.5,
     linewidth=1,
     label=f"Posterior samples (n={n_ensemble})",
