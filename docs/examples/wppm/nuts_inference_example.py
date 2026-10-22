@@ -81,6 +81,8 @@ from psyphy.model import (
     Prior,
     WPPMCovarianceField,
     covariance_to_arviz,
+    threshold_band,
+    threshold_radii,
 )
 from psyphy.posterior import MAPPosterior, MCMCPosterior
 from psyphy.viz import plot_ellipses
@@ -738,46 +740,28 @@ print("[6b/7] Pointwise credible band on the threshold contours...")
 
 
 # --8<-- [start:credible_band]
-# Pointwise credible band on the threshold contours:
+N_BAND = min(400, NUM_CHAINS * NUM_SAMPLES)  # posterior draws to use for the band
+CI_PROB = 0.89  # ArviZ's default, so the band and az.summary agree
 
-N_BAND = min(400, NUM_CHAINS * NUM_SAMPLES)  # num posterior draws to use for the band.
-CI_PROB = 0.89  # matches ArviZ's default ci_prob, so the band and az.summary agree
-
-# Direction grid: define a bunch of angles phi to approximate a circle.
-phi = jnp.linspace(0.0, 2 * jnp.pi, 181)  # radians
-u = jnp.stack([jnp.cos(phi), jnp.sin(phi)], axis=-1)  # to x,y coordinates (n_phi, 2)
-
-
-def contour_radii(cov):
-    """
-    Compute distance from the reference point to the threshold contour in each direction u.
-
-    The threshold contour is the ellipse defined by the covariance matrix `cov`.
-    find intersection of the ellipse with the line in direction u from the reference point.
-    Compute the distance from reference point to the intersection point.
-    The distance is computed as the Mahalanobis distance in the direction of u.
-    """
-    prec = jnp.linalg.inv(cov)
-    return 1.0 / jnp.sqrt(jnp.einsum("pi,ij,pj->p", u, prec, u))
-
-
-band_samples = nuts_posterior.sample(N_BAND, key=jr.PRNGKey(1))
-band_covs = ensemble_covs(band_samples, ref_points)  # (N_BAND, n_ref, 2, 2)
-radii = jax.vmap(jax.vmap(contour_radii))(band_covs)  # (N_BAND, n_ref, n_phi)
-
-# Elementwise quantile over draws, one interval per (reference point, direction).
-_q = jnp.array([(1 - CI_PROB) / 2, 0.5, 1 - (1 - CI_PROB) / 2])
-r_lo, r_med, r_hi = jnp.quantile(radii, _q, axis=0)  # each (n_ref, n_phi)
+band = threshold_band(
+    nuts_posterior,
+    ref_points,
+    ci_prob=CI_PROB,
+    n_samples=N_BAND,
+    key=jr.PRNGKey(1),
+)
+# band.lower / .median / .upper  (n_ref, n_directions): contour radius per direction
+# band.directions  (n_directions, 2): closed, so a filled polygon has no seam
 # --8<-- [end:credible_band]
 
-r_truth = jax.vmap(contour_radii)(covs_truth)  # (n_ref, n_phi)
+r_truth = threshold_radii(covs_truth, band.directions)  # (n_ref, n_directions)
 
-_u = jax.device_get(u)
+_u = jax.device_get(band.directions)
 _refs = jax.device_get(ref_points)
 _lo, _med, _hi, _truth = (
-    jax.device_get(r_lo),
-    jax.device_get(r_med),
-    jax.device_get(r_hi),
+    jax.device_get(band.lower),
+    jax.device_get(band.median),
+    jax.device_get(band.upper),
     jax.device_get(r_truth),
 )
 

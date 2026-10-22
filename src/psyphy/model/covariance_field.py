@@ -1034,7 +1034,10 @@ def threshold_band(
         Stimulus locations, usually the reference points we report.
     n_directions : int, default=181
         Directions per contour. The grid is closed, so the last direction
-        repeats the first. 181 gives 180 distinct directions.
+        repeats the first, and 181 gives 180 distinct directions, one every two
+        degrees. The number is a magic default with nothing behind it: large
+        enough that a filled band looks smooth, small enough to stay cheap.
+        Nothing in the result depends on the choice.
     ci_prob : float or sequence of float, default=0.89
         How much posterior mass the interval holds. At 0.89, 89% of the draws
         of the radius lie between ``lower`` and ``upper``, in each direction
@@ -1113,7 +1116,9 @@ def threshold_band(
             )
         n_samples = int(n_chains) * int(n_draws)
 
-    phi = jnp.linspace(0.0, 2 * jnp.pi, n_directions)  # radians, closed
+    # Closed grid, so the last angle repeats the first. n_directions is a magic
+    # default (181 -> one direction every two degrees); nothing depends on it.
+    phi = jnp.linspace(0.0, 2 * jnp.pi, n_directions)  # radians
     directions = jnp.stack([jnp.cos(phi), jnp.sin(phi)], axis=-1)  # (n_dir, 2)
 
     draws = posterior.sample(int(n_samples), key=key)

@@ -260,15 +260,15 @@ the reason it exists rather than `WPPMCovarianceField(model, posterior.params)`:
 
 This produces the figure at the top of the page.
 
-A cloud of contours is the full answer, but a paper reports an interval. Writing each
-contour as a radius per direction turns it into one: along the unit direction
+A cloud of contours is the full answer, but a paper reports an interval. `threshold_band`
+gives one. It writes each contour as a radius per direction: along the unit direction
 $u(\varphi) = (\cos\varphi, \sin\varphi)$, draw $i$'s contour at reference point $x$ sits at
 
 $$r_i(\varphi) \;=\; \frac{1}{\sqrt{u(\varphi)^\top \Sigma_i(x)^{-1} u(\varphi)}}$$
 
 which is the discrimination threshold, the just noticeable difference, in direction
-$\varphi$. It is a scalar, one number per draw, so quantiles over draws give an interval at
-each direction, and filling between them gives us the credible band.
+$\varphi$. That is a scalar, one number per draw, so quantiles over draws give an interval
+at each direction. Filling between them gives us the credible band.
 
 ??? note "Where the radius formula comes from"
 
@@ -280,6 +280,8 @@ each direction, and filling between them gives us the credible band.
 
     For a $1-\alpha$ interval, at each direction separately, the band runs between
     $q_{\alpha/2}\{r_i(\varphi)\}$ and $q_{1-\alpha/2}\{r_i(\varphi)\}$ over the $N$ draws.
+    `threshold_radii` computes $r_i(\varphi)$ on its own, for anyone who wants a quantile
+    psyphy does not offer.
 
 ```python title="Pointwise credible band on the threshold contour"
 --8<-- "docs/examples/wppm/nuts_inference_example.py:credible_band"
@@ -291,8 +293,13 @@ each direction, and filling between them gives us the credible band.
   median contour (blue line) and ground truth (black).</em></p>
 </div>
 
-The band is narrow where the data pin the threshold down and wide where they do not. A MAP
+The band is narrow where the data constrain the threshold and wide where they do not. A MAP
 fit reports the same contours with no way to tell those two cases apart.
+
+`ci_prob` sets how much posterior mass the interval holds, and a sequence such as
+`ci_prob=[0.5, 0.8, 0.95]` returns nested bands for one figure. `ci_kind="hdi"` takes the
+narrowest interval holding that mass instead of cutting equal tails, which differs when the
+radii are skewed, and they usually are because a radius cannot go below zero.
 
 !!! warning "This band is pointwise, not simultaneous"
     The interval covers the true radius in each direction separately with probability
