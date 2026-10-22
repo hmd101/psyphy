@@ -12,8 +12,7 @@ the next trial should go where the model is least certain.
   an affine transformation of the input space (e.g., RGB). Each green dot is one of the 25 reference
   points at which the model is compared against the ground truth. Around each of them, black
   is the true threshold contour, red is the posterior mean \(\mathbb{E}[\Sigma(x)]\), and the
-  200 faint blue contours are individual posterior draws: thresholds the data cannot rule
-  out. Built in <a href="#step-6-threshold-uncertainty">Step 6</a>.</em></p>
+  200 faint blue contours are individual draws from the posterior. Built in <a href="#step-6-threshold-uncertainty">Step 6</a>.</em></p>
 </div>
 
 The companion script is
@@ -23,13 +22,13 @@ The companion script is
 |---|---|---|
 | 1–2 | simulate data, build the WPPM | a `TrialData` and a model, as in the [MAP tutorial](full_wppm_fit_example.md) |
 | 3 | run a short MAP fit | a starting point near the posterior peak |
-| 4 | run NUTS, via [BlackJAX](https://blackjax-devs.github.io/blackjax/) | an `MCMCPosterior`: thousands of plausible parameter arrays $W$ |
-| 5 | check the chains with [ArviZ](https://python.arviz.org/) | evidence that those draws can be trusted, or that they cannot |
-| 6 | push the draws through the covariance field | a distribution of threshold contours, and a credible band |
+| 4 | run the sampler, here NUTS, via [BlackJAX](https://blackjax-devs.github.io/blackjax/) | an `MCMCPosterior`: thousands of plausible parameter arrays $W$ |
+| 5 | check the chains with [ArviZ](https://python.arviz.org/) | evidence that the draws are representitive of the posterior, or are not|
+| 6 | evaluate the covariance field for every draw | a distribution of threshold contours, and a credible band |
 
 ??? note "How to run the script"
 
-    Three optional dependencies, none of which psyphy requires by default:
+    The following 3 dependencies are required, none of which psyphy requires by default:
 
     ```bash
     pip install 'psyphy[sampling,diagnostics,viz]'
@@ -41,12 +40,15 @@ The companion script is
     | `diagnostics` | [`arviz>=1.0`](https://python.arviz.org/en/latest/user_guide/getting_started.html) | `covariance_to_arviz`, R-hat, ESS, the diagnostic figures |
     | `viz` | `matplotlib>=3.5` | the figures |
 
-    One script produces everything here. `--mode` selects a compute preset:
+    If you want to run the companion script
+    [`nuts_inference_example.py`](https://github.com/flatironinstitute/psyphy/blob/main/docs/examples/wppm/nuts_inference_example.py)
+    yourself to reproduce the results shown here, you have three options: `--mode` selects a
+    compute preset.
 
     ```bash
     python nuts_inference_example.py --mode quick      # smoke test, ~1 min on an A100
     python nuts_inference_example.py --mode balanced   # a real fit, ~35 min on an A100
-    python nuts_inference_example.py --mode full       # 11 h on a GPU; a batch job
+    python nuts_inference_example.py --mode full       # 11 h on a GPU, and what we show here
     ```
 
     Every figure and number here comes from `--mode full`. `quick` is a smoke test for the
@@ -60,8 +62,7 @@ The companion script is
     ```
 
     The cache (`fits/nuts_full_fit.npz`) is committed and records the settings it was
-    produced with, so a run whose settings disagree refuses to load rather than drawing a
-    `full` figure from `quick` draws.
+    produced with.
 
 ---
 
@@ -71,19 +72,20 @@ MAP estimation returns the single parameter array that maximizes the posterior:
 
 $$\theta_\text{MAP} = \arg\max_\theta \left[\log p(\mathcal{D} \mid \theta) + \log p(\theta)\right]$$
 
-That locates the peak but says nothing about its width. What we want is the posterior
+That locates the peak but doesn't tell us anything  about its width. What we want is the posterior
 $p(\theta \mid \mathcal{D})$ itself, and Bayes' rule gives it in one line containing an
 integral over all of parameter space that we cannot evaluate here.
 
 [Markov chain Monte Carlo](https://en.wikipedia.org/wiki/Markov_chain_Monte_Carlo) gets
 around this by constructing a random walk whose long-run visiting frequency is the
 posterior, so the places it has been form a sample from it. A plain random walk mixes too
-slowly to be usable in the roughly 100 dimensions of $W$, so
+slowly to be usable in the roughly 100 dimensions of our parameteres $W$, so
 [Hamiltonian Monte Carlo](https://en.wikipedia.org/wiki/Hamiltonian_Monte_Carlo) uses the
-gradient of the log posterior to move along the distribution's geometry instead. NUTS, the
-No-U-Turn Sampler of [Hoffman and Gelman (2014)](https://jmlr.org/papers/v15/hoffman14a.html),
-drops HMC's one awkward tuning parameter by extending each trajectory until it starts to
-double back on itself. Betancourt's
+gradient of the log posterior to move along the distribution's geometry instead. HMC needs
+two settings: the step size, and how many steps to take before stopping. NUTS, the No-U-Turn
+Sampler of [Hoffman and Gelman (2014)](https://jmlr.org/papers/v15/hoffman14a.html), removes
+the second by extending each trajectory until it starts to double back on itself. The step
+size is still tuned, during warmup ([Step 4](#step-4-nuts-sampling)). Betancourt's
 [conceptual introduction](https://arxiv.org/abs/1701.02434) covers why this works and where
 it fails.
 
@@ -91,8 +93,8 @@ Two things follow for psyphy:
 
 1. The sampler needs gradients, which is why the log posterior is written in JAX and
    `NUTSSampler` hands it straight to BlackJAX.
-2. The sampler needs the log density to be a fixed function of $\theta$, and the oddity
-   likelihood is estimated by simulation. psyphy freezes one PRNG key for the whole run
+2. The sampler needs the log density to be a fixed function of the parameters $\theta$. Since psyphy's  oddity
+   likelihood is estimated by simulation introducing slight randomness, psyphy freezes one PRNG key for the whole run
    (`logdensity_key_seed`) to make it deterministic.
 
 What we get in exchange for the extra compute:
@@ -108,7 +110,7 @@ What we get in exchange for the extra compute:
     variation, at the cost of sampling the posterior implied by that one noise realization
     rather than the exact posterior. More `mc_samples` reduces the discrepancy and costs
     proportionally more. A deterministic surrogate likelihood would remove the compromise.
-    See `NeuralSurrogateTask`.
+    See future `NeuralSurrogateTask`.
 
 ---
 
@@ -205,7 +207,9 @@ provides the bridge to it. Four quantities, with the upstream reference for each
 
 Diagnostics run on $\Sigma$, not on the raw parameters, for the reason in
 [Step 4](#step-4-nuts-sampling). `covariance_to_arviz` evaluates $\Sigma$ at points we
-choose, here the reference points, and returns it in ArviZ's format.
+choose, here the reference points, and returns it in ArviZ's format. It takes the posterior
+itself rather than draws from it, because R-hat compares chains against each other and
+`posterior.sample()` would pool them.
 
 ```python title="R-hat and ESS on the covariance field"
 --8<-- "docs/examples/wppm/nuts_inference_example.py:arviz_diagnostics"
@@ -282,15 +286,27 @@ This produces the figure at the top of the page.
 
 A cloud of contours is the full answer, but a paper reports an interval. psyphy computes
 one with [`threshold_band`](../../reference/model.md#psyphy.model.threshold_band), which
-takes the posterior and the points to evaluate at:
+takes the posterior and the points to evaluate at.
 
-| argument | what to pass |
-|---|---|
-| `posterior` | the fitted posterior, here the `MCMCPosterior` from Step 4 |
-| `points` | the reference points, `(n_points, 2)` |
-| `ci_prob` | how much posterior mass the interval holds. `0.89` by default, matching ArviZ |
-| `ci_kind` | `"eti"` for equal-tailed, `"hdi"` for the narrowest interval of that mass |
-| `n_samples`, `key` | how many draws to use, and the key to draw them with |
+??? note "What to pass, and what comes back"
+
+    | argument | what to pass |
+    |---|---|
+    | `posterior` | the fitted posterior, here the `MCMCPosterior` from Step 4 |
+    | `points` | the reference points, `(n_points, 2)` |
+    | `ci_prob` | how much posterior mass the interval holds. `0.89` by default, matching ArviZ |
+    | `ci_kind` | `"eti"` for equal-tailed, `"hdi"` for the narrowest interval of that mass |
+    | `n_samples`, `key` | how many draws to use, and the key to draw them with |
+
+    What comes back is a
+    [`ThresholdBand`](../../reference/model.md#psyphy.model.ThresholdBand): `lower`,
+    `median` and `upper` radii, each `(n_points, n_directions)`, plus the `directions` they
+    were measured along and the `ci_prob` and `ci_kind` that produced them, so a figure
+    caption can state which interval it draws.
+
+    Passing a sequence, `ci_prob=[0.5, 0.8, 0.95]`, returns nested bands for one figure. The
+    three arrays then gain a leading level axis and keep the same shape as each other, so a
+    loop over levels can index all of them.
 
 It works by writing each contour as a radius per direction: along the unit direction
 $u(\varphi) = (\cos\varphi, \sin\varphi)$, draw $i$'s contour at reference point $x$ sits at
@@ -327,16 +343,6 @@ at each direction. Filling between them gives us the credible band.
 
 The band is narrow where the data constrain the threshold and wide where they do not. A MAP
 fit reports the same contours with no way to tell those two cases apart.
-
-What comes back is a
-[`ThresholdBand`](../../reference/model.md#psyphy.model.ThresholdBand): `lower`, `median`
-and `upper` radii, each `(n_points, n_directions)`, plus the `directions` they were measured
-along and the `ci_prob` and `ci_kind` that produced them, so a figure caption can state
-which interval it draws.
-
-Passing a sequence, `ci_prob=[0.5, 0.8, 0.95]`, returns nested bands for one figure. The
-three arrays then gain a leading level axis and keep the same shape as each other, so a loop
-over levels can index all of them.
 
 !!! warning "This band is pointwise, not simultaneous"
     The interval covers the true radius in each direction separately with probability
