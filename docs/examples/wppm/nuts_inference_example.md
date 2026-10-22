@@ -12,7 +12,7 @@ the next trial should go where the model is least certain.
   an affine transformation of the input space (e.g., RGB). Each green dot is one of the 25 reference
   points at which the model is compared against the ground truth. Around each of them, black
   is the true threshold contour, red is the posterior mean \(\mathbb{E}[\Sigma(x)]\), and the
-  200 faint blue contours are individual draws from the posterior. Built in <a href="#step-6-threshold-uncertainty">Step 6</a>.</em></p>
+  200 faint blue contours are individual draws from the posterior. Built in <a href="#step-6-plotting-samples-and-credible-intervals">Step 6</a>.</em></p>
 </div>
 
 The companion script is
@@ -189,7 +189,7 @@ fit, [`WPPMPredictivePosterior`](../../reference/posterior.md#psyphy.posterior.W
     [`WPPMCovarianceField`](../../reference/model.md#psyphy.model.WPPMCovarianceField)`(model, nuts_posterior.params)`
     gives contours that are far too small, because $\Sigma$ is quadratic in $W$ and $W$ is
     only identified up to a rotation. Use `PosteriorMeanCovarianceField`
-    ([Step 6](#step-6-threshold-uncertainty)), whose docstring has the full argument.
+    ([Step 6](#step-6-plotting-samples-and-credible-intervals)), whose docstring has the full argument.
     `WPPMCovarianceField.from_posterior` warns when handed an MCMC posterior.
 
 ### Step 5: Check whether the draws represent the posterior with ArviZ
@@ -262,7 +262,7 @@ and
 [`window_adaptation`](https://blackjax-devs.github.io/blackjax/autoapi/blackjax/adaptation/window_adaptation/index.html)
 document. psyphy's `NUTSSampler` passes them straight through under the same names.
 
-### Step 6: Threshold uncertainty
+### Step 6: Plotting samples and credible intervals
 
 Every draw is a complete covariance field, so the ensemble of draws is an ensemble of
 threshold contours.
