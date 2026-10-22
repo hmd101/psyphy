@@ -143,18 +143,8 @@ def fit_path() -> str:
 
 def save_ellipse_figure(fig, name: str) -> None:
     """Save an ellipse figure as JPEG (150 dpi, quality 85) and close it.
-
-    Why JPEG and not PNG: the posterior-ensemble figures overlay thousands of
-    thin, semi-transparent, anti-aliased outlines (e.g. 100 fields x 25
-    reference points in --mode balanced). That is noisy detail lossless PNG
-    compresses badly: such a figure measured 1.4 MB as a 200-dpi PNG, against
-    0.2 MB as this JPEG, with no visible artefacts on the outlines. (Vector
-    SVG is worse still, ~6.6 MB, because every outline is stored.)
-
-    The trace plot is NOT saved through here: it is flat lines and text,
-    which PNG handles well and JPEG would blur.
-
-    `name` is given without an extension; ".jpg" is appended.
+    JPEG is more compact than PNG for these figures, and the quality
+    loss is visually negligible.
     """
     fig.savefig(
         plot_path(f"{name}.jpg"),

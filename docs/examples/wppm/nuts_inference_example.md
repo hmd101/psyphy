@@ -8,8 +8,8 @@ the next trial should go where the model is least certain.
 
 <div align="center">
   <img src="../plots/nuts_ellipses_uncertainty_full.jpg" width="560"/>
-  <p><em>Where this tutorial ends up. The axes are the two model dimensions, arbitrary up to
-  an affine transformation of the input space. Each green dot is one of the 25 reference
+  <p><em>What we build in this tutorial. The axes are the two model dimensions, arbitrary up to
+  an affine transformation of the input space (e.g., RGB). Each green dot is one of the 25 reference
   points at which the model is compared against the ground truth. Around each of them, black
   is the true threshold contour, red is the posterior mean \(\mathbb{E}[\Sigma(x)]\), and the
   200 faint blue contours are individual posterior draws: thresholds the data cannot rule
@@ -50,7 +50,7 @@ The companion script is
     ```
 
     Every figure and number here comes from `--mode full`. `quick` is a smoke test for the
-    code path; its chains are far too short to converge, so its diagnostics are not a result.
+    code path. Its chains are far too short to converge, so its diagnostics are not a result.
 
     Only MAP and NUTS are expensive, and the script caches them. The diagnostics and all
     figures are post-processing of the stored draws and need no GPU:
@@ -107,8 +107,8 @@ What we get in exchange for the extra compute:
     density expensive and slightly different on every call. Freezing one key removes the
     variation, at the cost of sampling the posterior implied by that one noise realization
     rather than the exact posterior. More `mc_samples` reduces the discrepancy and costs
-    proportionally more. A deterministic surrogate likelihood would remove the compromise;
-    see `NeuralSurrogateTask`.
+    proportionally more. A deterministic surrogate likelihood would remove the compromise.
+    See `NeuralSurrogateTask`.
 
 ---
 
@@ -132,8 +132,7 @@ ground-truth WPPM, so there is something to compare the fit against.
 ??? note "Recap: the model and its parameters"
 
     The model is a `Prior` over the parameters, plus a task likelihood and a noise model.
-    Two things about it matter for the rest of the page; every diagnostic and figure below
-    refers to them.
+    Every diagnostic and figure below refers to the parameters, so here is what they are.
 
     **Parameters.** The WPPM fits a covariance *field* $\Sigma(x)$: a $2\times2$ matrix at
     each point $x$ in stimulus space. It is defined as
@@ -144,16 +143,6 @@ ground-truth WPPM, so there is something to compare the fit against.
     Only the coefficients $W_j$ are fitted. With `input_dim=2`, `basis_degree=2` and
     `extra_embedding_dims=1` they form an array of shape `(3, 3, 2, 3)`. $\lambda$
     (`diag_term`) is a small floor that keeps $\Sigma$ invertible.
-
-    This has two consequences:
-
-    - $\Sigma$ is quadratic in $W$. Averaging $W$ and then squaring gives a different result
-      than squaring and then averaging, so [Step 6](#step-6-threshold-uncertainty) never
-      averages $W$.
-    - The prior shrinks coefficients more as their total degree rises (`decay_rate`). A
-      degree-0 and a degree-4 coefficient therefore sit on very different scales. The
-      sampler's mass matrix has to learn this, which is why
-      [Step 4](#step-4-nuts-sampling) preconditions by the prior standard deviation.
 
     For the basis, the prior and `diag_term` in more depth, see the
     [full WPPM fit](full_wppm_fit_example.md).
@@ -197,7 +186,7 @@ fit, `WPPMPredictivePosterior` for instance, takes a NUTS fit unchanged.
     set and works as `init_params`, but `WPPMCovarianceField(model, nuts_posterior.params)`
     gives contours that are far too small, because $\Sigma$ is quadratic in $W$ and $W$ is
     only identified up to a rotation. Use `PosteriorMeanCovarianceField`
-    ([Step 6](#step-6-threshold-uncertainty)); its docstring has the full argument.
+    ([Step 6](#step-6-threshold-uncertainty)), whose docstring has the full argument.
     `WPPMCovarianceField.from_posterior` warns when handed an MCMC posterior.
 
 ### Step 5: Check the chains with ArviZ
@@ -228,7 +217,7 @@ choose, here the reference points, and returns it in ArviZ's format.
 
 <div align="center">
   <img src="../plots/nuts_trace_sigma_full.png" width="760"/>
-  <p><em>One panel per quantity at the reference point with the highest R-hat; one line per
+  <p><em>One panel per quantity at the reference point with the highest R-hat, one line per
   chain.</em></p>
 </div>
 
@@ -326,7 +315,7 @@ fit reports the same contours with no way to tell those two cases apart.
 |---|---|---|
 | `num_warmup` | tuning steps per chain, discarded | trace plots still drift at the start |
 | `num_samples` | kept draws per chain | ESS is too low |
-| `num_chains` | independent chains; R-hat needs at least 2 | a stronger convergence check is wanted |
+| `num_chains` | independent chains, R-hat needs at least 2 | a stronger convergence check is wanted |
 | `max_num_doublings` | tree-depth cap, at most $2^k - 1$ gradients per draw | most draws hit the cap, which the script prints |
 | `target_acceptance_rate` | how cautious the tuned step size is | divergences appear |
 
@@ -357,7 +346,7 @@ version of a `full` one.
       begin from an identity mass matrix mismatched to the coefficient scales.
     - **Chains are vmapped.** All chains advance in one compiled call per phase. Under vmap
       each step costs as much as the deepest tree across chains, which is another reason for
-      the depth cap. On a GPU four chains cost about as much as one; on a CPU, many chains
+      the depth cap. On a GPU four chains cost about as much as one. On a CPU, many chains
       can be slower than running them one at a time.
 
 ### Two warmup modes
@@ -365,7 +354,7 @@ version of a `full` one.
 | mode | how it behaves | call |
 |---|---|---|
 | adaptive, `step_size=None` (default) | adapts step size and mass matrix per chain via `window_adaptation`, starting from a prior-scaled metric | `NUTSSampler(num_warmup=200, num_samples=500)` |
-| fixed, `step_size=<float>` | no adaptation, identity mass matrix; faster, and the step size has to be chosen by hand | `NUTSSampler(..., step_size=0.01)` |
+| fixed, `step_size=<float>` | no adaptation and an identity mass matrix, so it is faster but the step size has to be chosen by hand | `NUTSSampler(..., step_size=0.01)` |
 
 ---
 
