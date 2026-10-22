@@ -23,8 +23,11 @@ from .base import Model
 from .covariance_field import (
     CovarianceField,
     PosteriorMeanCovarianceField,
+    ThresholdBand,
     WPPMCovarianceField,
     covariance_to_arviz,
+    threshold_band,
+    threshold_radii,
 )
 from .likelihood import OddityTask, OddityTaskConfig, TaskLikelihood
 from .noise import GaussianNoise, StudentTNoise
@@ -39,6 +42,9 @@ __all__ = [
     "WPPMCovarianceField",
     "PosteriorMeanCovarianceField",
     "covariance_to_arviz",
+    "ThresholdBand",
+    "threshold_radii",
+    "threshold_band",
     # Models
     "WPPM",
     # Priors

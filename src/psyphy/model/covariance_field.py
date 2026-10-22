@@ -19,6 +19,8 @@ This module provides:
 - covariance_to_arviz: per-draw Σ(x) at chosen points as an ArviZ DataTree,
   for convergence diagnostics that are not fooled by the non-identifiable
   orientation of W (see its docstring)
+- threshold_radii / threshold_band / ThresholdBand: the threshold contour as a
+  radius per direction, and pointwise credible bands over it
 
 Mathematical Background
 -----------------------
@@ -51,7 +53,8 @@ Usage Examples
 from __future__ import annotations
 
 import warnings
-from typing import TYPE_CHECKING, Protocol, runtime_checkable
+from collections.abc import Sequence
+from typing import TYPE_CHECKING, NamedTuple, Protocol, runtime_checkable
 
 import jax
 import jax.numpy as jnp
@@ -888,3 +891,248 @@ def covariance_to_arviz(posterior, points):
         .assign_coords({f"location_{i}": ("point", pts[:, i]) for i in range(d)})
     )
     return dt
+
+
+class ThresholdBand(NamedTuple):
+    """A pointwise credible band on the threshold contour, with its provenance.
+
+    Attributes
+    ----------
+    points : jnp.ndarray, shape (n_points, d)
+        Stimulus locations the band was evaluated at.
+    directions : jnp.ndarray, shape (n_directions, d)
+        Unit directions the radii are measured along, in order. Closed, so the
+        last direction repeats the first and a filled polygon has no seam.
+    lower, upper : jnp.ndarray
+        Interval endpoints, shape (n_points, n_directions) for a single
+        ``ci_prob``, or (n_levels, n_points, n_directions) when a sequence was
+        requested.
+    median : jnp.ndarray, shape (n_points, n_directions)
+        Posterior median radius. One median whatever ``ci_prob`` holds, since
+        it does not depend on the interval probability.
+    ci_prob : float | tuple[float, ...]
+        Nominal probability each interval carries. A tuple when several levels
+        were requested, in the order the arrays are stacked.
+    ci_kind : str
+        ``"eti"`` for equal-tailed, ``"hdi"`` for highest-density.
+
+    Notes
+    -----
+    The interval is **pointwise**: it covers the true radius in each direction
+    separately with probability ``ci_prob``. It does NOT cover the whole
+    contour jointly at that probability, which is a stronger (simultaneous)
+    statement requiring a different construction. ``ci_prob`` and ``ci_kind``
+    travel with the arrays so a figure can state which interval it draws.
+    """
+
+    points: jnp.ndarray
+    directions: jnp.ndarray
+    lower: jnp.ndarray
+    median: jnp.ndarray
+    upper: jnp.ndarray
+    ci_prob: float | tuple[float, ...]
+    ci_kind: str
+
+
+def threshold_radii(covs: jnp.ndarray, directions: jnp.ndarray) -> jnp.ndarray:
+    r"""Distance from the center to the Mahalanobis-1 contour, per direction.
+
+    For a covariance :math:`\Sigma`, the contour
+    :math:`\{v : v^\top \Sigma^{-1} v = 1\}` meets the ray along a unit
+    direction :math:`u` at distance
+
+    .. math:: r(u) = 1 / \sqrt{u^\top \Sigma^{-1} u}
+
+    Along an eigenvector this is :math:`\sqrt{\lambda}`, i.e. exactly the
+    semi-axis :func:`psyphy.viz.ellipse_segments` draws at ``scale=1``. For the
+    oddity task this radius is the discrimination threshold, the just
+    noticeable difference, in direction ``u``.
+
+    Parameters
+    ----------
+    covs : jnp.ndarray, shape (..., d, d)
+        One or more covariance matrices. Leading axes are broadcast over.
+    directions : jnp.ndarray, shape (n_directions, d)
+        Unit directions. Not normalized for you: a non-unit direction rescales
+        the radius.
+
+    Returns
+    -------
+    jnp.ndarray, shape (..., n_directions)
+
+    Notes
+    -----
+    This is a *polar* parameterization of the same ellipse that
+    ``ellipse_segments`` produces, and the two are not interchangeable. That
+    function maps a circle through the Cholesky factor, so its parameter angle
+    is not the direction from the center. Any statistic taken across draws at
+    fixed angle, a quantile or a mean, must use this parameterization, or it
+    compares points lying in different directions.
+    """
+    prec = jnp.linalg.inv(covs)
+    quad = jnp.einsum("ki,...ij,kj->...k", directions, prec, directions)
+    return 1.0 / jnp.sqrt(quad)
+
+
+def _eti(radii: jnp.ndarray, prob: float) -> tuple[jnp.ndarray, jnp.ndarray]:
+    """Equal-tailed interval over axis 0: the (1-p)/2 and 1-(1-p)/2 quantiles."""
+    tail = (1.0 - prob) / 2.0
+    lo, hi = jnp.quantile(radii, jnp.array([tail, 1.0 - tail]), axis=0)
+    return lo, hi
+
+
+def _hdi(radii: jnp.ndarray, prob: float) -> tuple[jnp.ndarray, jnp.ndarray]:
+    """Highest-density interval over axis 0: the narrowest window holding p mass.
+
+    Sorts the draws and takes the narrowest window of ``ceil(prob * n)`` of
+    them. This is the standard sample HDI. ArviZ computes the same quantity
+    with a slightly different window convention, so the two agree closely but
+    not bit for bit.
+    """
+    n = radii.shape[0]
+    width = max(int(jnp.ceil(prob * n)), 2)  # draws inside the interval
+    ordered = jnp.sort(radii, axis=0)
+    los = ordered[: n - width + 1]  # (n_windows, ...)
+    his = ordered[width - 1 :]  # (n_windows, ...)
+    best = jnp.argmin(his - los, axis=0)[None]  # narrowest window per element
+    return (
+        jnp.take_along_axis(los, best, axis=0)[0],
+        jnp.take_along_axis(his, best, axis=0)[0],
+    )
+
+
+_CI_KINDS = {"eti": _eti, "hdi": _hdi}
+
+
+def threshold_band(
+    posterior,
+    points: jnp.ndarray,
+    *,
+    n_directions: int = 181,
+    ci_prob: float | Sequence[float] = 0.89,
+    ci_kind: str = "eti",
+    n_samples: int | None = None,
+    key=None,
+) -> ThresholdBand:
+    """Pointwise credible band on the threshold contour at each point.
+
+    The posterior-interval counterpart to
+    :class:`PosteriorMeanCovarianceField` (a posterior *mean*) and
+    :func:`covariance_to_arviz` (posterior *draws*, for diagnostics).
+
+    Every draw gives one covariance field, hence one threshold contour per
+    point. Writing each contour as a radius per direction
+    (:func:`threshold_radii`) makes it a scalar per draw, so an interval
+    follows from quantiles over draws.
+
+    Parameters
+    ----------
+    posterior : ParameterPosterior
+        A fitted posterior, typically an ``MCMCPosterior``. A ``MAPPosterior``
+        is a point mass, so its band has zero width.
+    points : jnp.ndarray, shape (n_points, 2)
+        Stimulus locations, typically the reference points being reported.
+    n_directions : int, default=181
+        Directions per contour. The grid is closed, so the last direction
+        repeats the first and 181 gives 180 distinct directions.
+    ci_prob : float or sequence of float, default=0.89
+        Nominal interval probability. The default matches ArviZ's own
+        ``ci_prob``, so a band and ``az.summary`` agree. A sequence returns one
+        interval per level, stacked on a leading axis, which is how nested
+        bands are drawn in one figure.
+    ci_kind : {"eti", "hdi"}, default="eti"
+        ``"eti"`` takes equal probability from each tail. ``"hdi"`` takes the
+        narrowest interval holding that mass, which differs when the radii are
+        skewed, and they often are since a radius is bounded below by zero.
+    n_samples : int, optional
+        Draws to use. Defaults to every stored draw, which needs the posterior
+        to expose ``n_chains`` and ``n_draws``; a point-mass posterior must
+        pass this explicitly.
+    key : jax.Array, optional
+        PRNG key forwarded to ``posterior.sample``. Only matters when
+        ``n_samples`` is smaller than the number of stored draws.
+
+    Returns
+    -------
+    ThresholdBand
+
+    Raises
+    ------
+    NotImplementedError
+        If the model is not 2-D. The direction grid is a circle, and there is
+        no canonical equivalent in higher dimensions.
+    ValueError
+        If ``ci_kind`` is unknown, if any ``ci_prob`` is outside (0, 1), or if
+        ``n_samples`` is needed and cannot be inferred.
+
+    Examples
+    --------
+    >>> band = threshold_band(nuts_posterior, ref_points)
+    >>> band.lower.shape  # (n_points, n_directions)
+    (25, 181)
+    >>> nested = threshold_band(nuts_posterior, ref_points, ci_prob=[0.5, 0.8, 0.95])
+    >>> nested.upper.shape  # (n_levels, n_points, n_dirs)
+    (3, 25, 181)
+    """
+    if ci_kind not in _CI_KINDS:
+        raise ValueError(
+            f"ci_kind must be one of {sorted(_CI_KINDS)}, got {ci_kind!r}."
+        )
+
+    if isinstance(ci_prob, (int, float)):
+        scalar_level = True
+        probs: tuple[float, ...] = (float(ci_prob),)
+    else:
+        scalar_level = False
+        probs = tuple(float(p) for p in ci_prob)
+    if not probs:
+        raise ValueError("ci_prob must hold at least one probability.")
+    for p in probs:
+        if not 0.0 < p < 1.0:
+            raise ValueError(f"ci_prob must lie in (0, 1), got {p}.")
+
+    model = posterior.model
+    if model.input_dim != 2:
+        raise NotImplementedError(
+            "threshold_band supports 2-D stimulus spaces only, got "
+            f"input_dim={model.input_dim}. threshold_radii is d-dimensional, "
+            "so pass your own directions to it instead."
+        )
+
+    if n_samples is None:
+        n_chains = getattr(posterior, "n_chains", None)
+        n_draws = getattr(posterior, "n_draws", None)
+        if n_chains is None or n_draws is None:
+            raise ValueError(
+                f"{type(posterior).__name__} does not expose n_chains/n_draws, "
+                "so n_samples cannot be inferred. Pass n_samples explicitly."
+            )
+        n_samples = int(n_chains) * int(n_draws)
+
+    phi = jnp.linspace(0.0, 2 * jnp.pi, n_directions)  # radians, closed
+    directions = jnp.stack([jnp.cos(phi), jnp.sin(phi)], axis=-1)  # (n_dir, 2)
+
+    draws = posterior.sample(int(n_samples), key=key)
+
+    def radii_one_draw(params):
+        covs = WPPMCovarianceField(model, params)(points)  # (n_points, 2, 2)
+        return threshold_radii(covs, directions)  # (n_points, n_directions)
+
+    # (n_samples, n_points, n_directions)
+    radii = jax.vmap(radii_one_draw)({"W": draws["W"]})
+
+    reduce = _CI_KINDS[ci_kind]
+    bounds = [reduce(radii, p) for p in probs]
+    lower = jnp.stack([lo for lo, _ in bounds])  # (n_levels, n_pts, n_dir)
+    upper = jnp.stack([hi for _, hi in bounds])
+    median = jnp.median(radii, axis=0)  # (n_points, n_directions)
+
+    return ThresholdBand(
+        points=points,
+        directions=directions,
+        lower=lower[0] if scalar_level else lower,
+        median=median,
+        upper=upper[0] if scalar_level else upper,
+        ci_prob=probs[0] if scalar_level else probs,
+        ci_kind=ci_kind,
+    )
