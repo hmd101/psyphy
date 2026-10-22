@@ -20,7 +20,7 @@ The companion script is
 
 | step | what we do | what we get |
 |---|---|---|
-| 1–2 | simulate data, build the WPPM | a `TrialData` and a model, as in the [MAP tutorial](full_wppm_fit_example.md) |
+| 1–2 | simulate data, build the WPPM | a [`TrialData`](../../reference/data.md#psyphy.data.TrialData) and a model, as in the [MAP tutorial](full_wppm_fit_example.md) |
 | 3 | run a short MAP fit | a starting point near the posterior peak |
 | 4 | run the sampler, here NUTS, via [BlackJAX](https://blackjax-devs.github.io/blackjax/) | an `MCMCPosterior`: thousands of plausible parameter arrays $W$ |
 | 5 | check the chains with [ArviZ](https://python.arviz.org/) | evidence that the draws are representitive of the posterior, or are not|
@@ -104,7 +104,7 @@ What we get in exchange for the extra compute:
 
 ??? note "What the frozen key costs"
 
-    `OddityTask` has no closed-form likelihood. It estimates $P(\text{correct})$ by
+    [`OddityTask`](../../reference/model.md#psyphy.model.OddityTask) has no closed-form likelihood. It estimates $P(\text{correct})$ by
     simulating `mc_samples` noisy internal representations per trial, which makes the log
     density expensive and slightly different on every call. Freezing one key removes the
     variation, at the cost of sampling the posterior implied by that one noise realization
@@ -133,7 +133,7 @@ ground-truth WPPM, so there is something to compare the fit against.
 
 ??? note "Recap: the model and its parameters"
 
-    The model is a `Prior` over the parameters, plus a task likelihood and a noise model.
+    The model is a [`Prior`](../../reference/model.md#psyphy.model.Prior) over the parameters, plus a task likelihood and a noise model.
     Every diagnostic and figure below refers to the parameters, so here is what they are.
 
     **Parameters.** The WPPM fits a covariance *field* $\Sigma(x)$: a $2\times2$ matrix at
@@ -167,7 +167,7 @@ warmup can be spent on tuning instead.
 --8<-- "docs/examples/wppm/nuts_inference_example.py:nuts_fit"
 ```
 
-`NUTSSampler` has the same `fit(model, data)` interface as `MAPOptimizer`, and the BlackJAX
+`NUTSSampler` has the same `fit(model, data)` interface as [`MAPOptimizer`](../../reference/inference.md#psyphy.inference.MAPOptimizer), and the BlackJAX
 backend stays hidden. Each chain runs a warmup phase, where the step size and mass matrix
 are tuned and the draws discarded, then a sampling phase where the tuning is frozen and
 every draw is kept. What comes back is an `MCMCPosterior`. Three things on it are used
@@ -180,12 +180,13 @@ below:
 | `covariance_to_arviz(nuts_posterior, points)` | $\Sigma$ at chosen points for every draw, in ArviZ's format | Step 5 |
 
 One draw is one complete covariance field, so one threshold contour at every reference
-point. `MCMCPosterior` and `MAPPosterior` share this interface, so code written for a MAP
-fit, `WPPMPredictivePosterior` for instance, takes a NUTS fit unchanged.
+point. `MCMCPosterior` and [`MAPPosterior`](../../reference/posterior.md#psyphy.posterior.MAPPosterior) share this interface, so code written for a MAP
+fit, [`WPPMPredictivePosterior`](../../reference/posterior.md#psyphy.posterior.WPPMPredictivePosterior) for instance, takes a NUTS fit unchanged.
 
 !!! warning "Do not build a covariance field from `nuts_posterior.params`"
     `nuts_posterior.params` is the mean *parameter* $\mathbb{E}[W]$. It is a valid parameter
-    set and works as `init_params`, but `WPPMCovarianceField(model, nuts_posterior.params)`
+    set and works as `init_params`, but
+    [`WPPMCovarianceField`](../../reference/model.md#psyphy.model.WPPMCovarianceField)`(model, nuts_posterior.params)`
     gives contours that are far too small, because $\Sigma$ is quadratic in $W$ and $W$ is
     only identified up to a rotation. Use `PosteriorMeanCovarianceField`
     ([Step 6](#step-6-threshold-uncertainty)), whose docstring has the full argument.
@@ -259,7 +260,7 @@ A failing check is fixed by the sampler arguments, which
 [`blackjax.nuts`](https://blackjax-devs.github.io/blackjax/autoapi/blackjax/mcmc/nuts/index.html)
 and
 [`window_adaptation`](https://blackjax-devs.github.io/blackjax/autoapi/blackjax/adaptation/window_adaptation/index.html)
-document. `NUTSSampler` passes them straight through under the same names.
+document. psyphy's `NUTSSampler` passes them straight through under the same names.
 
 ### Step 6: Threshold uncertainty
 
@@ -428,15 +429,17 @@ Three collapsed blocks, none of which the walkthrough depends on.
   draws instead of over one point estimate.
 - **Adaptive trial placement.** The spread shown here is what an acquisition function needs
   in order to choose where the next trial goes.
-- **Other samplers.** Nothing downstream of the sampler is NUTS-specific: any engine
+- **Other samplers.** Nothing downstream of the sampler is NUTS-specific: any
+  [`InferenceEngine`](../../reference/inference.md#psyphy.inference.InferenceEngine)
   returning an `MCMCPosterior` with draws shaped `(n_chains, n_draws, *W_shape)` works with
   `covariance_to_arviz`, `PosteriorMeanCovarianceField` and `WPPMPredictivePosterior`
-  unchanged. The diagnostics do not all carry over, since a sampler without trajectories has
-  no divergences or tree sizes.
+  unchanged. Note that not all the diagnostics carry over, since a sampler without trajectories has
+  no divergences, for example.
 
 ## Further reading
 
 - API reference: [`NUTSSampler`](../../reference/inference.md#psyphy.inference.NUTSSampler),
+  [`InferenceEngine`](../../reference/inference.md#psyphy.inference.InferenceEngine),
   [`MCMCPosterior`](../../reference/posterior.md#psyphy.posterior.MCMCPosterior),
   [`covariance_to_arviz`](../../reference/model.md#psyphy.model.covariance_to_arviz),
   [`PosteriorMeanCovarianceField`](../../reference/model.md#psyphy.model.PosteriorMeanCovarianceField),
