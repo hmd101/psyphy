@@ -304,9 +304,10 @@ fit reports the same contours with no way to tell those two cases apart.
     An 89% pointwise band is expected to miss some directions.
 ### Step 6: Check whether the draws represent the posterior with ArviZ
 How do we check whether the draws we sampled represent the posterior distribution well?
-for example, a chain may only have explored part of the distribution.
-[ArviZ](https://python.arviz.org/) is the standard Python library for the check, and psyphy
-provides a bridge to it. 4 quantities, with the upstream reference for each:
+A chain may have explored only part of the distribution, and nothing in the output says so.
+[ArviZ](https://python.arviz.org/) is the standard Python library for these checks.
+
+Four quantities to check, in this order, at ArviZ's default thresholds:
 
 | check | what it detects | suspect when |
 |---|---|---|
@@ -316,10 +317,16 @@ provides a bridge to it. 4 quantities, with the upstream reference for each:
 | `sampler_stats["n_steps"]` | trajectories truncated at the tree-depth cap | at the cap for most draws |
 
 Diagnostics run on $\Sigma$, not on the raw parameters, for the reason in
-[Step 4](#step-4-nuts-sampling). `covariance_to_arviz` evaluates $\Sigma$ at points we
-choose, here the reference points, and returns it in ArviZ's format. It takes the posterior
-itself rather than draws from it, because R-hat compares chains against each other and
-`posterior.sample()` would pool them.
+[Step 4](#step-4-nuts-sampling).
+[`covariance_to_arviz`](../../reference/model.md#psyphy.model.covariance_to_arviz) is the
+bridge. It evaluates $\Sigma$ at points we choose, here the reference points, and returns an
+`xarray.DataTree` with dimensions `(chain, draw, point, quantity)`, carrying the sampler
+statistics across as ArviZ's `sample_stats` group. That is the shape ArviZ expects, so
+`az.summary`, `az.rhat`, `az.ess` and the plotting functions all take a psyphy fit directly,
+with no reshaping.
+
+It takes the posterior rather than draws from it, because R-hat compares chains against each
+other and `posterior.sample()` would pool them.
 
 ```python title="R-hat and ESS on the covariance field"
 --8<-- "docs/examples/wppm/nuts_inference_example.py:arviz_diagnostics"
