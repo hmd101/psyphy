@@ -325,8 +325,16 @@ statistics across as ArviZ's `sample_stats` group. That is the shape ArviZ expec
 `az.summary`, `az.rhat`, `az.ess` and the plotting functions all take a psyphy fit directly,
 with no reshaping.
 
-It takes the posterior rather than draws from it, because R-hat compares chains against each
-other and `posterior.sample()` would pool them.
+It takes the posterior itself, not draws from it. `posterior.sample(n)` *pools* the chains:
+it flattens `(n_chains, n_draws, ...)` into `(n_chains * n_draws, ...)` and picks `n` at
+random, so a draw no longer carries the chain it came from.
+
+That label is what R-hat works on. R-hat asks whether the chains agree, by comparing the
+spread between them to the spread within each one. Pooling blends the chains evenly into one
+collection, so any way of splitting it afterwards gives pieces that look alike. ArviZ returns
+`nan` for a single chain, and if pooled draws are reshaped into chains it returns about 1.00
+no matter how badly the real chains disagreed. ESS goes the same way, since shuffling removes
+the autocorrelation it measures.
 
 ```python title="R-hat and ESS on the covariance field"
 --8<-- "docs/examples/wppm/nuts_inference_example.py:arviz_diagnostics"
