@@ -403,12 +403,21 @@ Three collapsed blocks, none of which the walkthrough depends on.
           reason for the depth cap. On a GPU four chains cost about as much as one. On a
           CPU, many chains can be slower than running them one at a time.
 
-??? note "Two warmup modes"
+??? note "What `step_size` does"
 
-    | mode | how it behaves | call |
+    `step_size` picks between two code paths. The paths are BlackJAX's, but the choice is
+    psyphy's: BlackJAX has no notion of modes, and `NUTSSampler` dispatches on whether this
+    argument is `None`.
+
+    | `step_size` | what happens | call |
     |---|---|---|
-    | adaptive, `step_size=None` (default) | adapts step size and mass matrix per chain via `window_adaptation`, starting from a prior-scaled metric | `NUTSSampler(num_warmup=200, num_samples=500)` |
-    | fixed, `step_size=<float>` | no adaptation and an identity mass matrix, so it is faster but the step size has to be chosen by hand | `NUTSSampler(..., step_size=0.01)` |
+    | `None` (default) | `window_adaptation` tunes the step size and mass matrix per chain, starting from a prior-scaled metric | `NUTSSampler(num_warmup=200, num_samples=500)` |
+    | a float | no adaptation and an identity mass matrix. Warmup becomes plain burn-in, so it is faster, and the step size has to be chosen by hand | `NUTSSampler(..., step_size=0.01)` |
+
+    Two things in the adaptive path are psyphy's own rather than BlackJAX's.
+    `prior_preconditioning=True` samples $z = W / \sigma_\text{prior}$ and maps the draws
+    back to $W$, so adaptation starts from a metric matched to the prior scales instead of
+    the identity. And `max_num_doublings` defaults to 8 here against BlackJAX's own 10.
 
 ---
 
