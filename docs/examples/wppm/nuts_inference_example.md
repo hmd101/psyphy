@@ -1,7 +1,7 @@
 # Sampling the posterior with NUTS
 
-The [MAP tutorial](full_wppm_fit_example.md) gives one threshold ellipse per reference
-point. Here we get a distribution of ellipses instead. Tight clusters mean the data
+The [maximum a posteriori (MAP) tutorial](full_wppm_fit_example.md) gives one threshold
+ellipse per reference point. Here we get a distribution of ellipses instead. Tight clusters mean the data
 constrain the threshold ellipse and wide spread means they don't. A single MAP ellipse hides
 that difference. Crucially, adaptive trial placement depends on this uncertainty, because
 the next trial should go where the model is least certain.
@@ -20,9 +20,9 @@ The companion script is
 
 | step | what we do | what we get |
 |---|---|---|
-| 1–2 | simulate data, build the WPPM | a `TrialData` and a model, as in the [MAP tutorial](full_wppm_fit_example.md) |
+| 1–2 | simulate data, build the Wishart Process Psychophysical Model (WPPM) | a `TrialData` and a model, as in the [MAP tutorial](full_wppm_fit_example.md) |
 | 3 | run a short MAP fit | a starting point near the posterior peak |
-| 4 | run the sampler, here NUTS, via [BlackJAX](https://blackjax-devs.github.io/blackjax/) | an `MCMCPosterior`: thousands of plausible parameter arrays $W$ |
+| 4 | run the sampler, here the No-U-Turn Sampler (NUTS), via [BlackJAX](https://blackjax-devs.github.io/blackjax/) | an `MCMCPosterior`: thousands of plausible parameter arrays $W$ |
 | 5 | check the chains with [ArviZ](https://python.arviz.org/) | evidence that the draws are representitive of the posterior, or are not|
 | 6 | evaluate the covariance field for every draw | a distribution of threshold contours, and a credible band |
 
@@ -37,7 +37,7 @@ The companion script is
     | extra | brings in | needed for |
     |---|---|---|
     | `sampling` | `blackjax>=1.4,<2` | `NUTSSampler` |
-    | `diagnostics` | [`arviz>=1.0`](https://python.arviz.org/en/latest/user_guide/getting_started.html) | `covariance_to_arviz`, R-hat, ESS, the diagnostic figures |
+    | `diagnostics` | [`arviz>=1.0`](https://python.arviz.org/en/latest/user_guide/getting_started.html) | `covariance_to_arviz`, R-hat, effective sample size (ESS), the diagnostic figures |
     | `viz` | `matplotlib>=3.5` | the figures |
 
     If you want to run the companion script
@@ -82,8 +82,8 @@ posterior, so the places it has been form a sample from it. A plain random walk 
 slowly to be usable in the roughly 100 dimensions of our parameteres $W$, so
 [Hamiltonian Monte Carlo. (HMC)](https://en.wikipedia.org/wiki/Hamiltonian_Monte_Carlo) uses the
 gradient of the log posterior to move along the distribution's geometry instead. HMC needs
-two settings: the step size, and how many steps to take before stopping. NUTS, the No-U-Turn
-Sampler of [Hoffman and Gelman (2014)](https://jmlr.org/papers/v15/hoffman14a.html), removes
+two settings: the step size, and how many steps to take before stopping. NUTS, of
+[Hoffman and Gelman (2014)](https://jmlr.org/papers/v15/hoffman14a.html), removes
 the second by extending each trajectory until it starts to double back on itself. The step
 size is still tuned, during warmup ([Step 4](#step-4-nuts-sampling)). Betancourt's
 [conceptual introduction](https://arxiv.org/abs/1701.02434) covers why this works and where
@@ -94,7 +94,7 @@ Two things follow for psyphy:
 1. The sampler needs gradients, which is why the log posterior is written in JAX and
    `NUTSSampler` hands it straight to BlackJAX.
 2. The sampler needs the log density to be a fixed function of the parameters $\theta$. Since psyphy's  oddity
-   likelihood is estimated by simulation introducing slight randomness, psyphy freezes one PRNG key for the whole run
+   likelihood is estimated by simulation introducing slight randomness, psyphy freezes one pseudo-random number generator (PRNG) key for the whole run
    (`logdensity_key_seed`) to make it deterministic.
 
 What we get in exchange for the extra compute:
@@ -191,7 +191,7 @@ fit, `WPPMPredictivePosterior` for instance, takes a NUTS fit unchanged.
     ([Step 6](#step-6-threshold-uncertainty)), whose docstring has the full argument.
     `WPPMCovarianceField.from_posterior` warns when handed an MCMC posterior.
 
-### Step 5: Check the chains with ArviZ
+### Step 5: Check whether the draws represent the posterior with ArviZ
 
 Sampling produces draws whether or not they represent the posterior, and MCMC fails quietly:
 for example, a chain can look like a result while having explored only part of the distribution.
