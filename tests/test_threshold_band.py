@@ -168,10 +168,20 @@ def test_band_shapes_for_several_levels(posterior, points):
     """A sequence of probabilities adds a leading level axis."""
     band = threshold_band(posterior, points, n_directions=37, ci_prob=[0.5, 0.8, 0.95])
 
-    for arr in (band.lower, band.upper):
+    for arr in (band.lower, band.median, band.upper):
         assert arr.shape == (3, 4, 37)  # (n_levels, n_points, n_directions)
-    assert band.median.shape == (4, 37)  # one median, not one per level
     assert band.ci_prob == (0.5, 0.8, 0.95)
+
+
+def test_median_is_the_same_at_every_level(posterior, points):
+    """The median does not depend on ci_prob, so its levels are copies.
+
+    It is stacked anyway so that lower, median and upper share a shape and a
+    loop over levels can index all three.
+    """
+    band = threshold_band(posterior, points, n_directions=19, ci_prob=[0.5, 0.95])
+
+    assert jnp.allclose(band.median[0], band.median[1], atol=1e-7)
 
 
 def test_each_level_matches_a_single_level_call(posterior, points):

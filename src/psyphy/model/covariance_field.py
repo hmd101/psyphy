@@ -903,13 +903,13 @@ class ThresholdBand(NamedTuple):
     directions : jnp.ndarray, shape (n_directions, d)
         Unit directions the radii are measured along, in order. Closed, so the
         last direction repeats the first and a filled polygon has no seam.
-    lower, upper : jnp.ndarray
-        Interval endpoints, shape (n_points, n_directions) for a single
-        ``ci_prob``, or (n_levels, n_points, n_directions) when a sequence was
-        requested.
-    median : jnp.ndarray, shape (n_points, n_directions)
-        Posterior median radius. One median whatever ``ci_prob`` holds, since
-        it does not depend on the interval probability.
+    lower, median, upper : jnp.ndarray
+        Interval endpoints and the posterior median radius, shape
+        (n_points, n_directions) for a single ``ci_prob``, or
+        (n_levels, n_points, n_directions) when a sequence was requested. All
+        three carry the same shape, so a loop over levels can index all of
+        them. The median does not depend on the interval probability, so its
+        levels are identical copies.
     ci_prob : float | tuple[float, ...]
         Nominal probability each interval carries. A tuple when several levels
         were requested, in the order the arrays are stacked.
@@ -1134,13 +1134,17 @@ def threshold_band(
     bounds = [reduce(radii, p) for p in probs]
     lower = jnp.stack([lo for lo, _ in bounds])  # (n_levels, n_pts, n_dir)
     upper = jnp.stack([hi for _, hi in bounds])
+    # One median whatever ci_prob holds, repeated per level so that lower,
+    # median and upper always share a shape. Indexing median[i] in a loop over
+    # levels would otherwise reach a reference point instead.
     median = jnp.median(radii, axis=0)  # (n_points, n_directions)
+    median = jnp.broadcast_to(median, lower.shape)  # (n_levels, n_pts, n_dir)
 
     return ThresholdBand(
         points=points,
         directions=directions,
         lower=lower[0] if scalar_level else lower,
-        median=median,
+        median=median[0] if scalar_level else median,
         upper=upper[0] if scalar_level else upper,
         ci_prob=probs[0] if scalar_level else probs,
         ci_kind=ci_kind,
