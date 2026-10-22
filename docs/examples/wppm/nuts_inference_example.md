@@ -11,8 +11,8 @@ the next trial should go where the model is least certain.
   <p><em>What we build in this tutorial. The axes are the two model dimensions, arbitrary up to
   an affine transformation of the input space (e.g., RGB). Each green dot is one of the 25 reference
   points at which the model is compared against the ground truth. Around each of them, black
-  is the true threshold contour, red is the posterior mean \(\mathbb{E}[\Sigma(x)]\), and the
-  200 faint blue contours are individual draws from the posterior. Built in <a href="#step-6-plotting-samples-and-credible-intervals">Step 6</a>.</em></p>
+  is the true threshold contour, red is the posterior mean of the covariance field, \(\mathbb{E}[\Sigma(x)]\), and the
+  200 faint blue contours are individual draws from the posterior. Built in <a href="#step-5-plotting-posterior-samples-and-credible-intervals">Step 5</a>.</em></p>
 </div>
 
 The companion script is
@@ -23,8 +23,8 @@ The companion script is
 | 1–2 | simulate data, build the Wishart Process Psychophysical Model (WPPM) | a [`TrialData`](../../reference/data.md#psyphy.data.TrialData) and a model, as in the [MAP tutorial](full_wppm_fit_example.md) |
 | 3 | run a short MAP fit | a starting point near the posterior peak |
 | 4 | run the sampler, here the No-U-Turn Sampler (NUTS), via [BlackJAX](https://blackjax-devs.github.io/blackjax/) | an `MCMCPosterior`: thousands of plausible parameter arrays $W$ |
-| 5 | check the chains with [ArviZ](https://python.arviz.org/) | evidence that the draws are representitive of the posterior, or are not|
-| 6 | evaluate the covariance field for every draw | a distribution of threshold contours, and a credible band |
+| 5 | evaluate the covariance field for every draw | a distribution of threshold contours, and a credible band |
+| 6 | check the chains with [ArviZ](https://python.arviz.org/) | evidence that the draws are representative of the posterior, or are not |
 
 ??? note "How to run the script"
 
@@ -131,6 +131,11 @@ ground-truth WPPM, so there is something to compare the fit against.
 --8<-- "docs/examples/wppm/nuts_inference_example.py:build_model"
 ```
 
+The model's output is a covariance *field* $\Sigma(x)$: a $2\times2$ covariance matrix at
+every point $x$ of the stimulus space, whose contour is the threshold contour we plot. Every
+$\Sigma$ below means this, evaluated at one reference point and one posterior draw unless
+said otherwise.
+
 ??? note "Recap: the model and its parameters"
 
     The model is a [`Prior`](../../reference/model.md#psyphy.model.Prior) over the parameters, plus a task likelihood and a noise model.
@@ -175,9 +180,9 @@ below:
 
 | call | returns | used in |
 |---|---|---|
-| `nuts_posterior.sample(n, key=...)` | `n` draws, `{"W": (n, *W_shape)}` | Step 6, the contour ensemble |
-| `PosteriorMeanCovarianceField(nuts_posterior)` | the posterior mean field $\mathbb{E}[\Sigma(x)]$ | Step 6, the red contours |
-| `covariance_to_arviz(nuts_posterior, points)` | $\Sigma$ at chosen points for every draw, in ArviZ's format | Step 5 |
+| `nuts_posterior.sample(n, key=...)` | `n` draws, `{"W": (n, *W_shape)}` | Step 5, the contour ensemble |
+| `PosteriorMeanCovarianceField(nuts_posterior)` | the posterior mean field $\mathbb{E}[\Sigma(x)]$ | Step 5, the red contours |
+| `covariance_to_arviz(nuts_posterior, points)` | $\Sigma$ at chosen points for every draw, in ArviZ's format | Step 6 |
 
 One draw is one complete covariance field, so one threshold contour at every reference
 point. `MCMCPosterior` and [`MAPPosterior`](../../reference/posterior.md#psyphy.posterior.MAPPosterior) share this interface, so code written for a MAP
@@ -189,80 +194,10 @@ fit, [`WPPMPredictivePosterior`](../../reference/posterior.md#psyphy.posterior.W
     [`WPPMCovarianceField`](../../reference/model.md#psyphy.model.WPPMCovarianceField)`(model, nuts_posterior.params)`
     gives contours that are far too small, because $\Sigma$ is quadratic in $W$ and $W$ is
     only identified up to a rotation. Use `PosteriorMeanCovarianceField`
-    ([Step 6](#step-6-plotting-samples-and-credible-intervals)), whose docstring has the full argument.
+    ([Step 5](#step-5-plotting-posterior-samples-and-credible-intervals)), whose docstring has the full argument.
     `WPPMCovarianceField.from_posterior` warns when handed an MCMC posterior.
 
-### Step 5: Check whether the draws represent the posterior with ArviZ
-
-Sampling produces draws whether or not they represent the posterior, and MCMC fails quietly:
-for example, a chain can look like a result while having explored only part of the distribution.
-[ArviZ](https://python.arviz.org/) is the standard Python library for the check, and psyphy
-provides the bridge to it. Four quantities, with the upstream reference for each:
-
-| check | what it detects | suspect when |
-|---|---|---|
-| divergences, `sampler_stats["diverging"]` | the integrator failed, usually in a region of high curvature | any divergence at all |
-| [R-hat](https://python.arviz.org/projects/stats/en/latest/) | chains have not mixed to the same distribution | $\hat{R} > 1.01$ |
-| [ESS](https://python.arviz.org/projects/stats/en/latest/) | autocorrelation: how many independent draws the chain is worth | bulk or tail ESS $< 100$ per chain |
-| `sampler_stats["n_steps"]` | trajectories truncated at the tree-depth cap | at the cap for most draws |
-
-Diagnostics run on $\Sigma$, not on the raw parameters, for the reason in
-[Step 4](#step-4-nuts-sampling). `covariance_to_arviz` evaluates $\Sigma$ at points we
-choose, here the reference points, and returns it in ArviZ's format. It takes the posterior
-itself rather than draws from it, because R-hat compares chains against each other and
-`posterior.sample()` would pool them.
-
-```python title="R-hat and ESS on the covariance field"
---8<-- "docs/examples/wppm/nuts_inference_example.py:arviz_diagnostics"
-```
-
-```python title="Trace plot at the worst reference point"
---8<-- "docs/examples/wppm/nuts_inference_example.py:trace_plot"
-```
-
-<div align="center">
-  <img src="../plots/nuts_trace_sigma_full.png" width="760"/>
-  <p><em>One panel per quantity at the reference point with the worst R-hat, one colored
-  line per chain. Horizontal axis is the draw index, vertical axis the value of that
-  quantity.</em></p>
-</div>
-
-`covariance_to_arviz` summarizes each $2\times2$ $\Sigma$ by the three numbers that
-determine it: `log_var_0` and `log_var_1`, the log variances along each axis, and
-`corr_0_1`, their correlation. A trace plot shows how each of those moved over the run. We
-are looking for the four chains to overlap, to stay level, and to vary
-fast from draw to draw. A chain sitting at its own offset, or still sloping at the end of
-the run, has not mixed.
-
-```python title="ESS and R-hat over all quantities"
---8<-- "docs/examples/wppm/nuts_inference_example.py:convergence_plot"
-```
-
-<div align="center">
-  <img src="../plots/nuts_convergence_sigma_full.png" width="760"/>
-  <p><em>Bulk ESS, tail ESS and R-hat, one panel each. The curve is the cumulative fraction
-  of quantities at or below a value, so the vertical axis runs from 0 to 1 and the
-  horizontal axis carries the diagnostic. Dashed lines are ArviZ's reference
-  thresholds.</em></p>
-</div>
-
-The trace plot covers one point, this covers all of them at once. Each curve is the
-distribution of a diagnostic over every $\Sigma$ quantity at every reference point, so a
-point on the curve reads as "this fraction of quantities scored at most this value". More is
-better for ESS and less is better for R-hat, which means we want both ESS curves to sit
-entirely to the right of their dashed line and the R-hat curve entirely to its left. A curve
-crossing its threshold says what fraction of quantities fall short.
-
-This run has no divergences, and the printed `R-hat max` and `ESS min` above are the two
-numbers to quote.
-
-A failing check is fixed by the sampler arguments, which
-[`blackjax.nuts`](https://blackjax-devs.github.io/blackjax/autoapi/blackjax/mcmc/nuts/index.html)
-and
-[`window_adaptation`](https://blackjax-devs.github.io/blackjax/autoapi/blackjax/adaptation/window_adaptation/index.html)
-document. psyphy's `NUTSSampler` passes them straight through under the same names.
-
-### Step 6: Plotting samples and credible intervals
+### Step 5: Plotting posterior samples and credible intervals
 
 Every draw is a complete covariance field, so the ensemble of draws is an ensemble of
 threshold contours.
@@ -279,11 +214,14 @@ the reason it exists rather than `WPPMCovarianceField(model, posterior.params)`:
 --8<-- "docs/examples/wppm/nuts_inference_example.py:posterior_mean"
 ```
 
-```python title="Plot the ensemble"
---8<-- "docs/examples/wppm/nuts_inference_example.py:plot_uncertainty"
+```python title="Plot posterior samples"
+--8<-- "docs/examples/wppm/nuts_inference_example.py:plot_posterior_samples"
 ```
 
-This produces the figure at the top of the page.
+**This is the figure at the top of the page**, and it is what the whole run was for: one
+threshold contour per draw, at every reference point, so the spread of the blue contours is
+the posterior uncertainty about each threshold. A MAP fit gives one contour here and no way
+to tell a well-constrained threshold from a poorly constrained one.
 
 A cloud of contours is the full answer, but a paper reports an interval. psyphy computes
 one with [`threshold_band`](../../reference/model.md#psyphy.model.threshold_band), which
@@ -366,6 +304,76 @@ fit reports the same contours with no way to tell those two cases apart.
     probability $1-\alpha$, which is a stronger statement needing a different construction.
     An 89% pointwise band is expected to miss some directions, so the ground truth leaving
     it in places is not a failure of the fit.
+### Step 6: Check whether the draws represent the posterior with ArviZ
+
+Sampling produces draws whether or not they represent the posterior, and MCMC fails quietly:
+for example, a chain can look like a result while having explored only part of the distribution.
+[ArviZ](https://python.arviz.org/) is the standard Python library for the check, and psyphy
+provides the bridge to it. Four quantities, with the upstream reference for each:
+
+| check | what it detects | suspect when |
+|---|---|---|
+| divergences, `sampler_stats["diverging"]` | the integrator failed, usually in a region of high curvature | any divergence at all |
+| [R-hat](https://python.arviz.org/projects/stats/en/latest/) | chains have not mixed to the same distribution | $\hat{R} > 1.01$ |
+| [ESS](https://python.arviz.org/projects/stats/en/latest/) | autocorrelation: how many independent draws the chain is worth | bulk or tail ESS $< 100$ per chain |
+| `sampler_stats["n_steps"]` | trajectories truncated at the tree-depth cap | at the cap for most draws |
+
+Diagnostics run on $\Sigma$, not on the raw parameters, for the reason in
+[Step 4](#step-4-nuts-sampling). `covariance_to_arviz` evaluates $\Sigma$ at points we
+choose, here the reference points, and returns it in ArviZ's format. It takes the posterior
+itself rather than draws from it, because R-hat compares chains against each other and
+`posterior.sample()` would pool them.
+
+```python title="R-hat and ESS on the covariance field"
+--8<-- "docs/examples/wppm/nuts_inference_example.py:arviz_diagnostics"
+```
+
+```python title="Trace plot at the worst reference point"
+--8<-- "docs/examples/wppm/nuts_inference_example.py:trace_plot"
+```
+
+<div align="center">
+  <img src="../plots/nuts_trace_sigma_full.png" width="760"/>
+  <p><em>One panel per quantity at the reference point with the worst R-hat, one colored
+  line per chain. Horizontal axis is the draw index, vertical axis the value of that
+  quantity.</em></p>
+</div>
+
+`covariance_to_arviz` summarizes each $2\times2$ $\Sigma$ by the three numbers that
+determine it: `log_var_0` and `log_var_1`, the log variances along each axis, and
+`corr_0_1`, their correlation. A trace plot shows how each of those moved over the run. We
+are looking for the four chains to overlap, to stay level, and to vary
+fast from draw to draw. A chain sitting at its own offset, or still sloping at the end of
+the run, has not mixed.
+
+```python title="ESS and R-hat over all quantities"
+--8<-- "docs/examples/wppm/nuts_inference_example.py:convergence_plot"
+```
+
+<div align="center">
+  <img src="../plots/nuts_convergence_sigma_full.png" width="760"/>
+  <p><em>Bulk ESS, tail ESS and R-hat, one panel each. The curve is the cumulative fraction
+  of quantities at or below a value, so the vertical axis runs from 0 to 1 and the
+  horizontal axis carries the diagnostic. Dashed lines are ArviZ's reference
+  thresholds.</em></p>
+</div>
+
+The trace plot covers one point, this covers all of them at once. Each curve is the
+distribution of a diagnostic over every $\Sigma$ quantity at every reference point, so a
+point on the curve reads as "this fraction of quantities scored at most this value". More is
+better for ESS and less is better for R-hat, which means we want both ESS curves to sit
+entirely to the right of their dashed line and the R-hat curve entirely to its left. A curve
+crossing its threshold says what fraction of quantities fall short.
+
+This run has no divergences, and the printed `R-hat max` and `ESS min` above are the two
+numbers to quote.
+
+A failing check is fixed by the sampler arguments, which
+[`blackjax.nuts`](https://blackjax-devs.github.io/blackjax/autoapi/blackjax/mcmc/nuts/index.html)
+and
+[`window_adaptation`](https://blackjax-devs.github.io/blackjax/autoapi/blackjax/adaptation/window_adaptation/index.html)
+document. psyphy's `NUTSSampler` passes them straight through under the same names.
+
 
 ---
 

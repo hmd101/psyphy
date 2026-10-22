@@ -578,67 +578,9 @@ print(
 )
 
 # ---------------------------------------------------------------------------
-# 5. ArviZ diagnostics
+# 5. Posterior predictive: ensemble of covariance field ellipses
 # ---------------------------------------------------------------------------
-print("[5/7] Computing ArviZ diagnostics...")
-
-try:
-    import arviz as az
-
-    # Diagnostics are computed on the covariance field Σ(x), not on W. W is
-    # only identified up to a rotation of its embedding axis (W -> W R leaves
-    # every Σ unchanged), so chains can disagree about W while agreeing about
-    # every ellipse, and diagnostics on W report a failure that does not
-    # exist. Σ is a function of x, so we must choose WHERE to evaluate it: here
-    # the reference points, i.e. exactly the ellipses this script plots and
-    # reports. covariance_to_arviz deliberately has no default for `points`.
-    # --8<-- [start:arviz_diagnostics]
-    dt_sigma = covariance_to_arviz(nuts_posterior, ref_points)
-    summary = az.summary(dt_sigma, var_names=["Sigma"])
-    print(summary[["mean", "sd", "r_hat", "ess_bulk"]].describe())
-    r_hat_max = float(summary["r_hat"].max())
-    ess_min = float(summary["ess_bulk"].min())
-    print(f"  R-hat max on Σ: {r_hat_max:.3f}  (target < 1.01)")
-    print(f"  ESS min on Σ:   {ess_min:.0f}    (target > 100 per chain)")
-    # --8<-- [end:arviz_diagnostics]
-
-    # Trace plot at the reference point with the highest R-hat (the worst
-    # case, picked by the numbers rather than by hand): one panel per quantity
-    # (log_var_0, log_var_1, corr_0_1), one line per chain. Plain ArviZ output.
-    #
-    # NOTE (arviz >= 1.0): plot_trace returns an arviz_plots PlotCollection,
-    # not an array of matplotlib axes, so it is saved with pc.savefig(). The
-    # 0.x kwargs `compact=` and `figsize=` no longer exist and raise if passed.
-    # bbox_inches="tight" only affects saving: without it, ArviZ's two-line
-    # panel titles are clipped at the top edge of the image.
-    # --8<-- [start:trace_plot]
-    # pick the reference point with the worst R-hat
-    worst_point = int(az.rhat(dt_sigma)["Sigma"].max("quantity").argmax(dim="point"))
-    pc = az.plot_trace(dt_sigma, var_names=["Sigma"], coords={"point": worst_point})
-    pc.savefig(plot_path("nuts_trace_sigma.png"), bbox_inches="tight")
-    # --8<-- [end:trace_plot]
-    print(f"  Saved: {os.path.basename(plot_path('nuts_trace_sigma.png'))}")
-
-    # ESS (bulk, tail) and R-hat over ALL Σ quantities, ArviZ defaults: one
-    # cumulative curve per diagnostic (height = fraction of quantities at or
-    # below that value) and ArviZ's own reference thresholds as dashed lines.
-    # --8<-- [start:convergence_plot]
-    pc = az.plot_convergence_dist(dt_sigma, var_names=["Sigma"])
-    pc.savefig(plot_path("nuts_convergence_sigma.png"), bbox_inches="tight")
-    # --8<-- [end:convergence_plot]
-    print(f"  Saved: {os.path.basename(plot_path('nuts_convergence_sigma.png'))}")
-
-
-except ImportError:
-    print(
-        "  ArviZ not installed — skipping diagnostics. "
-        "Install with: pip install 'psyphy[diagnostics]'"
-    )
-
-# ---------------------------------------------------------------------------
-# 6. Posterior predictive: ensemble of covariance field ellipses
-# ---------------------------------------------------------------------------
-print("[6/7] Plotting posterior predictive covariance field...")
+print("[5/7] Plotting posterior samples and the posterior mean field...")
 
 ELLIPSE_SCALE = 1.2  # magnification; ellipses are not drawn at true size
 
@@ -679,7 +621,7 @@ covs_truth = truth_field(ref_points)
 
 fig, ax = plt.subplots(figsize=(7, 7))
 
-# --8<-- [start:plot_uncertainty]
+# --8<-- [start:plot_posterior_samples]
 # The posterior spread, drawn first so it sits behind the two lines. One call:
 # (n_ensemble, n_ref, 2, 2) is the "several fields" shape plot_ellipses takes.
 plot_ellipses(
@@ -704,7 +646,7 @@ plot_ellipses(
     linewidths=[1.5, 1.2],
     alpha=[0.9, 0.7],
 )
-# --8<-- [end:plot_uncertainty]
+# --8<-- [end:plot_posterior_samples]
 
 ax.scatter(ref_points[:, 0], ref_points[:, 1], c="C2", s=5, zorder=5)
 ax.plot(
@@ -730,13 +672,13 @@ plt.tight_layout()
 save_ellipse_figure(fig, "nuts_ellipses_uncertainty")
 
 # ---------------------------------------------------------------------------
-# 6b. Pointwise credible band on the threshold contour
+# 5b. Pointwise credible band on the threshold contour
 #
 # The ensemble figure above shows a cloud of contours. A cloud is not what gets
 # reported in a paper; an interval is. Writing each draw's contour as a radius
 # per direction turns the cloud into a quantile band.
 # ---------------------------------------------------------------------------
-print("[6b/7] Pointwise credible band on the threshold contours...")
+print("[5b/7] Pointwise credible band on the threshold contours...")
 
 
 # --8<-- [start:credible_band]
@@ -802,9 +744,9 @@ save_ellipse_figure(fig, "nuts_threshold_band")
 
 
 # ---------------------------------------------------------------------------
-# 6c. Nested bands: several probability levels in one call
+# 5c. Nested bands: several probability levels in one call
 # ---------------------------------------------------------------------------
-print("[6c/7] Nested credible bands at one reference point...")
+print("[5c/7] Nested credible bands at one reference point...")
 
 # --8<-- [start:nested_bands]
 # A sequence of probabilities gives one interval per level in a single call.
@@ -864,6 +806,64 @@ ax.legend(handles[::-1], labels[::-1], loc="upper right", fontsize=8)
 ax.grid(True, alpha=0.3)
 plt.tight_layout()
 save_ellipse_figure(fig, "nuts_threshold_band_nested")
+
+# ---------------------------------------------------------------------------
+# 6. ArviZ diagnostics
+# ---------------------------------------------------------------------------
+print("[6/7] Computing ArviZ diagnostics...")
+
+try:
+    import arviz as az
+
+    # Diagnostics are computed on the covariance field Σ(x), not on W. W is
+    # only identified up to a rotation of its embedding axis (W -> W R leaves
+    # every Σ unchanged), so chains can disagree about W while agreeing about
+    # every ellipse, and diagnostics on W report a failure that does not
+    # exist. Σ is a function of x, so we must choose WHERE to evaluate it: here
+    # the reference points, i.e. exactly the ellipses this script plots and
+    # reports. covariance_to_arviz deliberately has no default for `points`.
+    # --8<-- [start:arviz_diagnostics]
+    dt_sigma = covariance_to_arviz(nuts_posterior, ref_points)
+    summary = az.summary(dt_sigma, var_names=["Sigma"])
+    print(summary[["mean", "sd", "r_hat", "ess_bulk"]].describe())
+    r_hat_max = float(summary["r_hat"].max())
+    ess_min = float(summary["ess_bulk"].min())
+    print(f"  R-hat max on Σ: {r_hat_max:.3f}  (target < 1.01)")
+    print(f"  ESS min on Σ:   {ess_min:.0f}    (target > 100 per chain)")
+    # --8<-- [end:arviz_diagnostics]
+
+    # Trace plot at the reference point with the highest R-hat (the worst
+    # case, picked by the numbers rather than by hand): one panel per quantity
+    # (log_var_0, log_var_1, corr_0_1), one line per chain. Plain ArviZ output.
+    #
+    # NOTE (arviz >= 1.0): plot_trace returns an arviz_plots PlotCollection,
+    # not an array of matplotlib axes, so it is saved with pc.savefig(). The
+    # 0.x kwargs `compact=` and `figsize=` no longer exist and raise if passed.
+    # bbox_inches="tight" only affects saving: without it, ArviZ's two-line
+    # panel titles are clipped at the top edge of the image.
+    # --8<-- [start:trace_plot]
+    # pick the reference point with the worst R-hat
+    worst_point = int(az.rhat(dt_sigma)["Sigma"].max("quantity").argmax(dim="point"))
+    pc = az.plot_trace(dt_sigma, var_names=["Sigma"], coords={"point": worst_point})
+    pc.savefig(plot_path("nuts_trace_sigma.png"), bbox_inches="tight")
+    # --8<-- [end:trace_plot]
+    print(f"  Saved: {os.path.basename(plot_path('nuts_trace_sigma.png'))}")
+
+    # ESS (bulk, tail) and R-hat over ALL Σ quantities, ArviZ defaults: one
+    # cumulative curve per diagnostic (height = fraction of quantities at or
+    # below that value) and ArviZ's own reference thresholds as dashed lines.
+    # --8<-- [start:convergence_plot]
+    pc = az.plot_convergence_dist(dt_sigma, var_names=["Sigma"])
+    pc.savefig(plot_path("nuts_convergence_sigma.png"), bbox_inches="tight")
+    # --8<-- [end:convergence_plot]
+    print(f"  Saved: {os.path.basename(plot_path('nuts_convergence_sigma.png'))}")
+
+
+except ImportError:
+    print(
+        "  ArviZ not installed — skipping diagnostics. "
+        "Install with: pip install 'psyphy[diagnostics]'"
+    )
 
 # ---------------------------------------------------------------------------
 # 7. MAP vs NUTS mean comparison (side-by-side)
