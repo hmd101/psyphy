@@ -953,8 +953,8 @@ def threshold_radii(covs: jnp.ndarray, directions: jnp.ndarray) -> jnp.ndarray:
     covs : jnp.ndarray, shape (..., d, d)
         One or more covariance matrices. Leading axes are broadcast over.
     directions : jnp.ndarray, shape (n_directions, d)
-        Unit directions. Not normalized for you: a non-unit direction rescales
-        the radius.
+        Unit directions. We do not normalize them, and a non-unit direction
+        rescales the radius.
 
     Returns
     -------
@@ -1031,23 +1031,27 @@ def threshold_band(
         A fitted posterior, typically an ``MCMCPosterior``. A ``MAPPosterior``
         is a point mass, so its band has zero width.
     points : jnp.ndarray, shape (n_points, 2)
-        Stimulus locations, typically the reference points being reported.
+        Stimulus locations, usually the reference points we report.
     n_directions : int, default=181
         Directions per contour. The grid is closed, so the last direction
-        repeats the first and 181 gives 180 distinct directions.
+        repeats the first. 181 gives 180 distinct directions.
     ci_prob : float or sequence of float, default=0.89
-        Nominal interval probability. The default matches ArviZ's own
-        ``ci_prob``, so a band and ``az.summary`` agree. A sequence returns one
-        interval per level, stacked on a leading axis, which is how nested
-        bands are drawn in one figure.
+        How much posterior mass the interval holds. At 0.89, 89% of the draws
+        of the radius lie between ``lower`` and ``upper``, in each direction
+        separately. 0.89 is ArviZ's default too, so a band and ``az.summary``
+        agree. Pass a sequence for nested bands, and each level gets its own
+        interval stacked on a leading axis.
     ci_kind : {"eti", "hdi"}, default="eti"
-        ``"eti"`` takes equal probability from each tail. ``"hdi"`` takes the
-        narrowest interval holding that mass, which differs when the radii are
-        skewed, and they often are since a radius is bounded below by zero.
+        Which interval of that mass to take, since many of them hold it.
+        ``"eti"`` is equal-tailed: it cuts the same probability off each end,
+        so ``lower`` and ``upper`` are quantiles. ``"hdi"`` is
+        highest-density: it takes the narrowest interval holding the mass. The
+        two differ when the draws are skewed. Radii usually are, because a
+        radius cannot go below zero.
     n_samples : int, optional
         Draws to use. Defaults to every stored draw, which needs the posterior
-        to expose ``n_chains`` and ``n_draws``; a point-mass posterior must
-        pass this explicitly.
+        to expose ``n_chains`` and ``n_draws``. A point-mass posterior such as
+        ``MAPPosterior`` has to pass this.
     key : jax.Array, optional
         PRNG key forwarded to ``posterior.sample``. Only matters when
         ``n_samples`` is smaller than the number of stored draws.
@@ -1096,7 +1100,7 @@ def threshold_band(
         raise NotImplementedError(
             "threshold_band supports 2-D stimulus spaces only, got "
             f"input_dim={model.input_dim}. threshold_radii is d-dimensional, "
-            "so pass your own directions to it instead."
+            "so call it with explicit directions instead."
         )
 
     if n_samples is None:

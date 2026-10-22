@@ -822,11 +822,7 @@ save_ellipse_figure(fig, "nuts_threshold_band")
 fig, axes = plt.subplots(1, 3, figsize=(18, 6))
 # (field, colour, label, draw_the_posterior_ensemble_behind_it)
 #
-# The ensemble goes on the NUTS panel only, and that asymmetry IS the point of
-# the figure: MAP can only ever draw one contour, because its posterior is a
-# delta at theta_MAP. NUTS draws a band from the same downstream code. Showing
-# the mean alone makes the two look like equivalent point estimates, which is
-# exactly the misreading this example exists to prevent.
+
 configs = [
     (truth_field, "k", "Ground truth", False),
     (
