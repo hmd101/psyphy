@@ -1,11 +1,10 @@
 # Sampling the posterior with NUTS
 
-The [MAP tutorial](full_wppm_fit_example.md) ends with one threshold ellipse per reference
-point: the model's single best guess. Here we end with a distribution of ellipses at each
-reference point. Where the distribution is concentrated the data pin the threshold down;
-where the ellipses fan out they do not, and a single MAP ellipse would have hidden that.
-That spread is what adaptive trial placement needs, since placing the next trial where the
-model is most uncertain is how an experiment spends its trials well.
+The [MAP tutorial](full_wppm_fit_example.md) gives one threshold ellipse per reference
+point. Here we get a distribution of ellipses instead. Tight clusters mean the data
+constrain the threshold ellipse and wide spread means they don't. A single MAP ellipse hides
+that difference. Crucially, adaptive trial placement depends on this uncertainty, because
+the next trial should go where the model is least certain.
 
 <div align="center">
   <img src="../plots/nuts_ellipses_uncertainty_full.jpg" width="560"/>
