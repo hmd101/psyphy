@@ -355,52 +355,60 @@ fit reports the same contours with no way to tell those two cases apart.
 
 ## Reference: tuning and runtime
 
-### Sampler arguments
+Three collapsed blocks, none of which the walkthrough depends on.
 
-| argument | what it controls | raise it when |
-|---|---|---|
-| `num_warmup` | tuning steps per chain, discarded | trace plots still drift at the start |
-| `num_samples` | kept draws per chain | ESS is too low |
-| `num_chains` | independent chains, R-hat needs at least 2 | a stronger convergence check is wanted |
-| `max_num_doublings` | tree-depth cap, at most $2^k - 1$ gradients per draw | most draws hit the cap, which the script prints |
-| `target_acceptance_rate` | how cautious the tuned step size is | divergences appear |
+??? note "Sampler arguments"
 
-### Compute presets
+    | argument | what it controls | raise it when |
+    |---|---|---|
+    | `num_warmup` | tuning steps per chain, discarded | trace plots still drift at the start |
+    | `num_samples` | kept draws per chain | ESS is too low |
+    | `num_chains` | independent chains, R-hat needs at least 2 | a stronger convergence check is wanted |
+    | `max_num_doublings` | tree-depth cap, at most $2^k - 1$ gradients per draw | most draws hit the cap, which the script prints |
+    | `target_acceptance_rate` | how cautious the tuned step size is | divergences appear |
 
-```python title="Compute settings"
---8<-- "docs/examples/wppm/nuts_inference_example.py:compute_settings"
-```
+    [`blackjax.nuts`](https://blackjax-devs.github.io/blackjax/autoapi/blackjax/mcmc/nuts/index.html)
+    and
+    [`window_adaptation`](https://blackjax-devs.github.io/blackjax/autoapi/blackjax/adaptation/window_adaptation/index.html)
+    document them upstream. `NUTSSampler` passes them through under the same names.
 
-The presets scale three separate things: how much data there is, how accurately the
-likelihood is estimated (`mc_samples`), and how long the sampler runs. The first two change
-the posterior being targeted, so a `quick` fit is a smaller problem rather than a rough
-version of a `full` one.
+??? note "Compute presets"
 
-??? note "Why a run costs what it costs"
+    ```python title="Compute settings"
+    --8<-- "docs/examples/wppm/nuts_inference_example.py:compute_settings"
+    ```
 
-    - **The Monte Carlo likelihood dominates.** Each gradient evaluation simulates
-      `mc_samples` draws for every trial, so cost scales with `mc_samples × n_trials`.
-      `quick` to `full` raises that product by about 440 times.
-    - **Cost per draw is not fixed.** NUTS needs $O(2^{\text{tree depth}})$ gradient
-      evaluations and the depth is data dependent, commonly 16 to 64. The script times one
-      gradient and prints a bracketed projection before sampling starts.
-    - **Tree depth is capped.** The default `max_num_doublings=8` allows at most $2^8 - 1$
-      gradient evaluations per draw. If `sampler_stats["n_steps"]` sits at the cap for most
-      draws, trajectories are being truncated: still valid, but mixing more slowly.
-    - **Warmup starts from a prior-scaled metric.** By default the sampler works in
-      $z = W / \sigma_\text{prior}$ (`prior_preconditioning=True`), so adaptation does not
-      begin from an identity mass matrix mismatched to the coefficient scales.
-    - **Chains are vmapped.** All chains advance in one compiled call per phase. Under vmap
-      each step costs as much as the deepest tree across chains, which is another reason for
-      the depth cap. On a GPU four chains cost about as much as one. On a CPU, many chains
-      can be slower than running them one at a time.
+    The presets scale three separate things: how much data there is, how accurately the
+    likelihood is estimated (`mc_samples`), and how long the sampler runs. The first two
+    change the posterior being targeted, so a `quick` fit is a smaller problem rather than a
+    rough version of a `full` one.
 
-### Two warmup modes
+    ??? note "Why a run costs what it costs"
 
-| mode | how it behaves | call |
-|---|---|---|
-| adaptive, `step_size=None` (default) | adapts step size and mass matrix per chain via `window_adaptation`, starting from a prior-scaled metric | `NUTSSampler(num_warmup=200, num_samples=500)` |
-| fixed, `step_size=<float>` | no adaptation and an identity mass matrix, so it is faster but the step size has to be chosen by hand | `NUTSSampler(..., step_size=0.01)` |
+        - **The Monte Carlo likelihood dominates.** Each gradient evaluation simulates
+          `mc_samples` draws for every trial, so cost scales with `mc_samples × n_trials`.
+          `quick` to `full` raises that product by about 440 times.
+        - **Cost per draw is not fixed.** NUTS needs $O(2^{\text{tree depth}})$ gradient
+          evaluations and the depth is data dependent, commonly 16 to 64. The script times
+          one gradient and prints a bracketed projection before sampling starts.
+        - **Tree depth is capped.** The default `max_num_doublings=8` allows at most
+          $2^8 - 1$ gradient evaluations per draw. If `sampler_stats["n_steps"]` sits at the
+          cap for most draws, trajectories are being truncated: still valid, but mixing more
+          slowly.
+        - **Warmup starts from a prior-scaled metric.** By default the sampler works in
+          $z = W / \sigma_\text{prior}$ (`prior_preconditioning=True`), so adaptation does
+          not begin from an identity mass matrix mismatched to the coefficient scales.
+        - **Chains are vmapped.** All chains advance in one compiled call per phase. Under
+          vmap each step costs as much as the deepest tree across chains, which is another
+          reason for the depth cap. On a GPU four chains cost about as much as one. On a
+          CPU, many chains can be slower than running them one at a time.
+
+??? note "Two warmup modes"
+
+    | mode | how it behaves | call |
+    |---|---|---|
+    | adaptive, `step_size=None` (default) | adapts step size and mass matrix per chain via `window_adaptation`, starting from a prior-scaled metric | `NUTSSampler(num_warmup=200, num_samples=500)` |
+    | fixed, `step_size=<float>` | no adaptation and an identity mass matrix, so it is faster but the step size has to be chosen by hand | `NUTSSampler(..., step_size=0.01)` |
 
 ---
 
