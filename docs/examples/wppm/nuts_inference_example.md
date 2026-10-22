@@ -231,16 +231,11 @@ choose, here the reference points, and returns it in ArviZ's format.
   are ArviZ's reference thresholds.</em></p>
 </div>
 
-When a check fails, these are the knobs. See
-[BlackJAX's documentation](https://blackjax-devs.github.io/blackjax/) for how to set them,
-but below is a rough guide:
-
-| failing check | knob |
-|---|---|
-| divergences | raise `target_acceptance_rate`, for example to 0.9 |
-| R-hat above 1.01 | more `num_warmup`, then more `num_samples` |
-| ESS too low | more `num_samples` |
-| `n_steps` at the cap | raise `max_num_doublings` |
+A failing check is fixed by the sampler arguments, which
+[`blackjax.nuts`](https://blackjax-devs.github.io/blackjax/autoapi/blackjax/mcmc/nuts/index.html)
+and
+[`window_adaptation`](https://blackjax-devs.github.io/blackjax/autoapi/blackjax/adaptation/window_adaptation/index.html)
+document. `NUTSSampler` passes them straight through under the same names.
 
 ### Step 6: Threshold uncertainty
 
