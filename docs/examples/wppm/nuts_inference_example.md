@@ -192,7 +192,7 @@ fit, `WPPMPredictivePosterior` for instance, takes a NUTS fit unchanged.
 ### Step 5: Check the chains with ArviZ
 
 Sampling produces draws whether or not they represent the posterior, and MCMC fails quietly:
-a chain can look like a result while having explored only part of the distribution.
+for example, a chain can look like a result while having explored only part of the distribution.
 [ArviZ](https://python.arviz.org/) is the standard Python library for the check, and psyphy
 provides the bridge to it. Four quantities, with the upstream reference for each:
 
@@ -232,7 +232,7 @@ choose, here the reference points, and returns it in ArviZ's format.
 </div>
 
 When a check fails, these are the knobs. See
-[BlackJAX's documentation](https://blackjax-devs.github.io/blackjax/) for how to set them.
+[BlackJAX's documentation](https://blackjax-devs.github.io/blackjax/) for how to set them but below is a rough guide:
 
 | failing check | knob |
 |---|---|
@@ -272,7 +272,8 @@ $$r_i(\varphi) \;=\; \frac{1}{\sqrt{u(\varphi)^\top \Sigma_i(x)^{-1} u(\varphi)}
 
 which is the discrimination threshold, the just noticeable difference, in direction
 $\varphi$. It is a scalar, one number per draw, so quantiles over draws give an interval at
-each direction and filling between them gives a band.
+each direction and filling between them give us
+the credible band.
 
 ??? note "Where the radius formula comes from"
 
