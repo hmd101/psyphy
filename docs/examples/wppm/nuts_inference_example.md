@@ -218,10 +218,9 @@ the reason it exists rather than `WPPMCovarianceField(model, posterior.params)`:
 --8<-- "docs/examples/wppm/nuts_inference_example.py:plot_posterior_samples"
 ```
 
-**This is the figure at the top of the page**, and it is what the whole run was for: one
-threshold contour per draw, at every reference point, so the spread of the blue contours is
-the posterior uncertainty about each threshold. A MAP fit gives one contour here and no way
-to tell a well-constrained threshold from a poorly constrained one.
+This produces the figure at the top of the page: one threshold contour per posterior draw,
+at every reference point. Tight clusters mean the data constrain the threshold, wide spread
+means they do not.
 
 A cloud of contours is the full answer, but a paper reports an interval. psyphy computes
 one with [`threshold_band`](../../reference/model.md#psyphy.model.threshold_band), which
@@ -302,14 +301,12 @@ fit reports the same contours with no way to tell those two cases apart.
     The interval covers the true radius in each direction separately with probability
     $1-\alpha$. It does not say that the whole true contour lies inside the band with
     probability $1-\alpha$, which is a stronger statement needing a different construction.
-    An 89% pointwise band is expected to miss some directions, so the ground truth leaving
-    it in places is not a failure of the fit.
+    An 89% pointwise band is expected to miss some directions.
 ### Step 6: Check whether the draws represent the posterior with ArviZ
-
-Sampling produces draws whether or not they represent the posterior, and MCMC fails quietly:
-for example, a chain can look like a result while having explored only part of the distribution.
+How do we check whether the draws we sampled represent the posterior distribution well?
+for example, a chain may only have explored part of the distribution.
 [ArviZ](https://python.arviz.org/) is the standard Python library for the check, and psyphy
-provides the bridge to it. Four quantities, with the upstream reference for each:
+provides a bridge to it. 4 quantities, with the upstream reference for each:
 
 | check | what it detects | suspect when |
 |---|---|---|
