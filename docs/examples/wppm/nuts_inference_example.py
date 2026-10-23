@@ -176,7 +176,6 @@ VARIANCE_SCALE = 4e-3
 DIAG_TERM = 1e-4
 BANDWIDTH = 1e-2
 
-# --8<-- [start:compute_settings]
 # Compute/fidelity presets. Same MODES convention as hong2025_reproduction.py.
 #
 # Why each knob is where it is in `full`:
@@ -198,6 +197,7 @@ BANDWIDTH = 1e-2
 #                    for WPPM the mass matrix matters a lot, because
 #                    coefficients at different Chebyshev degrees have genuinely
 #                    different prior scales. 100 warmup steps cannot do it.
+# --8<-- [start:compute_settings]
 MODES = {
     "quick": {
         "mc_samples": 50,
@@ -562,6 +562,7 @@ print(f"  Mean acceptance rate: {float(jnp.mean(acc)):.3f}")
 # than following the posterior's geometry, so the kept draws are biased in a way
 # more sampling does not fix. Any non-zero count makes the run suspect whatever
 # R-hat says, which is why it is printed before the convergence diagnostics.
+# --8<-- [start:divergence_check]
 _div = nuts_posterior.sampler_stats["diverging"]
 _n_div = int(jnp.sum(_div))
 print(
@@ -576,6 +577,7 @@ print(
     f"  Leapfrog steps/draw: mean {float(jnp.mean(_n_steps)):.0f}, "
     f"{_at_cap:.0%} at the cap ({2**MAX_NUM_DOUBLINGS - 1})"
 )
+# --8<-- [end:divergence_check]
 
 # ---------------------------------------------------------------------------
 # 5. Posterior predictive: ensemble of covariance field ellipses
