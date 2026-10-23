@@ -111,7 +111,6 @@ nav:
     - Sampling the Posterior with NUTS: examples/wppm/nuts_inference_example.md
     - Covariance Field Visualization: examples/covariance_field/covariance_field.md
     - Plotting Ellipse Fields: examples/viz/ellipse_plots.md
-  - Design Doc: API_DESIGN_DOCUMENT.md
   - Contributing: CONTRIBUTING.md
   - Changelog: changelog.md
 
