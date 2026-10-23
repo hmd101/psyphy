@@ -52,7 +52,7 @@ The companion script is
     ```
 
     Every figure and number here comes from `--mode full`. `quick` is a smoke test for the
-    code path. Its chains are far too short to converge, so its diagnostics are not a result.
+    code path. Its chains are far too short to converge, so its diagnostics are not to be interpreted.
 
     Only MAP and NUTS are expensive, and the script caches them. The diagnostics and all
     figures are post-processing of the stored draws and need no GPU:
@@ -86,8 +86,7 @@ two settings: the step size, and how many steps to take before stopping. NUTS, o
 [Hoffman and Gelman (2014)](https://jmlr.org/papers/v15/hoffman14a.html), removes
 the second by extending each trajectory until it starts to double back on itself. The step
 size is still tuned, during warmup ([Step 4](#step-4-nuts-sampling)). Betancourt's
-[conceptual introduction](https://arxiv.org/abs/1701.02434) covers why this works and where
-it fails.
+[conceptual introduction to HMC](https://arxiv.org/abs/1701.02434) is a good resource to skim if you'd like to learn more.
 
 Two things follow for psyphy:
 
@@ -156,9 +155,9 @@ said otherwise.
 
 ### Step 3: MAP warm-start
 
-A sampler started far from where the posterior mass lives spends its first stretch walking
-there, and those draws are discarded. Starting at the MAP estimate skips that walk, so
-warmup can be spent on tuning instead.
+A sampler started far from the posterior spends its first draws getting
+there, and those draws are then thrown away. Starting at the MAP estimate instead avoids
+this walk.
 
 ```python title="MAP warm-start"
 --8<-- "docs/examples/wppm/nuts_inference_example.py:map_warmstart"
