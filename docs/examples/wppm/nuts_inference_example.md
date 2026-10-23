@@ -174,8 +174,7 @@ this walk.
 `NUTSSampler` has the same `fit(model, data)` interface as [`MAPOptimizer`](../../reference/inference.md#psyphy.inference.MAPOptimizer), and the BlackJAX
 backend stays hidden. Each chain runs a warmup phase, where the step size and mass matrix
 are tuned and the draws discarded, then a sampling phase where the tuning is frozen and
-every draw is kept. What comes back is an `MCMCPosterior`. Three things on it are used
-below:
+every draw is kept. What comes back is an `MCMCPosterior`. We use 3 things on it:
 
 | call | returns | used in |
 |---|---|---|
@@ -306,7 +305,7 @@ How do we check whether the draws we sampled represent the posterior distributio
 A chain may have explored only part of the distribution, and nothing in the output says so.
 [ArviZ](https://python.arviz.org/) is the standard Python library for these checks.
 
-Four quantities to check, in this order, at ArviZ's default thresholds:
+4 quantities to check, in this order, at ArviZ's default thresholds:
 
 | check | what it detects | suspect when |
 |---|---|---|
