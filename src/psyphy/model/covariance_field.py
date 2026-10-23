@@ -41,9 +41,9 @@ Usage Examples
 >>> from psyphy.model import WPPM, OddityTask, Prior, WPPMCovarianceField
 >>> model = WPPM(Prior(input_dim=2, basis_degree=2), OddityTask(), input_dim=2)
 >>> field = WPPMCovarianceField.from_prior(model, jr.PRNGKey(0))
->>> field.cov(jnp.array([0.5, 0.3])).shape
+>>> field(jnp.array([0.5, 0.3])).shape
 (2, 2)
->>> field.cov_batch(jnp.zeros((10, 2))).shape
+>>> field(jnp.zeros((10, 2))).shape
 (10, 2, 2)
 >>> field.sqrt_cov(jnp.array([0.5, 0.3])).shape  # (input_dim, embedding_dim)
 (2, 3)
@@ -143,7 +143,7 @@ class WPPMCovarianceField:
     >>> model = WPPM(Prior(input_dim=2, basis_degree=2), OddityTask(), input_dim=2)
     >>> # from the prior
     >>> field = WPPMCovarianceField.from_prior(model, jr.PRNGKey(0))
-    >>> field.cov(jnp.array([0.5, 0.3])).shape
+    >>> field(jnp.array([0.5, 0.3])).shape
     (2, 2)
     >>> # from a MAP fit
     >>> from psyphy.inference import MAPOptimizer
@@ -396,7 +396,7 @@ class WPPMCovarianceField:
         >>> from psyphy.model import WPPM, OddityTask, Prior, WPPMCovarianceField
         >>> model = WPPM(Prior(input_dim=2, basis_degree=2), OddityTask(), input_dim=2)
         >>> field = WPPMCovarianceField.from_prior(model, jr.PRNGKey(42))
-        >>> field.cov(jnp.array([0.5, 0.5])).shape
+        >>> field(jnp.array([0.5, 0.5])).shape
         (2, 2)
         """
         params = model.init_params(key)
@@ -438,7 +438,7 @@ class WPPMCovarianceField:
         >>> from psyphy.inference import MAPOptimizer
         >>> map_posterior = MAPOptimizer().fit(model, data)  # doctest: +SKIP
         >>> field = WPPMCovarianceField.from_posterior(map_posterior)  # doctest: +SKIP
-        >>> field.cov(jnp.array([0.5, 0.5])).shape  # doctest: +SKIP
+        >>> field(jnp.array([0.5, 0.5])).shape  # doctest: +SKIP
         (2, 2)
         """
         # Sample-based posteriors are recognized by duck typing (they expose a
@@ -491,7 +491,7 @@ class WPPMCovarianceField:
         >>> model = WPPM(Prior(input_dim=2, basis_degree=2), OddityTask(), input_dim=2)
         >>> params = model.init_params(jr.PRNGKey(0))  # {"W": (3, 3, 2, 3)}
         >>> field = WPPMCovarianceField.from_params(model, params)
-        >>> field.cov(jnp.array([0.5, 0.5])).shape
+        >>> field(jnp.array([0.5, 0.5])).shape
         (2, 2)
         """
         return cls(model, params)
@@ -531,7 +531,7 @@ class WPPMCovarianceField:
         >>> U.shape  # (input_dim, embedding_dim) for input_dim=2, extra_dims=1
         (2, 3)
         >>> # Σ = U @ U^T + λI
-        >>> bool(jnp.allclose(U @ U.T + model.diag_term * jnp.eye(2), field.cov(x)))
+        >>> bool(jnp.allclose(U @ U.T + model.diag_term * jnp.eye(2), field(x)))
         True
         """
         if "W" not in self.params:

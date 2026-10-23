@@ -2,18 +2,15 @@
 trial_placement
 ===============
 
-Non-acquisition-based trial placement strategies.
+Trial placement that does not depend on the posterior.
 
-NOTE: this modeule is currently untested and still in active development.
+This module is untested and still in development.
 
-This module provides classical (non-Bayesian-optimization) placement strategies:
+- GridPlacement: proposes the points of a fixed grid, in order.
+- SobolPlacement: proposes quasi-random points that fill the stimulus space evenly.
 
-- GridPlacement: Fixed grid designs for systematic exploration
-- SobolPlacement: Quasi-random low-discrepancy sequences (space-filling)
-
-For acquisition-based adaptive designs (Bayesian optimization), use:
-- psyphy.acquisition: Expected Improvement, UCB, Mutual Information
-- See: psyphy.acquisition.optimize_acqf_discrete() for trial selection
+Both take a ``posterior`` argument in ``propose`` and ignore it. psyphy does
+not yet place trials adaptively, from the posterior.
 
 Examples
 --------
