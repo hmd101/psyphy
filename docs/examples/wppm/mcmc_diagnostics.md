@@ -27,8 +27,11 @@ python nuts_inference_example.py --mode full --from-fit
 
 ## What to check
 
-4 quantities to check at ArviZ's default thresholds. Those defaults
-follow [Vehtari et al. (2021)](https://doi.org/10.1214/20-BA1221) for R-hat and ESS.
+4 quantities to check. The R-hat and ESS thresholds are ArviZ's defaults, which follow
+[Vehtari et al. (2021)](https://doi.org/10.1214/20-BA1221). The divergence and tree-depth
+guidance is Stan's, from its
+[reference manual](https://mc-stan.org/docs/reference-manual/mcmc.html): a divergence is a
+validity problem, tree-depth saturation only an efficiency one.
 
 | check | what it detects | suspect when |
 |---|---|---|
@@ -43,11 +46,12 @@ Divergences and the tree-depth cap come straight off `sampler_stats`, with no Ar
 --8<-- "docs/examples/wppm/nuts_inference_example.py:divergence_check"
 ```
 
-A divergent transition means the integrator left the posterior's geometry, so more sampling
-doesn't fix the draws it produced. Any non-zero count (even one) makes the run suspect
-regardless of what R-hat says, which is why we check divergences first. The second print is the fraction
-of draws whose trajectory hit `max_num_doublings`: a large fraction means the cap is
-limiting mixing.
+A divergent transition means the integrator, the thing approximating the trajectory in small
+steps ([sampling tutorial](nuts_inference_example.md#why-sample-the-posterior)), left the
+posterior's geometry. More sampling doesn't fix the draws it produced. Any non-zero count
+(even one) makes the run suspect regardless of what R-hat says, which is why we check
+divergences first. The second print is the fraction of draws whose trajectory hit
+`max_num_doublings`: a large fraction means the cap is limiting mixing.
 
 ## Diagnostics on $\Sigma$, with `covariance_to_arviz`
 
@@ -201,6 +205,9 @@ straight through under the same names.
   [getting started guide](https://python.arviz.org/en/latest/user_guide/getting_started.html)
   and the [arviz-stats API](https://python.arviz.org/projects/stats/en/latest/)
 - [BlackJAX](https://blackjax-devs.github.io/blackjax/) for the sampler and its arguments
+- [Stan's reference manual](https://mc-stan.org/docs/reference-manual/mcmc.html) for
+  divergences and tree depth, including the reparameterization route when raising
+  `target_acceptance_rate` is not enough
 
 The paper behind the Arviz thresholds:
 

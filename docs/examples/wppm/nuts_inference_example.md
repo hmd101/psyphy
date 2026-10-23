@@ -81,8 +81,14 @@ around this by constructing a random walk whose long-run visiting frequency is t
 posterior, so the places it has been form a sample from it. A plain random walk mixes too
 slowly to be usable in the roughly 100 dimensions of our parameteres $W$, so
 [Hamiltonian Monte Carlo. (HMC)](https://en.wikipedia.org/wiki/Hamiltonian_Monte_Carlo) uses the
-gradient of the log posterior to move along the distribution's geometry instead. HMC needs
-two settings: the step size, and how many steps to take before stopping. NUTS, of
+gradient of the log posterior to move along the distribution's geometry instead. Three terms
+come from that, and the diagnostics all refer to them:
+
+- the path can't be solved exactly, so an *integrator* approximates it in small steps
+- the *step size* is how far each step goes
+- the sequence of steps is the *trajectory*
+
+HMC needs two settings: the step size, and how many steps to take before stopping. NUTS, of
 [Hoffman and Gelman (2014)](https://jmlr.org/papers/v15/hoffman14a.html), removes
 the second by extending each trajectory until it starts to double back on itself. The step
 size is still tuned, during warmup ([Step 4](#step-4-nuts-sampling)). Betancourt's
