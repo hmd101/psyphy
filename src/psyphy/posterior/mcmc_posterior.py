@@ -229,9 +229,20 @@ class MCMCPosterior:
 
         Examples
         --------
-        >>> idata = nuts_posterior.to_arviz()
+        >>> import jax.numpy as jnp
+        >>> import jax.random as jr
         >>> import arviz as az
-        >>> print(az.summary(idata))
+        >>> from psyphy.model import WPPM, OddityTask, Prior
+        >>> from psyphy.posterior import MCMCPosterior
+        >>> model = WPPM(Prior(input_dim=2, basis_degree=2), OddityTask(), input_dim=2)
+        >>> # stand-in for NUTSSampler().fit(model, data): 2 chains of 50 prior draws
+        >>> keys = jr.split(jr.PRNGKey(1), 100)
+        >>> W = jnp.stack(
+        ...     [model.init_params(k)["W"] for k in keys]
+        ... )  # (100, 3, 3, 2, 3)
+        >>> nuts_posterior = MCMCPosterior({"W": W.reshape(2, 50, *W.shape[1:])}, model)
+        >>> idata = nuts_posterior.to_arviz()
+        >>> print(az.summary(idata))  # doctest: +SKIP
         """
         try:
             import arviz as az

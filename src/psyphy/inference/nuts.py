@@ -143,8 +143,10 @@ class NUTSSampler(InferenceEngine):
     --------
     >>> from psyphy.inference import NUTSSampler
     >>> sampler = NUTSSampler(num_warmup=200, num_samples=500, num_chains=4)
-    >>> nuts_posterior = sampler.fit(model, data, init_params=map_posterior.params)
-    >>> print(nuts_posterior.n_chains, nuts_posterior.n_draws)
+    >>> nuts_posterior = sampler.fit(
+    ...     model, data, init_params=map_posterior.params
+    ... )  # doctest: +SKIP
+    >>> print(nuts_posterior.n_chains, nuts_posterior.n_draws)  # doctest: +SKIP
     4 500
     """
 

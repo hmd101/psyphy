@@ -36,18 +36,17 @@ where:
 
 Usage Examples
 --------------
-# Sample from prior
->>> model = WPPM(input_dim=2, prior=Prior(basis_degree=5), ...)
->>> field = WPPMCovarianceField.from_prior(model, key)
->>> Sigma = field.cov(x)
-
-# From fitted posterior
->>> posterior = model.fit(data, optimizer=MAPOptimizer())
->>> field = posterior.get_covariance_field()
->>> Sigmas = field.cov_batch(X_grid)
-
-# Access square root
->>> U = field.sqrt_cov(x)
+>>> import jax.numpy as jnp
+>>> import jax.random as jr
+>>> from psyphy.model import WPPM, OddityTask, Prior, WPPMCovarianceField
+>>> model = WPPM(Prior(input_dim=2, basis_degree=2), OddityTask(), input_dim=2)
+>>> field = WPPMCovarianceField.from_prior(model, jr.PRNGKey(0))
+>>> field.cov(jnp.array([0.5, 0.3])).shape
+(2, 2)
+>>> field.cov_batch(jnp.zeros((10, 2))).shape
+(10, 2, 2)
+>>> field.sqrt_cov(jnp.array([0.5, 0.3])).shape  # (input_dim, embedding_dim)
+(2, 3)
 """
 
 from __future__ import annotations
@@ -138,18 +137,18 @@ class WPPMCovarianceField:
 
     Examples
     --------
-    >>> # From prior
-    >>> model = WPPM(input_dim=2, prior=Prior(basis_degree=5), ...)
-    >>> field = WPPMCovarianceField.from_prior(model, key)
-    >>> Sigma = field.cov(jnp.array([0.5, 0.3]))
-    >>>
-    >>> # From posterior
-    >>> posterior = model.fit(data, optimizer=MAPOptimizer())
-    >>> field = posterior.get_covariance_field()
-    >>> Sigmas = field.cov_batch(X_grid)
-    >>>
-    >>> # Access square root (Wishart mode only)
-    >>> U = field.sqrt_cov(jnp.array([0.5, 0.3]))
+    >>> import jax.numpy as jnp
+    >>> import jax.random as jr
+    >>> from psyphy.model import WPPM, OddityTask, Prior, WPPMCovarianceField
+    >>> model = WPPM(Prior(input_dim=2, basis_degree=2), OddityTask(), input_dim=2)
+    >>> # from the prior
+    >>> field = WPPMCovarianceField.from_prior(model, jr.PRNGKey(0))
+    >>> field.cov(jnp.array([0.5, 0.3])).shape
+    (2, 2)
+    >>> # from a MAP fit
+    >>> from psyphy.inference import MAPOptimizer
+    >>> map_posterior = MAPOptimizer().fit(model, data)  # doctest: +SKIP
+    >>> field = WPPMCovarianceField.from_posterior(map_posterior)  # doctest: +SKIP
 
     Notes
     -----
@@ -202,9 +201,14 @@ class WPPMCovarianceField:
 
         Examples
         --------
+        >>> import jax.numpy as jnp
+        >>> import jax.random as jr
+        >>> from psyphy.model import WPPM, OddityTask, Prior, WPPMCovarianceField
         >>> # 2D stimulus space (e.g., isoluminant plane)
-        >>> model_2d = WPPM(input_dim=2, ...)
-        >>> field_2d = WPPMCovarianceField.from_prior(model_2d, key)
+        >>> model_2d = WPPM(
+        ...     Prior(input_dim=2, basis_degree=2), OddityTask(), input_dim=2
+        ... )
+        >>> field_2d = WPPMCovarianceField.from_prior(model_2d, jr.PRNGKey(0))
         >>>
         >>> # Single 2D point
         >>> x = jnp.array([0.5, 0.3])  # Shape (2,)
@@ -219,8 +223,10 @@ class WPPMCovarianceField:
         >>> Sigmas_grid = field_2d(X_grid)  # Shape (10, 10, 2, 2)
         >>>
         >>> # 3D stimulus space (e.g., RGB)
-        >>> model_3d = WPPM(input_dim=3, ...)
-        >>> field_3d = WPPMCovarianceField.from_prior(model_3d, key)
+        >>> model_3d = WPPM(
+        ...     Prior(input_dim=3, basis_degree=2), OddityTask(), input_dim=3
+        ... )
+        >>> field_3d = WPPMCovarianceField.from_prior(model_3d, jr.PRNGKey(0))
         >>>
         >>> # Single 3D point
         >>> x_3d = jnp.array([0.5, 0.3, 0.2])  # Shape (3,)
@@ -385,9 +391,13 @@ class WPPMCovarianceField:
 
         Examples
         --------
-        >>> model = WPPM(input_dim=2, prior=Prior(basis_degree=5), ...)
+        >>> import jax.numpy as jnp
+        >>> import jax.random as jr
+        >>> from psyphy.model import WPPM, OddityTask, Prior, WPPMCovarianceField
+        >>> model = WPPM(Prior(input_dim=2, basis_degree=2), OddityTask(), input_dim=2)
         >>> field = WPPMCovarianceField.from_prior(model, jr.PRNGKey(42))
-        >>> Sigma = field.cov(jnp.array([0.5, 0.5]))
+        >>> field.cov(jnp.array([0.5, 0.5])).shape
+        (2, 2)
         """
         params = model.init_params(key)
         return cls(model, params)
@@ -421,9 +431,15 @@ class WPPMCovarianceField:
 
         Examples
         --------
-        >>> posterior = model.fit(data, optimizer=MAPOptimizer())
-        >>> field = WPPMCovarianceField.from_posterior(posterior)
-        >>> Sigma = field.cov(x)
+        >>> import jax.numpy as jnp
+        >>> import jax.random as jr
+        >>> from psyphy.model import WPPM, OddityTask, Prior, WPPMCovarianceField
+        >>> model = WPPM(Prior(input_dim=2, basis_degree=2), OddityTask(), input_dim=2)
+        >>> from psyphy.inference import MAPOptimizer
+        >>> map_posterior = MAPOptimizer().fit(model, data)  # doctest: +SKIP
+        >>> field = WPPMCovarianceField.from_posterior(map_posterior)  # doctest: +SKIP
+        >>> field.cov(jnp.array([0.5, 0.5])).shape  # doctest: +SKIP
+        (2, 2)
         """
         # Sample-based posteriors are recognized by duck typing (they expose a
         # draw count), the same criterion PosteriorMeanCovarianceField uses.
@@ -469,8 +485,14 @@ class WPPMCovarianceField:
 
         Examples
         --------
-        >>> params = {"log_diag": jnp.array([0.1, 0.2])}
+        >>> import jax.numpy as jnp
+        >>> import jax.random as jr
+        >>> from psyphy.model import WPPM, OddityTask, Prior, WPPMCovarianceField
+        >>> model = WPPM(Prior(input_dim=2, basis_degree=2), OddityTask(), input_dim=2)
+        >>> params = model.init_params(jr.PRNGKey(0))  # {"W": (3, 3, 2, 3)}
         >>> field = WPPMCovarianceField.from_params(model, params)
+        >>> field.cov(jnp.array([0.5, 0.5])).shape
+        (2, 2)
         """
         return cls(model, params)
 
@@ -499,16 +521,18 @@ class WPPMCovarianceField:
 
         Examples
         --------
-        >>> # Wishart mode
-        >>> model = WPPM(input_dim=2, basis_degree=5, extra_dims=1, ...)
-        >>> field = WPPMCovarianceField.from_prior(model, key)
-        >>> U = field.sqrt_cov(jnp.array([0.5, 0.3]))
-        >>> print(U.shape)  # (2, 3) for input_dim=2, extra_dims=1
-        >>>
-        >>> # Verify: Σ = U @ U^T + λI
-        >>> Sigma_from_U = U @ U.T + model.diag_term * jnp.eye(2)
-        >>> Sigma_direct = field.cov(x)
-        >>> assert jnp.allclose(Sigma_from_U, Sigma_direct)
+        >>> import jax.numpy as jnp
+        >>> import jax.random as jr
+        >>> from psyphy.model import WPPM, OddityTask, Prior, WPPMCovarianceField
+        >>> model = WPPM(Prior(input_dim=2, basis_degree=2), OddityTask(), input_dim=2)
+        >>> field = WPPMCovarianceField.from_prior(model, jr.PRNGKey(0))
+        >>> x = jnp.array([0.5, 0.3])
+        >>> U = field.sqrt_cov(x)
+        >>> U.shape  # (input_dim, embedding_dim) for input_dim=2, extra_dims=1
+        (2, 3)
+        >>> # Σ = U @ U^T + λI
+        >>> bool(jnp.allclose(U @ U.T + model.diag_term * jnp.eye(2), field.cov(x)))
+        True
         """
         if "W" not in self.params:
             raise ValueError(
@@ -543,9 +567,14 @@ class WPPMCovarianceField:
 
         Examples
         --------
-        >>> X_grid = jnp.array([[0.1, 0.2], [0.5, 0.5], [0.9, 0.8]])
-        >>> U_batch = field.sqrt_cov_batch(X_grid)
-        >>> print(U_batch.shape)  # (3, 2, 3) for input_dim=2, extra_dims=1
+        >>> import jax.numpy as jnp
+        >>> import jax.random as jr
+        >>> from psyphy.model import WPPM, OddityTask, Prior, WPPMCovarianceField
+        >>> model = WPPM(Prior(input_dim=2, basis_degree=2), OddityTask(), input_dim=2)
+        >>> field = WPPMCovarianceField.from_prior(model, jr.PRNGKey(0))
+        >>> X_grid = jnp.array([[0.1, 0.2], [0.5, 0.5], [0.9, 0.8]])  # (3, 2)
+        >>> field.sqrt_cov_batch(X_grid).shape  # (n_points, input_dim, embedding_dim)
+        (3, 2, 3)
         """
         if "W" not in self.params:
             raise ValueError("sqrt_cov_batch only available in Wishart mode")
@@ -618,9 +647,20 @@ class PosteriorMeanCovarianceField:
 
     Examples
     --------
-    >>> nuts_posterior = NUTSSampler(...).fit(model, data)
+    >>> import jax.numpy as jnp
+    >>> import jax.random as jr
+    >>> from psyphy.model import WPPM, OddityTask, Prior, WPPMCovarianceField
+    >>> model = WPPM(Prior(input_dim=2, basis_degree=2), OddityTask(), input_dim=2)
+    >>> from psyphy.posterior import MCMCPosterior
+    >>> # stand-in for NUTSSampler().fit(model, data): 2 chains of 50 prior draws
+    >>> keys = jr.split(jr.PRNGKey(1), 100)
+    >>> W = jnp.stack([model.init_params(k)["W"] for k in keys])  # (100, 3, 3, 2, 3)
+    >>> nuts_posterior = MCMCPosterior({"W": W.reshape(2, 50, *W.shape[1:])}, model)
+    >>> ref_points = jnp.array([[-0.5, -0.5], [0.5, 0.5]])  # (n_points, 2)
+    >>> from psyphy.model import PosteriorMeanCovarianceField
     >>> mean_field = PosteriorMeanCovarianceField(nuts_posterior)
-    >>> Sigmas = mean_field(ref_points)  # (n_points, 2, 2)
+    >>> mean_field(ref_points).shape  # (n_points, 2, 2)
+    (2, 2, 2)
     """
 
     def __init__(self, posterior, n_samples: int | None = None, key=None):
@@ -817,10 +857,21 @@ def covariance_to_arviz(posterior, points):
 
     Examples
     --------
+    >>> import jax.numpy as jnp
+    >>> import jax.random as jr
+    >>> from psyphy.model import WPPM, OddityTask, Prior, WPPMCovarianceField
+    >>> model = WPPM(Prior(input_dim=2, basis_degree=2), OddityTask(), input_dim=2)
+    >>> from psyphy.posterior import MCMCPosterior
+    >>> # stand-in for NUTSSampler().fit(model, data): 2 chains of 50 prior draws
+    >>> keys = jr.split(jr.PRNGKey(1), 100)
+    >>> W = jnp.stack([model.init_params(k)["W"] for k in keys])  # (100, 3, 3, 2, 3)
+    >>> nuts_posterior = MCMCPosterior({"W": W.reshape(2, 50, *W.shape[1:])}, model)
+    >>> ref_points = jnp.array([[-0.5, -0.5], [0.5, 0.5]])  # (n_points, 2)
     >>> import arviz as az
+    >>> from psyphy.model import covariance_to_arviz
     >>> dt = covariance_to_arviz(nuts_posterior, ref_points)
-    >>> az.rhat(dt)["Sigma"].max()  # worst point and quantity
-    >>> az.plot_trace(dt, var_names=["Sigma"], coords={"point": 0})
+    >>> worst = az.rhat(dt)["Sigma"].max()  # worst point and quantity
+    >>> az.plot_trace(dt, var_names=["Sigma"], coords={"point": 0})  # doctest: +SKIP
     """
     to_arviz = getattr(posterior, "to_arviz", None)
     if to_arviz is None:
@@ -1074,12 +1125,23 @@ def threshold_band(
 
     Examples
     --------
+    >>> import jax.numpy as jnp
+    >>> import jax.random as jr
+    >>> from psyphy.model import WPPM, OddityTask, Prior, WPPMCovarianceField
+    >>> model = WPPM(Prior(input_dim=2, basis_degree=2), OddityTask(), input_dim=2)
+    >>> from psyphy.posterior import MCMCPosterior
+    >>> # stand-in for NUTSSampler().fit(model, data): 2 chains of 50 prior draws
+    >>> keys = jr.split(jr.PRNGKey(1), 100)
+    >>> W = jnp.stack([model.init_params(k)["W"] for k in keys])  # (100, 3, 3, 2, 3)
+    >>> nuts_posterior = MCMCPosterior({"W": W.reshape(2, 50, *W.shape[1:])}, model)
+    >>> ref_points = jnp.array([[-0.5, -0.5], [0.5, 0.5]])  # (n_points, 2)
+    >>> from psyphy.model import threshold_band
     >>> band = threshold_band(nuts_posterior, ref_points)
     >>> band.lower.shape  # (n_points, n_directions)
-    (25, 181)
+    (2, 181)
     >>> nested = threshold_band(nuts_posterior, ref_points, ci_prob=[0.5, 0.8, 0.95])
-    >>> nested.upper.shape  # (n_levels, n_points, n_dirs)
-    (3, 25, 181)
+    >>> nested.upper.shape  # (n_levels, n_points, n_directions)
+    (3, 2, 181)
     """
     if ci_kind not in _CI_KINDS:
         raise ValueError(

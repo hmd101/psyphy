@@ -1,9 +1,7 @@
 # Checking MCMC draws with ArviZ
 
 [Sampling the posterior with the No-U-Turn Sampler (NUTS)](nuts_inference_example.md) ends
-with a distribution of threshold contours. Those contours are only as good as the chains
-behind them, and Markov chain Monte Carlo (MCMC) fails quietly: a chain can look like a
-result while having explored one part of the posterior. Here we check whether the draws
+with a distribution of threshold contours, samples we drew from the posterior. Here we check whether the draws
 represent the posterior, and which sampler argument to change when they do not.
 
 <div align="center">
@@ -21,15 +19,6 @@ Rebuilding every diagnostic and figure from the cached draws needs no GPU:
 ```bash
 python nuts_inference_example.py --mode full --from-fit
 ```
-
-??? note "Recap: what $\Sigma$ is here"
-
-    The Wishart Process Psychophysical Model (WPPM) fits a covariance *field* $\Sigma(x)$:
-    a $2\times2$ covariance matrix at every point $x$ of the stimulus space, whose contour
-    is the threshold contour. Every $\Sigma$ below means this, evaluated at one reference
-    point and one posterior draw unless said otherwise. The
-    [sampling tutorial](nuts_inference_example.md#step-2-build-the-model) has the full
-    parameterization.
 
 ---
 
@@ -51,30 +40,30 @@ Divergences and the tree-depth cap come straight off `sampler_stats`, with no Ar
 ```
 
 A divergent transition means the integrator left the posterior's geometry, so more sampling
-does not fix the draws it produced. Any non-zero count makes the run suspect whatever R-hat
-says, which is why it goes first. The second print is the fraction of draws whose trajectory
+does not fix the draws it produced. Any non-zero count makes the run suspect regardless of what R-hat
+says, which is why we check divergences first. The second print is the fraction of draws whose trajectory
 hit `max_num_doublings`: a large fraction means the cap is limiting mixing.
 
 ## Diagnostics on $\Sigma$, with `covariance_to_arviz`
 
-Diagnostics run on $\Sigma$, not on the raw parameters, for the reason in the
+Diagnostics run on $\Sigma$, not on the raw parameters, for the reason we discussed in the
 [sampling tutorial](nuts_inference_example.md#step-4-nuts-sampling).
 [`covariance_to_arviz`](../../reference/model.md#psyphy.model.covariance_to_arviz)
 evaluates $\Sigma$ at points we choose, here the reference points, and returns an
 `xarray.DataTree` with dimensions `(chain, draw, point, quantity)`, carrying the sampler
 statistics across as ArviZ's `sample_stats` group. That is the shape ArviZ expects, so
-`az.summary`, `az.rhat`, `az.ess` and the plotting functions all take a psyphy fit directly,
-with no reshaping.
+`az.summary`, `az.rhat`, `az.ess` and the plotting functions all take a psyphy fit directly (no reshaping required).
+
 
 It takes the posterior itself, not draws from it. `posterior.sample(n)` *pools* the chains:
 it flattens `(n_chains, n_draws, ...)` into `(n_chains * n_draws, ...)` and picks `n` at
 random, so a draw no longer carries the chain it came from.
 
-That label is what R-hat works on. R-hat asks whether the chains agree, by comparing the
+R-hat asks whether the chains agree, by comparing the
 spread between them to the spread within each one. Pooling blends the chains evenly into one
 collection, so any way of splitting it afterwards gives pieces that look alike. ArviZ returns
 `nan` for a single chain, and if pooled draws are reshaped into chains it returns about 1.00
-no matter how badly the real chains disagreed. ESS goes the same way, since shuffling removes
+no matter how badly the real chains disagreed. ESS behaves the same way, since shuffling removes
 the autocorrelation it measures.
 
 ```python title="R-hat and ESS on the covariance field"
@@ -110,12 +99,12 @@ We see one reference point here. The figure at the top covers all 25 at once.
 
 Each curve there is the distribution of one diagnostic over every $\Sigma$ quantity at
 every reference point, so a point on it reads as "this fraction of quantities scored at most
-this value". More is better for ESS and less is better for R-hat. The R-hat panel is the one
-to watch: where its curve crosses the dashed line, that fraction of quantities sits above
+this value". More is better for ESS and less is better for R-hat. For R-hat: where its curve crosses the dashed line, that fraction of quantities sits above
 1.01.
 
-`az.summary` prints `R-hat max` and `ESS min`, which are the two numbers to put in a methods
-section.
+
+
+Useful: `az.summary` prints `R-hat max` and `ESS min`.
 
 ---
 
@@ -148,14 +137,13 @@ straight through under the same names.
     change the posterior being targeted, so a `quick` fit is a smaller problem rather than a
     rough version of a `full` one.
 
-    ??? note "Why a run costs what it costs"
+    ??? note "Compute costs of a run"
 
         - The Monte Carlo likelihood dominates. Each gradient evaluation simulates
           `mc_samples` draws for every trial, so cost scales with `mc_samples * n_trials`.
           `quick` to `full` raises that product by about 440 times.
         - Cost per draw varies. NUTS needs $O(2^{\text{tree depth}})$ gradient
-          evaluations and the depth is data dependent, commonly 16 to 64. The script times
-          one gradient and prints a bracketed projection before sampling starts.
+          evaluations and the depth is data dependent, commonly 16 to 64.
         - Tree depth is capped. The default `max_num_doublings=8` allows at most
           $2^8 - 1$ gradient evaluations per draw. If `sampler_stats["n_steps"]` sits at the
           cap for most draws, trajectories are being truncated: still valid, but mixing more
@@ -181,7 +169,7 @@ straight through under the same names.
 
     Two things in the adaptive path are psyphy's own.
     `prior_preconditioning=True` samples $z = W / \sigma_\text{prior}$ and maps the draws
-    back to $W$, so adaptation starts from a metric matched to the prior scales. And `max_num_doublings` defaults to 8 here against BlackJAX's own 10.
+    back to $W$, so adaptation starts from a metric matched to the prior scales. And `max_num_doublings` defaults to 8 here (against BlackJAX's own 10).
 
 ---
 
@@ -195,5 +183,5 @@ straight through under the same names.
   [Sampling the posterior with NUTS](nuts_inference_example.md).
 - [ArviZ](https://python.arviz.org/) for the diagnostics, with its
   [getting started guide](https://python.arviz.org/en/latest/user_guide/getting_started.html)
-  and the [arviz-stats API](https://python.arviz.org/projects/stats/en/latest/).
-- [BlackJAX](https://blackjax-devs.github.io/blackjax/) for the sampler and its arguments.
+  and the [arviz-stats API](https://python.arviz.org/projects/stats/en/latest/)
+- [BlackJAX](https://blackjax-devs.github.io/blackjax/) for the sampler and its arguments
