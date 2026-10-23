@@ -92,7 +92,7 @@ Two things follow for psyphy:
 
 1. The sampler needs gradients, which is why the log posterior is written in JAX and
    `NUTSSampler` hands it straight to BlackJAX.
-2. The sampler needs the log density to be a fixed function of the parameters $\theta$. Since psyphy's  oddity
+2. The sampler needs the log density to be a fixed function of the parameters $\theta$. Since psyphy's oddity
    likelihood is estimated by simulation introducing slight randomness, psyphy freezes one pseudo-random number generator (PRNG) key for the whole run
    (`logdensity_key_seed`) to make it deterministic.
 
@@ -388,8 +388,6 @@ document. psyphy's `NUTSSampler` passes them straight through under the same nam
 ---
 
 ## Reference: tuning and runtime
-
-Three collapsed blocks, none of which the walkthrough depends on.
 
 ??? note "Sampler arguments"
 
