@@ -1,20 +1,22 @@
 # Checking MCMC draws with ArviZ
 
 [Sampling the posterior with the No-U-Turn Sampler (NUTS)](nuts_inference_example.md) ends
-with a distribution of threshold contours, samples we drew from the posterior. Here we check whether the draws
-represent the posterior, and which sampler argument to change when they do not.
+with a distribution of threshold contours, samples we drew from the posterior. Here we
+check whether the draws represent the posterior, and which sampler argument to change when
+they do not.
 
 <div align="center">
   <img src="../plots/nuts_convergence_sigma_full.png" width="760"/>
-  <p><em>The summary check. Bulk effective sample size (ESS), tail ESS and R-hat, one panel
+  <p><em>The summary check for posterior samples with Arviz: Bulk effective sample size (ESS), tail ESS and R-hat, one panel
   each, over every quantity at every reference point. Dashed lines are ArviZ's reference
   thresholds, in total ESS across all chains. We want both ESS curves entirely right of
   their line and the R-hat curve entirely left of its.</em></p>
 </div>
 
-Everything here runs on the fit from the sampling tutorial, from the same script,
+Everything here runs on the fit from the
+[sampling tutorial](nuts_inference_example.md), from the same script,
 [`nuts_inference_example.py`](https://github.com/flatironinstitute/psyphy/blob/main/docs/examples/wppm/nuts_inference_example.py).
-Rebuilding every diagnostic and figure from the cached draws needs no GPU:
+Rebuilding every diagnostic and figure from the cached draws needs no GPU and can quickly be run like this:
 
 ```bash
 python nuts_inference_example.py --mode full --from-fit
@@ -24,7 +26,8 @@ python nuts_inference_example.py --mode full --from-fit
 
 ## What to check
 
-4 quantities to check, in this order, at ArviZ's default thresholds:
+4 quantities to check, in this order, at ArviZ's default thresholds. Those defaults
+follow [Vehtari et al. (2021)](https://doi.org/10.1214/20-BA1221) for R-hat and ESS.
 
 | check | what it detects | suspect when |
 |---|---|---|
@@ -40,37 +43,50 @@ Divergences and the tree-depth cap come straight off `sampler_stats`, with no Ar
 ```
 
 A divergent transition means the integrator left the posterior's geometry, so more sampling
-does not fix the draws it produced. Any non-zero count makes the run suspect regardless of what R-hat
-says, which is why we check divergences first. The second print is the fraction of draws whose trajectory
-hit `max_num_doublings`: a large fraction means the cap is limiting mixing.
+does not fix the draws it produced. Any non-zero count makes the run suspect regardless of
+what R-hat says, which is why we check divergences first. The second print is the fraction
+of draws whose trajectory hit `max_num_doublings`: a large fraction means the cap is
+limiting mixing.
 
 ## Diagnostics on $\Sigma$, with `covariance_to_arviz`
 
 Diagnostics run on $\Sigma$, not on the raw parameters, for the reason we discussed in the
-[sampling tutorial](nuts_inference_example.md#step-4-nuts-sampling).
-[`covariance_to_arviz`](../../reference/model.md#psyphy.model.covariance_to_arviz)
-evaluates $\Sigma$ at points we choose, here the reference points, and returns an
-`xarray.DataTree` with dimensions `(chain, draw, point, quantity)`, carrying the sampler
-statistics across as ArviZ's `sample_stats` group. That is the shape ArviZ expects, so
-`az.summary`, `az.rhat`, `az.ess` and the plotting functions all take a psyphy fit directly (no reshaping required).
-
-
-It takes the posterior itself, not draws from it. `posterior.sample(n)` *pools* the chains:
-it flattens `(n_chains, n_draws, ...)` into `(n_chains * n_draws, ...)` and picks `n` at
-random, so a draw no longer carries the chain it came from.
-
-R-hat asks whether the chains agree, by comparing the
-spread between them to the spread within each one. Pooling blends the chains evenly into one
-collection, so any way of splitting it afterwards gives pieces that look alike. ArviZ returns
-`nan` for a single chain, and if pooled draws are reshaped into chains it returns about 1.00
-no matter how badly the real chains disagreed. ESS behaves the same way, since shuffling removes
-the autocorrelation it measures.
+[sampling tutorial](nuts_inference_example.md#step-4-nuts-sampling). One call hands the fit
+to ArviZ:
 
 ```python title="R-hat and ESS on the covariance field"
 --8<-- "docs/examples/wppm/nuts_inference_example.py:arviz_diagnostics"
 ```
 
+[`covariance_to_arviz`](../../reference/model.md#psyphy.model.covariance_to_arviz) takes the
+posterior and the points to evaluate $\Sigma$ at, here the reference points. From there
+`az.summary`, `az.rhat`, `az.ess` and every ArviZ plotting function work on a psyphy fit
+directly, which is where the two figures below come from.
+
+??? note "What ArviZ wants, and what it gets"
+
+    `covariance_to_arviz` returns an `xarray.DataTree` with dimensions
+    `(chain, draw, point, quantity)`, and carries the sampler statistics across as ArviZ's
+    `sample_stats` group. ArviZ's
+    [getting started guide](https://python.arviz.org/en/latest/user_guide/getting_started.html)
+    covers that format if you want the detail.
+
+    Note it takes the posterior itself, not draws from it. `posterior.sample(n)` *pools* the
+    chains: it flattens `(n_chains, n_draws, ...)` into `(n_chains * n_draws, ...)` and picks
+    `n` at random, so a draw no longer carries the chain it came from.
+
+    R-hat asks whether the chains agree, by comparing the spread between them to the spread
+    within each one. Pooling blends the chains evenly into one collection, so any way of
+    splitting it afterwards gives pieces that look alike. ArviZ returns `nan` for a single
+    chain, and if pooled draws are reshaped into chains it returns about 1.00 no matter how
+    badly the real chains disagreed. ESS behaves the same way, since shuffling removes the
+    autocorrelation it measures.
+
 ## Reading the figures
+
+Both figures below are one ArviZ call each, `az.plot_trace` and
+`az.plot_convergence_dist`, on the object `covariance_to_arviz` returned. We write no
+plotting code.
 
 `covariance_to_arviz` summarizes each $2\times2$ $\Sigma$ by the three numbers that
 determine it: `log_var_0` and `log_var_1`, the log variances along each axis, and
@@ -99,10 +115,8 @@ We see one reference point here. The figure at the top covers all 25 at once.
 
 Each curve there is the distribution of one diagnostic over every $\Sigma$ quantity at
 every reference point, so a point on it reads as "this fraction of quantities scored at most
-this value". More is better for ESS and less is better for R-hat. For R-hat: where its curve crosses the dashed line, that fraction of quantities sits above
-1.01.
-
-
+this value". More is better for ESS and less is better for R-hat. For R-hat: where its
+curve crosses the dashed line, that fraction of quantities sits above 1.01.
 
 Useful: `az.summary` prints `R-hat max` and `ESS min`.
 
@@ -169,7 +183,8 @@ straight through under the same names.
 
     Two things in the adaptive path are psyphy's own.
     `prior_preconditioning=True` samples $z = W / \sigma_\text{prior}$ and maps the draws
-    back to $W$, so adaptation starts from a metric matched to the prior scales. And `max_num_doublings` defaults to 8 here (against BlackJAX's own 10).
+    back to $W$, so adaptation starts from a metric matched to the prior scales. And
+    `max_num_doublings` defaults to 8 here (against BlackJAX's own 10).
 
 ---
 
@@ -185,3 +200,10 @@ straight through under the same names.
   [getting started guide](https://python.arviz.org/en/latest/user_guide/getting_started.html)
   and the [arviz-stats API](https://python.arviz.org/projects/stats/en/latest/)
 - [BlackJAX](https://blackjax-devs.github.io/blackjax/) for the sampler and its arguments
+
+The paper behind the thresholds:
+
+> Vehtari, A., Gelman, A., Simpson, D., Carpenter, B., & Bürkner, P.-C. (2021).
+> *Rank-normalization, folding, and localization: an improved $\widehat{R}$ for assessing
+> convergence of MCMC.* Bayesian Analysis, 16(2).
+> [doi:10.1214/20-BA1221](https://doi.org/10.1214/20-BA1221)

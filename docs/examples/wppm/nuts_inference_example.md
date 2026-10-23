@@ -55,7 +55,7 @@ The companion script is
     code path. Its chains are far too short to converge, so its diagnostics are not to be interpreted.
 
     Only MAP and NUTS are expensive, and the script caches them. The diagnostics and all
-    figures are post-processing of the stored draws and need no GPU:
+    figures are post-processing of the stored draws and need no GPU and can easily be done like this:
 
     ```bash
     python nuts_inference_example.py --mode full --from-fit
