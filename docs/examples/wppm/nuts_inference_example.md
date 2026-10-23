@@ -46,16 +46,16 @@ The companion script is
     compute preset.
 
     ```bash
-    python nuts_inference_example.py --mode quick      # smoke test, ~1 min on an A100
-    python nuts_inference_example.py --mode balanced   # a real fit, ~35 min on an A100
-    python nuts_inference_example.py --mode full       # 11 h on a GPU, and what we show here
+    python nuts_inference_example.py --mode quick      # smoke test, ~1 min on an A100, but possible on CPU (ca. 35 min)
+    python nuts_inference_example.py --mode balanced   # good samples but not converged, ~35 min on an A100
+    python nuts_inference_example.py --mode full       # 11 h on a GPU, and what we show here, converged
     ```
 
-    Every figure and number here comes from `--mode full`. `quick` is a smoke test for the
+    Every figure and number here comes from `--mode full`. `quick` is just a smoke test for the
     code path. Its chains are far too short to converge, so its diagnostics are not to be interpreted.
 
     Only MAP and NUTS are expensive, and the script caches them. The diagnostics and all
-    figures are post-processing of the stored draws and need no GPU and can easily be done like this:
+    figures are post-processing of the stored draws and don't need a GPU and can easily be done like this:
 
     ```bash
     python nuts_inference_example.py --mode full --from-fit

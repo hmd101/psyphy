@@ -16,7 +16,8 @@ they do not.
 Everything here runs on the fit from the
 [sampling tutorial](nuts_inference_example.md), from the same script,
 [`nuts_inference_example.py`](https://github.com/flatironinstitute/psyphy/blob/main/docs/examples/wppm/nuts_inference_example.py).
-Rebuilding every diagnostic and figure from the cached draws needs no GPU and can quickly be run like this:
+You can rebuild every diagnostic and figure from the cached draws without a GPU (a laptop
+CPU is fine), like this:
 
 ```bash
 python nuts_inference_example.py --mode full --from-fit
@@ -26,14 +27,14 @@ python nuts_inference_example.py --mode full --from-fit
 
 ## What to check
 
-4 quantities to check, in this order, at ArviZ's default thresholds. Those defaults
+4 quantities to check at ArviZ's default thresholds. Those defaults
 follow [Vehtari et al. (2021)](https://doi.org/10.1214/20-BA1221) for R-hat and ESS.
 
 | check | what it detects | suspect when |
 |---|---|---|
 | divergences, `sampler_stats["diverging"]` | the integrator failed, usually in a region of high curvature | any divergence at all |
 | [R-hat](https://python.arviz.org/projects/stats/en/latest/api/generated/arviz_stats.rhat.html) | chains have not mixed to the same distribution | $\hat{R} > 1.01$ |
-| [ESS](https://python.arviz.org/projects/stats/en/latest/api/generated/arviz_stats.ess.html) | autocorrelation: how many independent draws the chain is worth | bulk or tail ESS $< 100$ per chain, so $< 400$ in total across 4 chains |
+| [Effective Sample Size (ESS)](https://python.arviz.org/projects/stats/en/latest/api/generated/arviz_stats.ess.html) | autocorrelation: how many independent draws the chain is worth | bulk or tail ESS $< 100$ per chain, so $< 400$ in total across 4 chains |
 | `sampler_stats["n_steps"]` | trajectories truncated at the tree-depth cap | at the cap for most draws |
 
 Divergences and the tree-depth cap come straight off `sampler_stats`, with no ArviZ needed:
@@ -43,8 +44,8 @@ Divergences and the tree-depth cap come straight off `sampler_stats`, with no Ar
 ```
 
 A divergent transition means the integrator left the posterior's geometry, so more sampling
-does not fix the draws it produced. Any non-zero count makes the run suspect regardless of
-what R-hat says, which is why we check divergences first. The second print is the fraction
+doesn't fix the draws it produced. Any non-zero count (even one) makes the run suspect
+regardless of what R-hat says, which is why we check divergences first. The second print is the fraction
 of draws whose trajectory hit `max_num_doublings`: a large fraction means the cap is
 limiting mixing.
 
@@ -166,8 +167,8 @@ straight through under the same names.
           $z = W / \sigma_\text{prior}$ (`prior_preconditioning=True`), so adaptation does
           not begin from an identity mass matrix mismatched to the coefficient scales.
         - Chains are vmapped. All chains advance in one compiled call per phase. Under
-          vmap each step costs as much as the deepest tree across chains, which is another
-          reason for the depth cap. On a GPU four chains cost about as much as one. On a
+          vmap each step costs as much as the deepest tree across chains (which is another
+          reason for the depth cap). On a GPU four chains cost about as much as one. On a
           CPU, many chains can be slower than running them one at a time.
 
 ??? note "What `step_size` does"
@@ -181,7 +182,7 @@ straight through under the same names.
     | `None` (default) | `window_adaptation` tunes the step size and mass matrix per chain, starting from a prior-scaled metric | `NUTSSampler(num_warmup=200, num_samples=500)` |
     | a float | no adaptation and an identity mass matrix. Warmup becomes plain burn-in, so it is faster, and the step size has to be chosen by hand | `NUTSSampler(..., step_size=0.01)` |
 
-    Two things in the adaptive path are psyphy's own.
+    psyphy deviates in two places from the BlackJax defaults:
     `prior_preconditioning=True` samples $z = W / \sigma_\text{prior}$ and maps the draws
     back to $W$, so adaptation starts from a metric matched to the prior scales. And
     `max_num_doublings` defaults to 8 here (against BlackJAX's own 10).
@@ -201,7 +202,7 @@ straight through under the same names.
   and the [arviz-stats API](https://python.arviz.org/projects/stats/en/latest/)
 - [BlackJAX](https://blackjax-devs.github.io/blackjax/) for the sampler and its arguments
 
-The paper behind the thresholds:
+The paper behind the Arviz thresholds:
 
 > Vehtari, A., Gelman, A., Simpson, D., Carpenter, B., & Bürkner, P.-C. (2021).
 > *Rank-normalization, folding, and localization: an improved $\widehat{R}$ for assessing
