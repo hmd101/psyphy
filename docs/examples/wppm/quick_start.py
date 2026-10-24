@@ -292,7 +292,7 @@ if steps_hist and loss_hist:
         f"lr={learning_rate}, steps={NUM_STEPS}, MC-samples={MC_SAMPLES}, trials={NUM_TRIALS}"
     )
     ax2.set_xlabel("Step")
-    ax2.set_ylabel("Neg log likelihood")
+    ax2.set_ylabel("Neg log posterior (per trial)")
     ax2.grid(True, alpha=0.3)
     plt.tight_layout()
     fig2.savefig(
