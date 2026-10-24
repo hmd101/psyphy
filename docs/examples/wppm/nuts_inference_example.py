@@ -624,8 +624,8 @@ covs_truth = truth_field(ref_points)
 fig, ax = plt.subplots(figsize=(7, 7))
 
 # --8<-- [start:plot_posterior_samples]
-# The posterior spread, drawn first so it sits behind the two lines. One call:
-# (n_ensemble, n_ref, 2, 2) is the "several fields" shape plot_ellipses takes.
+# We first draw the posterior spread, so it's behind the two lines. 1 call:
+# (n_ensemble, n_ref, 2, 2) is the "several fields" shape plot_ellipses takes
 plot_ellipses(
     jax.device_get(ref_points),
     jax.device_get(ensemble_covs(param_samples, ref_points)),
@@ -637,7 +637,7 @@ plot_ellipses(
 )
 
 # Posterior mean and ground truth, overlaid as a list of fields so each gets its
-# own colour, width and legend entry.
+# own color, width and legend entry:
 plot_ellipses(
     jax.device_get(ref_points),
     [jax.device_get(covs_mean), jax.device_get(covs_truth)],
@@ -685,7 +685,7 @@ print("[5b/7] Pointwise credible band on the threshold contours...")
 
 # --8<-- [start:credible_band]
 N_BAND = min(400, NUM_CHAINS * NUM_SAMPLES)  # posterior draws to use for the band
-CI_PROB = 0.89  # ArviZ's default, so the band and az.summary agree
+CI_PROB = 0.89  # ArviZ's default, so the band and az.summary match
 
 band = threshold_band(
     nuts_posterior,
@@ -751,7 +751,7 @@ save_ellipse_figure(fig, "nuts_threshold_band")
 print("[5c/7] Nested credible bands at one reference point...")
 
 # --8<-- [start:nested_bands]
-# A sequence of probabilities gives one interval per level in a single call.
+# A sequence of probabilities gives one interval per level in a single call:
 nested = threshold_band(
     nuts_posterior,
     ref_points,

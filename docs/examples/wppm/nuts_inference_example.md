@@ -212,9 +212,15 @@ threshold contours.
 --8<-- "docs/examples/wppm/nuts_inference_example.py:posterior_samples"
 ```
 
-For one summary field, average the covariance matrices over draws.
-`PosteriorMeanCovarianceField` evaluates $\Sigma$ per draw and averages afterwards, which is
-the reason it exists rather than `WPPMCovarianceField(model, posterior.params)`:
+For one summary field,
+[`PosteriorMeanCovarianceField`](../../reference/model.md#psyphy.model.PosteriorMeanCovarianceField)
+builds $\Sigma$ from each draw and averages the matrices. The other route,
+`WPPMCovarianceField(model, posterior.params)`, averages the draws of $W$ first and builds a
+single field from that mean parameter. It reports contours that are too small at every
+reference point, and gives no sign that it has: $\Sigma$ is quadratic in $W$, so averaging
+before squaring drops the spread between draws, and $W$ is identified only up to a rotation,
+so draws from different chains cancel. The class docstring has the identity and the full
+argument.
 
 ```python title="Posterior mean covariance field"
 --8<-- "docs/examples/wppm/nuts_inference_example.py:posterior_mean"
@@ -224,9 +230,16 @@ the reason it exists rather than `WPPMCovarianceField(model, posterior.params)`:
 --8<-- "docs/examples/wppm/nuts_inference_example.py:plot_posterior_samples"
 ```
 
-This produces the figure at the top of the page: one threshold contour per posterior draw,
-at every reference point. Tight clusters mean the data constrain the threshold, wide spread
-means they do not.
+<div align="center">
+  <img src="../plots/nuts_ellipses_uncertainty_full.jpg" width="560"/>
+  <p><em>Faint blue: one threshold contour per posterior draw, 200 of them. Red: the
+  posterior mean $\mathbb{E}[\Sigma(x)]$. Black: ground truth. Green: the 25 reference
+  points.</em></p>
+</div>
+
+One threshold contour per posterior draw, at every reference point. Tight clusters mean the
+data constrain the threshold, wide spread means they do not. This is the figure at the top
+of the page, repeated here because it is what the snippet above produces.
 
 A cloud of contours is the full answer, but a paper reports an interval. psyphy computes
 one with [`threshold_band`](../../reference/model.md#psyphy.model.threshold_band), which
