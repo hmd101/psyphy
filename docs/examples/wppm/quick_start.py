@@ -245,7 +245,7 @@ plot_ellipses(
     [covs_truth, covs_prior, covs_map],
     ax=ax,
     scale=1.0,
-    colors=["k", "b", "r"],
+    colors=["k", "C0", "C3"],
     linestyles=["-", "--", "-"],
     linewidths=[2.0, 1.5, 2.0],
     labels=["Ground Truth", "Prior Sample (init)", "Fitted (MAP)"],
@@ -285,7 +285,7 @@ steps_hist, loss_hist = inference.get_history()
 
 if steps_hist and loss_hist:
     fig2, ax2 = plt.subplots(figsize=(6, 4))
-    ax2.plot(steps_hist, loss_hist, color="#4444aa")
+    ax2.plot(steps_hist, loss_hist, color="C0")
     ax2.set_xlim(steps_hist[0], steps_hist[-1])
     ax2.set_title(
         f"Learning curve\n"
