@@ -1,5 +1,5 @@
 r"""
-Covariance Field Demo: Visualizing Wishart Process Perceptual Thresholds
+Covariance Field Demo: visualizing the WPPM covariance field (internal noise)
 -------------------------------------------------------------------------
 
 This script demonstrates the WPPMCovarianceField abstraction for the full
@@ -8,7 +8,7 @@ Wishart Process model with spatially-varying covariance.
 What this demo shows:
 1. Creating covariance fields from custom parameters (Wishart mode)
 2. Evaluating covariance at single points and batches
-3. Visualizing threshold ellipses around reference points
+3. Visualizing covariance ellipses around reference points
 4. Visualizing covariance field variations across stimulus space
 5. Using the callable interface: field(x) for JAX compatibility
 
@@ -98,7 +98,7 @@ def plot_ellipse_at_point(
     label: str | None = None,
 ):
     """
-    Plot threshold ellipse using matrix square root method.
+    Plot a covariance ellipse using the matrix square root.
 
     We directly transform a unit circle by sqrt(Σ):
     ellipse_points = scale * sqrt(Σ) @ [cos(θ), sin(θ)]
@@ -166,9 +166,7 @@ def plot_ellipse_field(
         Path to save figure
     """
     # Evaluate covariance at all grid points
-    Sigmas_full = field.cov_batch(grid_points)  # (n, d, d) where d might be >2
-    # Extract 2x2 blocks (input dimensions only)
-    Sigmas = Sigmas_full[:, :2, :2]  # (n, 2, 2)
+    Sigmas = field(grid_points)  # (n, 2, 2)
 
     # Plot
     fig, ax = plt.subplots(figsize=(10, 10))
@@ -179,7 +177,7 @@ def plot_ellipse_field(
             center=np.array(point),
             Sigma=Sigma,
             scale=scale,
-            color="steelblue",
+            color="C0",
         )
 
     ax.set_xlim(-0.1, 1.1)
@@ -198,11 +196,11 @@ def plot_ellipse_field(
 
 
 # ============================================================================
-# Example 1: Single Point - Threshold Ellipse
+# Example 1: Single Point, Covariance Ellipse
 # ============================================================================
 
 print("=" * 70)
-print("Example 1: Single Reference Point with Threshold Ellipse")
+print("Example 1: Single Reference Point with Covariance Ellipse")
 print("=" * 70)
 
 # --8<-- [start:single_point]
@@ -224,9 +222,7 @@ field = WPPMCovarianceField.from_prior(model, key)
 
 # Evaluate at a single reference point
 x_ref = jnp.array([0.5, 0.5])
-Sigma_full = field(x_ref)  # callable interface!
-# Extract the 2x2 block (input dimensions only)
-Sigma_ref = Sigma_full[:2, :2]
+Sigma_ref = field(x_ref)  # (2, 2)
 # --8<-- [end:single_point]
 print("\n[1.1] Covariance field created (Wishart mode)")
 print(f"\n[1.2] Reference point: {x_ref}")
@@ -241,8 +237,8 @@ plot_ellipse_at_point(
     center=np.array(x_ref),
     Sigma=Sigma_ref,
     scale=0.4,  #  scale to fit in [0, 1] plot
-    color="royalblue",
-    label="Threshold Ellipse",
+    color="C0",
+    label="Covariance ellipse",
 )
 
 ax.set_xlim(0, 1)
@@ -276,19 +272,16 @@ y_vals = jnp.linspace(0.15, 0.85, n_grid)
 X_grid, Y_grid = jnp.meshgrid(x_vals, y_vals)
 grid_points = jnp.stack([X_grid.ravel(), Y_grid.ravel()], axis=1)
 
-# Evaluate covariance at all points using batch method
-Sigmas_full = field.cov_batch(grid_points)
-# Extract 2x2 blocks
-Sigmas_grid = Sigmas_full[:, :2, :2]
+# Evaluate covariance at all points in one call
+Sigmas_grid = field(grid_points)  # (n_grid**2, 2, 2)
 
 # Also works with JAX vmap on the callable!
-Sigmas_vmap_full = jax.vmap(field)(grid_points)
-Sigmas_vmap = Sigmas_vmap_full[:, :2, :2]
+Sigmas_vmap = jax.vmap(field)(grid_points)  # same result, via vmap
 # --8<-- [end:grid_points]
 assert jnp.allclose(Sigmas_grid, Sigmas_vmap)
 print(f"\n[2.1] Created grid of {len(grid_points)} reference points")
 print(f"      Covariances shape: {Sigmas_grid.shape}")
-print("      field.cov_batch(X) == jax.vmap(field)(X)")
+print("      field(X) == jax.vmap(field)(X)")
 
 
 # Visualize ellipse grid
@@ -318,8 +311,7 @@ key_custom = jr.PRNGKey(999)
 custom_field = WPPMCovarianceField.from_prior(model, key_custom)
 # Evaluate at center point
 x_center = jnp.array([0.5, 0.5])
-Sigma_custom_full = custom_field(x_center)
-Sigma_custom = Sigma_custom_full[:2, :2]
+Sigma_custom = custom_field(x_center)  # (2, 2)
 # --8<-- [end:custom]
 print("\n[3.2] Σ(0.5, 0.5) from custom field [2x2 block]:")
 

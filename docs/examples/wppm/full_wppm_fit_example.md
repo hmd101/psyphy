@@ -238,10 +238,7 @@ To see how we generate the covariance field figures, checkout the plotting code 
 
 ---
 
-## To recap: Minimal recipe (copy/paste mental model)
-We are Bayesian, so we need to define the Prior and Likelihood and choose an inference method (here MAP) that will hand us the posterior distribution over the parameters.
-
-For an even more minimal code setup that doesn't require a GPU but will run on your CPU in < 1 min, you may find [`quickstart`](https://flatironinstitute.github.io/psyphy/examples/wppm/quick_start/) helpful.
+For a minimal code setup that doesn't require a GPU but will run on your CPU in < 1 min, you may find [`quickstart`](https://flatironinstitute.github.io/psyphy/examples/wppm/quick_start/) helpful.
 ---
 
 ## Notes and pitfalls
@@ -261,7 +258,7 @@ For an even more minimal code setup that doesn't require a GPU but will run on y
 
 
 
-## If your curious about some of the implementation details, checkout these files:
+## If you're curious about some of the implementation details, checkout these files:
 
 <!--
 Note on links:
