@@ -639,9 +639,6 @@ class PosteriorMeanCovarianceField:
     - Implements the ``CovarianceField`` protocol, so it can be passed
       wherever a field is expected (e.g. ``psyphy.viz.plot_ellipses`` after
       evaluating it). ``sqrt_cov`` raises: see its docstring.
-    - The arithmetic mean of covariance matrices is somewhat larger than a
-      typical single draw, because spread in ellipse size adds to the mean.
-      That is a property of the mean, not an error.
     - Deliberately not a subclass of ``WPPMCovarianceField``: that class is
       "one parameter set W", and its ``params``, ``from_params`` and
       ``sqrt_cov`` have no meaning for an average over many W.
