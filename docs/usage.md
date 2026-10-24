@@ -19,17 +19,15 @@
 
 ---
 
-## Quick-start walkthrough — fit your first covariance ellipse
+## Quick start: fit your first covariance ellipse
 
-The snippet below shows the minimal end-to-end workflow: simulate a handful of
-oddity-task trials at a **single reference point**, fit the WPPM with MAP
-optimization, and visualize the result.  No GPU needed — runs in under 2 min
-on CPU.
+Below is the minimal end-to-end workflow: simulate 1,000 oddity-task trials at a single
+reference point, fit the Wishart Process Psychophysical Model (WPPM) by maximum a posteriori
+(MAP) optimization, and plot the result. It needs no GPU and runs in under a minute on CPU.
 
 > The complete runnable script is
 > [`quick_start.py`](https://github.com/flatironinstitute/psyphy/blob/main/docs/examples/wppm/quick_start.py).
-> A step-by-step explanation lives in the
-> [Quick-start example](examples/wppm/quick_start.md).
+> The [quick start](examples/wppm/quick_start.md) page explains each step.
 
 ### Imports
 
@@ -69,12 +67,12 @@ on CPU.
   <img src="examples/wppm/plots/quick_start_ellipses.png"
        alt="Covariance ellipses: ground truth (black), prior (blue), MAP fit (red)"
        width="460"/>
-  <p><em>Ground truth (black), prior sample (blue), and MAP-fitted (red) covariance ellipses at the single reference point.</em></p>
+  <p><em>Black: ground truth. Dashed blue: the prior sample the fit started from. Red: MAP fit.</em></p>
 </div>
 
 <div align="center">
   <img src="examples/wppm/plots/quick_start_learning_curve.png"
        alt="Learning curve"
        width="460"/>
-  <p><em>Negative log-likelihood over optimizer steps.</em></p>
+  <p><em>Per-trial negative log-posterior over optimizer steps.</em></p>
 </div>
