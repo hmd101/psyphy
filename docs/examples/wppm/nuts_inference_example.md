@@ -22,7 +22,7 @@ The companion script is
 |---|---|---|
 | 1–2 | simulate data, build the Wishart Process Psychophysical Model (WPPM) | a [`TrialData`](../../reference/data.md#psyphy.data.TrialData) and a model, as in the [MAP tutorial](full_wppm_fit_example.md) |
 | 3 | run a short MAP fit | a starting point near the posterior peak |
-| 4 | run the sampler, here the No-U-Turn Sampler (NUTS), via [BlackJAX](https://blackjax-devs.github.io/blackjax/) | an `MCMCPosterior`: thousands of plausible parameter arrays $W$ |
+| 4 | run the sampler, here the No-U-Turn Sampler (NUTS), via [BlackJAX](https://blackjax-devs.github.io/blackjax/) | an [`MCMCPosterior`](../../reference/posterior.md#psyphy.posterior.MCMCPosterior): thousands of plausible parameter arrays $W$ |
 | 5 | evaluate the covariance field for every draw | a distribution of threshold contours, and a credible band |
 | next | check the chains with [ArviZ](https://python.arviz.org/) | evidence that the draws are representative of the posterior, see [Checking MCMC draws with ArviZ](mcmc_diagnostics.md) |
 
@@ -36,8 +36,8 @@ The companion script is
 
     | extra | brings in | needed for |
     |---|---|---|
-    | `sampling` | `blackjax>=1.4,<2` | `NUTSSampler` |
-    | `diagnostics` | [`arviz>=1.0`](https://python.arviz.org/en/latest/user_guide/getting_started.html) | `covariance_to_arviz`, R-hat, effective sample size (ESS), the diagnostic figures |
+    | `sampling` | `blackjax>=1.4,<2` | [`NUTSSampler`](../../reference/inference.md#psyphy.inference.NUTSSampler) |
+    | `diagnostics` | [`arviz>=1.0`](https://python.arviz.org/en/latest/user_guide/getting_started.html) | [`covariance_to_arviz`](../../reference/model.md#psyphy.model.covariance_to_arviz), R-hat, effective sample size (ESS), the diagnostic figures |
     | `viz` | `matplotlib>=3.5` | the figures |
 
     If you want to run the companion script
@@ -197,8 +197,10 @@ fit, [`WPPMPredictivePosterior`](../../reference/posterior.md#psyphy.posterior.W
     set and works as `init_params`, but
     [`WPPMCovarianceField`](../../reference/model.md#psyphy.model.WPPMCovarianceField)`(model, nuts_posterior.params)`
     gives contours that are far too small, because $\Sigma$ is quadratic in $W$ and $W$ is
-    only identified up to a rotation. Use `PosteriorMeanCovarianceField`
-    ([Step 5](#step-5-plotting-posterior-samples-and-credible-intervals)), whose docstring has the full argument.
+    only identified up to a rotation. Use
+    [`PosteriorMeanCovarianceField`](../../reference/model.md#psyphy.model.PosteriorMeanCovarianceField)
+    ([Step 5](#step-5-plotting-posterior-samples-and-credible-intervals)), whose docstring
+    has the detail.
     `WPPMCovarianceField.from_posterior` warns when handed an MCMC posterior.
 
 ### Step 5: Plotting posterior samples and credible intervals
