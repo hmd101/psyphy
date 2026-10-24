@@ -596,28 +596,29 @@ class PosteriorMeanCovarianceField:
 
     Why average Σ and not W
     -----------------------
-    ``posterior.params`` is the mean *parameter* E[W]. Building a field from
-    it gives Σ(E[W]), which is the wrong summary for the WPPM, for two reasons
-    that compound:
+    ``posterior.params`` is the mean parameter E[W]. A field built from it,
+    Σ(E[W]), comes out too small:
 
-    1. Σ is quadratic in W (through U U^T, with U linear in W), so averaging
-       before squaring drops the spread term:
+        E[Σ(x)] = Σ(x; E[W]) + Cov[U(x)]
 
-           E[Σ(x)] = Σ(x; E[W]) + Cov[U(x)],   with Cov[U(x)] ⪰ 0.
+    This is the definition of covariance rearranged, using Σ = U Uᵀ + λI with
+    U linear in W. Cov[U] is a covariance matrix, so it is positive
+    semi-definite. Averaging W first therefore gives ellipses that are too
+    small, never too large.
 
-       Σ(E[W]) is therefore never larger than E[Σ], in any direction.
+    Two things follow:
 
-    2. W is not identifiable. For any orthogonal R acting on the embedding
-       axis, W -> W R gives U -> U R and leaves U U^T, and hence Σ, unchanged;
-       the prior is invariant too. Different draws (in practice, different
-       chains) can sit at different orientations of the same Σ, and averaging
-       W makes them cancel, pulling E[W] toward 0 and Σ(E[W]) toward λI. In
-       the extreme, the draws W and -W average to E[W] = 0.
+    1. The gap is there for any posterior with spread. No symmetry is needed.
+    2. W is not identifiable. For orthogonal R on the embedding axis,
+       W -> W R leaves U Uᵀ unchanged, and so leaves Σ and the prior
+       unchanged. Draws at different orientations, in practice different
+       chains cancel when W is averaged. At the extreme: W and -W describe
+       the same Σ and average to E[W] = 0, collapsing Σ(E[W]) to λI.
 
-    Averaging Σ itself avoids both: every term Σ(x; W_k) is unchanged by
-    W_k -> W_k R, and nothing is squared after averaging. E[Σ(x)] is also the
-    Bayes estimate of Σ(x) under squared (Frobenius) loss, i.e. what
-    "posterior mean of Σ" means.
+    Averaging Σ avoids both. Every Σ(x; W_k) is unchanged by W_k -> W_k R, and
+    nothing is squared after averaging. E[Σ(x)] is also the Bayes estimate of
+    Σ(x) under squared (Frobenius) loss, which is what "posterior mean of Σ"
+    means.
 
     Parameters
     ----------
