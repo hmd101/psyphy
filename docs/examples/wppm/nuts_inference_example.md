@@ -219,8 +219,7 @@ builds $\Sigma$ from each draw and averages the matrices. The other route,
 single field from that mean parameter. It reports contours that are too small at every
 reference point, and gives no sign that it has: $\Sigma$ is quadratic in $W$, so averaging
 before squaring drops the spread between draws, and $W$ is identified only up to a rotation,
-so draws from different chains cancel. The class docstring has the identity and the full
-argument.
+so draws from different chains cancel. Checkout the class docstring for more details.
 
 ```python title="Posterior mean covariance field"
 --8<-- "docs/examples/wppm/nuts_inference_example.py:posterior_mean"
