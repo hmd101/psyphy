@@ -80,9 +80,9 @@ from psyphy.model import (
     PosteriorMeanCovarianceField,
     Prior,
     WPPMCovarianceField,
+    contour_band,
+    contour_radii,
     covariance_to_arviz,
-    threshold_band,
-    threshold_radii,
 )
 from psyphy.posterior import MAPPosterior, MCMCPosterior
 from psyphy.viz import plot_ellipses
@@ -687,7 +687,7 @@ print("[5b/7] Pointwise credible band on the threshold contours...")
 N_BAND = min(400, NUM_CHAINS * NUM_SAMPLES)  # posterior draws to use for the band
 CI_PROB = 0.89  # ArviZ's default, so the band and az.summary match
 
-band = threshold_band(
+band = contour_band(
     nuts_posterior,
     ref_points,
     ci_prob=CI_PROB,
@@ -698,7 +698,7 @@ band = threshold_band(
 # band.directions  (n_directions, 2): closed, so a filled polygon has no seam
 # --8<-- [end:credible_band]
 
-r_truth = threshold_radii(covs_truth, band.directions)  # (n_ref, n_directions)
+r_truth = contour_radii(covs_truth, band.directions)  # (n_ref, n_directions)
 
 _u = jax.device_get(band.directions)
 _refs = jax.device_get(ref_points)
@@ -752,7 +752,7 @@ print("[5c/7] Nested credible bands at one reference point...")
 
 # --8<-- [start:nested_bands]
 # A sequence of probabilities gives one interval per level in a single call:
-nested = threshold_band(
+nested = contour_band(
     nuts_posterior,
     ref_points,
     ci_prob=[0.5, 0.8, 0.95],

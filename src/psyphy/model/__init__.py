@@ -21,13 +21,13 @@ Typical usage
 
 from .base import Model
 from .covariance_field import (
+    ContourBand,
     CovarianceField,
     PosteriorMeanCovarianceField,
-    ThresholdBand,
     WPPMCovarianceField,
+    contour_band,
+    contour_radii,
     covariance_to_arviz,
-    threshold_band,
-    threshold_radii,
 )
 from .likelihood import OddityTask, OddityTaskConfig, TaskLikelihood
 from .noise import GaussianNoise, StudentTNoise
@@ -42,9 +42,9 @@ __all__ = [
     "WPPMCovarianceField",
     "PosteriorMeanCovarianceField",
     "covariance_to_arviz",
-    "ThresholdBand",
-    "threshold_radii",
-    "threshold_band",
+    "ContourBand",
+    "contour_radii",
+    "contour_band",
     # Models
     "WPPM",
     # Priors

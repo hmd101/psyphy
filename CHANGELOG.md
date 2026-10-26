@@ -6,6 +6,25 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). `ps
 pre-1.0: while the version is `0.0.x`, **any release may change the public API**, so
 breaking changes are called out below but do not force a minor-version bump.
 
+## [Unreleased]
+
+### Breaking
+
+- **The threshold-contour helpers in `psyphy.model` are renamed.** They compute a property
+  of any covariance matrix, the radius of its Mahalanobis-1 contour per direction, so the
+  names no longer say "threshold". For the oddity task that radius still *is* the
+  discrimination threshold, and the docstrings say so.
+
+  | before | after |
+  |---|---|
+  | `threshold_radii` | `contour_radii` |
+  | `threshold_band` | `contour_band` |
+  | `ThresholdBand` | `ContourBand` |
+
+  No aliases: update the call, the arguments and the return fields are unchanged.
+  `threshold_pred` and `ThresholdConfig` in `psyphy.posterior` keep their names, because
+  the contour they recover is defined by a target probability correct.
+
 ## [0.0.5] — 2026-10-09
 
  Two new subpackages

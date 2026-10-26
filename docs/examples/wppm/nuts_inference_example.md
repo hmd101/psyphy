@@ -244,7 +244,7 @@ data constrain the threshold, wide spread means they do not. This is the figure 
 of the page, repeated here because it is what the snippet above produces.
 
 A cloud of contours is the full answer, but a paper reports an interval. psyphy computes
-one with [`threshold_band`](../../reference/model.md#psyphy.model.threshold_band), which
+one with [`contour_band`](../../reference/model.md#psyphy.model.contour_band), which
 takes the posterior and the points to evaluate at.
 
 ??? note "What to pass, and what comes back"
@@ -258,7 +258,7 @@ takes the posterior and the points to evaluate at.
     | `n_samples`, `key` | how many draws to use, and the key to draw them with |
 
     What comes back is a
-    [`ThresholdBand`](../../reference/model.md#psyphy.model.ThresholdBand): `lower`,
+    [`ContourBand`](../../reference/model.md#psyphy.model.ContourBand): `lower`,
     `median` and `upper` radii, each `(n_points, n_directions)`, plus the `directions` they
     were measured along and the `ci_prob` and `ci_kind` that produced them, so a figure
     caption can state which interval it draws.
@@ -282,7 +282,7 @@ at each direction. Filling between them gives us the credible band.
 
     For a $1-\alpha$ interval, at each direction separately, the band runs between
     $q_{\alpha/2}\{r_i(\varphi)\}$ and $q_{1-\alpha/2}\{r_i(\varphi)\}$ over the $N$ draws.
-    [`threshold_radii`](../../reference/model.md#psyphy.model.threshold_radii) computes
+    [`contour_radii`](../../reference/model.md#psyphy.model.contour_radii) computes
     $r_i(\varphi)$ on its own, in any dimension, for anyone who wants a quantile psyphy does
     not offer.
 
@@ -347,8 +347,8 @@ fit reports the same contours with no way to tell those two cases apart.
   [`MCMCPosterior`](../../reference/posterior.md#psyphy.posterior.MCMCPosterior),
   [`covariance_to_arviz`](../../reference/model.md#psyphy.model.covariance_to_arviz),
   [`PosteriorMeanCovarianceField`](../../reference/model.md#psyphy.model.PosteriorMeanCovarianceField),
-  [`threshold_band`](../../reference/model.md#psyphy.model.threshold_band),
-  [`threshold_radii`](../../reference/model.md#psyphy.model.threshold_radii)
+  [`contour_band`](../../reference/model.md#psyphy.model.contour_band),
+  [`contour_radii`](../../reference/model.md#psyphy.model.contour_radii)
 - MAP fitting and the model in more depth:
   [full WPPM fit](full_wppm_fit_example.md).
 - [BlackJAX](https://blackjax-devs.github.io/blackjax/) for the sampler and its arguments.

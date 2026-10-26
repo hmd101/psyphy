@@ -19,8 +19,9 @@ This module provides:
 - covariance_to_arviz: per-draw Σ(x) at chosen points as an ArviZ DataTree,
   for convergence diagnostics that are not fooled by the non-identifiable
   orientation of W (see its docstring)
-- threshold_radii / threshold_band / ThresholdBand: the threshold contour as a
-  radius per direction, and pointwise credible bands over it
+- contour_radii / contour_band / ContourBand: the Mahalanobis-1 contour of a
+  covariance as a radius per direction, and pointwise credible bands over it.
+  For the oddity task that radius is the discrimination threshold
 
 Mathematical Background
 -----------------------
@@ -942,8 +943,8 @@ def covariance_to_arviz(posterior, points):
     return dt
 
 
-class ThresholdBand(NamedTuple):
-    """A pointwise credible band on the threshold contour, with its provenance.
+class ContourBand(NamedTuple):
+    """A pointwise credible band on the contour radii, with its provenance.
 
     Attributes
     ----------
@@ -983,7 +984,7 @@ class ThresholdBand(NamedTuple):
     ci_kind: str
 
 
-def threshold_radii(covs: jnp.ndarray, directions: jnp.ndarray) -> jnp.ndarray:
+def contour_radii(covs: jnp.ndarray, directions: jnp.ndarray) -> jnp.ndarray:
     r"""Distance from the center to the Mahalanobis-1 contour, per direction.
 
     For a covariance :math:`\Sigma`, the contour
@@ -1053,7 +1054,7 @@ def _hdi(radii: jnp.ndarray, prob: float) -> tuple[jnp.ndarray, jnp.ndarray]:
 _CI_KINDS = {"eti": _eti, "hdi": _hdi}
 
 
-def threshold_band(
+def contour_band(
     posterior,
     points: jnp.ndarray,
     *,
@@ -1062,16 +1063,16 @@ def threshold_band(
     ci_kind: str = "eti",
     n_samples: int | None = None,
     key=None,
-) -> ThresholdBand:
-    """Pointwise credible band on the threshold contour at each point.
+) -> ContourBand:
+    """Pointwise credible band on the Mahalanobis-1 contour at each point.
 
     The posterior-interval counterpart to
     :class:`PosteriorMeanCovarianceField` (a posterior *mean*) and
     :func:`covariance_to_arviz` (posterior *draws*, for diagnostics).
 
-    Every draw gives one covariance field, hence one threshold contour per
-    point. Writing each contour as a radius per direction
-    (:func:`threshold_radii`) makes it a scalar per draw, so an interval
+    Every draw gives one covariance field, hence one contour per point.
+    Writing each contour as a radius per direction
+    (:func:`contour_radii`) makes it a scalar per draw, so an interval
     follows from quantiles over draws.
 
     Parameters
@@ -1110,7 +1111,7 @@ def threshold_band(
 
     Returns
     -------
-    ThresholdBand
+    ContourBand
 
     Raises
     ------
@@ -1133,11 +1134,11 @@ def threshold_band(
     >>> W = jnp.stack([model.init_params(k)["W"] for k in keys])  # (100, 3, 3, 2, 3)
     >>> nuts_posterior = MCMCPosterior({"W": W.reshape(2, 50, *W.shape[1:])}, model)
     >>> ref_points = jnp.array([[-0.5, -0.5], [0.5, 0.5]])  # (n_points, 2)
-    >>> from psyphy.model import threshold_band
-    >>> band = threshold_band(nuts_posterior, ref_points)
+    >>> from psyphy.model import contour_band
+    >>> band = contour_band(nuts_posterior, ref_points)
     >>> band.lower.shape  # (n_points, n_directions)
     (2, 181)
-    >>> nested = threshold_band(nuts_posterior, ref_points, ci_prob=[0.5, 0.8, 0.95])
+    >>> nested = contour_band(nuts_posterior, ref_points, ci_prob=[0.5, 0.8, 0.95])
     >>> nested.upper.shape  # (n_levels, n_points, n_directions)
     (3, 2, 181)
     """
@@ -1161,8 +1162,8 @@ def threshold_band(
     model = posterior.model
     if model.input_dim != 2:
         raise NotImplementedError(
-            "threshold_band supports 2-D stimulus spaces only, got "
-            f"input_dim={model.input_dim}. threshold_radii is d-dimensional, "
+            "contour_band supports 2-D stimulus spaces only, got "
+            f"input_dim={model.input_dim}. contour_radii is d-dimensional, "
             "so call it with explicit directions instead."
         )
 
@@ -1185,7 +1186,7 @@ def threshold_band(
 
     def radii_one_draw(params):
         covs = WPPMCovarianceField(model, params)(points)  # (n_points, 2, 2)
-        return threshold_radii(covs, directions)  # (n_points, n_directions)
+        return contour_radii(covs, directions)  # (n_points, n_directions)
 
     # (n_samples, n_points, n_directions)
     radii = jax.vmap(radii_one_draw)({"W": draws["W"]})
@@ -1200,7 +1201,7 @@ def threshold_band(
     median = jnp.median(radii, axis=0)  # (n_points, n_directions)
     median = jnp.broadcast_to(median, lower.shape)  # (n_levels, n_pts, n_dir)
 
-    return ThresholdBand(
+    return ContourBand(
         points=points,
         directions=directions,
         lower=lower[0] if scalar_level else lower,
