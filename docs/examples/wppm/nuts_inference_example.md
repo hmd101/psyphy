@@ -4,7 +4,7 @@ The [maximum a posteriori (MAP) tutorial](full_wppm_fit_example.md) gives one th
 ellipse per reference point. Here we get a distribution of ellipses instead. Tight clusters mean the data
 constrain the threshold ellipse and wide spread means they don't. A single MAP ellipse hides
 that difference. Crucially, adaptive trial placement depends on this uncertainty, because
-the next trial should go where the model is least certain.
+the next trial should go where the model is most uncertain.
 
 <div align="center">
   <img src="../plots/nuts_ellipses_uncertainty_full.jpg" width="560"/>
@@ -81,41 +81,44 @@ around this by constructing a random walk whose long-run visiting frequency is t
 posterior, so the places it has been form a sample from it. A plain random walk mixes too
 slowly to be usable in the roughly 100 dimensions of our parameteres $W$, so
 [Hamiltonian Monte Carlo. (HMC)](https://en.wikipedia.org/wiki/Hamiltonian_Monte_Carlo) uses the
-gradient of the log posterior to move along the distribution's geometry instead. Three terms
-come from that, and the diagnostics all refer to them:
+gradient of the log posterior to move along the distribution's geometry instead. Three
+terms will come up repeatedly, also when diagnosing the sampler:
 
 - the path can't be solved exactly, so an *integrator* approximates it in small steps
 - the *step size* is how far each step goes
 - the sequence of steps is the *trajectory*
 
-HMC needs two settings: the step size, and how many steps to take before stopping. NUTS, of
-[Hoffman and Gelman (2014)](https://jmlr.org/papers/v15/hoffman14a.html), removes
+That leaves HMC with two things to set: the step size, and how many steps before stopping.
+NUTS, of [Hoffman and Gelman (2014)](https://jmlr.org/papers/v15/hoffman14a.html), removes
 the second by extending each trajectory until it starts to double back on itself. The step
 size is still tuned, during warmup ([Step 4](#step-4-nuts-sampling)). Betancourt's
 [conceptual introduction to HMC](https://arxiv.org/abs/1701.02434) is a good resource to skim if you'd like to learn more.
 
-Two things follow for psyphy:
+!!! tip "What we get in exchange for the extra compute"
 
-1. The sampler needs gradients, which is why the log posterior is written in JAX and
-   `NUTSSampler` hands it straight to BlackJAX.
-2. The sampler needs the log density to be a fixed function of the parameters $\theta$. Since psyphy's oddity
-   likelihood is estimated by simulation introducing slight randomness, psyphy freezes one pseudo-random number generator (PRNG) key for the whole run
-   (`logdensity_key_seed`) to make it deterministic.
+    - **Uncertainty quantification**: how spread out is our belief over model parameters?
+    - **Posterior predictive distributions**: how uncertain are our predictions at new test
+      points?
 
-What we get in exchange for the extra compute:
+??? note "Implementation details: what the sampler needs from psyphy:"
 
-- **Uncertainty quantification**: how spread out is our belief over model parameters?
-- **Posterior predictive distributions**: how uncertain are our predictions at new test points?
+    Two implementation things follow for psyphy:
 
-??? note "What the frozen key costs"
+    1. The sampler needs gradients, which is why the log posterior is written in JAX and
+       `NUTSSampler` hands it straight to BlackJAX.
+    2. The sampler needs the log density to be a fixed function of the parameters $\theta$.
+       psyphy's oddity likelihood is estimated by simulation, so it returns a slightly
+       different number on every call. psyphy freezes one pseudo-random number generator
+       (PRNG) key for the whole run (`logdensity_key_seed`) to make it deterministic.
 
-    [`OddityTask`](../../reference/model.md#psyphy.model.OddityTask) has no closed-form likelihood. It estimates $P(\text{correct})$ by
-    simulating `mc_samples` noisy internal representations per trial, which makes the log
-    density expensive and slightly different on every call. Freezing one key removes the
-    variation, at the cost of sampling the posterior implied by that one noise realization
-    rather than the exact posterior. More `mc_samples` reduces the discrepancy and costs
-    proportionally more. A deterministic surrogate likelihood would remove the compromise.
-    See future `NeuralSurrogateTask`.
+    The frozen key is a compromise.
+    [`OddityTask`](../../reference/model.md#psyphy.model.OddityTask) has no closed-form
+    likelihood. It estimates $P(\text{correct})$ by simulating `mc_samples` noisy internal
+    representations per trial, which makes the log density expensive and slightly different
+    on every call. Freezing one key removes the variation, at the cost of sampling the
+    posterior implied by that one noise realization rather than the exact posterior. More
+    `mc_samples` reduces the discrepancy and costs proportionally more. A deterministic
+    surrogate likelihood would remove the compromise. See future `NeuralSurrogateTask`.
 
 ---
 
@@ -163,7 +166,7 @@ said otherwise.
 
 A sampler started far from the posterior spends its first draws getting
 there, and those draws are then thrown away. Starting at the MAP estimate instead avoids
-this walk.
+this:
 
 ```python title="MAP warm-start"
 --8<-- "docs/examples/wppm/nuts_inference_example.py:map_warmstart"
