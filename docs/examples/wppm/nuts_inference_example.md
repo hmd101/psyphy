@@ -172,7 +172,7 @@ this:
 --8<-- "docs/examples/wppm/nuts_inference_example.py:map_warmstart"
 ```
 
-`map_posterior.params` then goes to `NUTSSampler.fit()` as `init_params`.
+`map_posterior.params` then goes to `NUTSSampler.fit()` as `init_params` as shown in the code snippet below:
 
 ### Step 4: NUTS sampling
 

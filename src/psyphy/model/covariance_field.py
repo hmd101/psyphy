@@ -604,7 +604,7 @@ class PosteriorMeanCovarianceField:
     This is the definition of covariance rearranged, using Σ = U Uᵀ + λI with
     U linear in W. Cov[U] is a covariance matrix, so it is positive
     semi-definite. Averaging W first therefore gives ellipses that are too
-    small, never too large.
+    small.
 
     Two things follow:
 
