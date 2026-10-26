@@ -325,10 +325,9 @@ fit reports the same contours with no way to tell those two cases apart.
     An 89% pointwise band is expected to miss some directions.
 ## Next steps
 
-- **Check the draws.** These contours are only as good as the chains behind them.
-  [Checking MCMC draws with ArviZ](mcmc_diagnostics.md) runs the four diagnostics on this
-  fit and says which sampler argument to change when one fails. It also holds the sampler
-  arguments, the compute presets and what `step_size` does.
+- **Check the posterior draws.** How well do the draws represent the posterior distribution?
+  [This tutorial shows how to check the MCMC draws with the established library ArviZ](mcmc_diagnostics.md).
+   We also look at which sampler arguments to change when one diganostic fails.
 - **Predictions at new stimuli.** `WPPMPredictivePosterior` takes this posterior and gives
   the posterior predictive distribution over responses, averaging $P(\text{correct})$ over
   draws instead of over one point estimate.
