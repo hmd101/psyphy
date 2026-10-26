@@ -422,7 +422,7 @@ class WPPMCovarianceField:
         -----
         Builds the field from ``posterior.params``, i.e. a single parameter set.
 
-        - MAP posteriors: ``params`` is θ_MAP, so this is Σ(θ_MAP). Correct.
+        - MAP posteriors: ``params`` is θ_MAP, so this is Σ(θ_MAP).
         - Sample-based posteriors (e.g. ``MCMCPosterior``): ``params`` is the
           mean parameter E[W], and Σ(E[W]) is NOT the posterior mean of Σ. It
           is systematically too small and can collapse toward λI (see
@@ -449,7 +449,7 @@ class WPPMCovarianceField:
         #
         # This warns instead of switching to the posterior-mean field because
         # that would change the return type (and drop sqrt_cov) for existing
-        # callers; the behavior is unchanged, only made loud.
+        # callers.
         if getattr(posterior, "n_draws", None) is not None:
             warnings.warn(
                 f"from_posterior() on a {type(posterior).__name__} builds Σ from the "
