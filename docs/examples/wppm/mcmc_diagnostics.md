@@ -31,7 +31,7 @@ python nuts_inference_example.py --mode full --from-fit
 [Vehtari et al. (2021)](https://doi.org/10.1214/20-BA1221). The divergence and tree-depth
 guidance is Stan's, from its
 [reference manual](https://mc-stan.org/docs/reference-manual/mcmc.html): a divergence is a
-validity problem, tree-depth saturation only an efficiency one.
+validity problem (e.g. step size too large), tree-depth saturation only an efficiency one (e.g., whether we need to increase tree-depth).
 
 | check | what it detects | suspect when |
 |---|---|---|
@@ -40,7 +40,8 @@ validity problem, tree-depth saturation only an efficiency one.
 | [Effective Sample Size (ESS)](https://python.arviz.org/projects/stats/en/latest/api/generated/arviz_stats.ess.html) | autocorrelation: how many independent draws the chain is worth | bulk or tail ESS $< 100$ per chain, so $< 400$ in total across 4 chains |
 | `sampler_stats["n_steps"]` | trajectories truncated at the tree-depth cap | at the cap for most draws |
 
-Divergences and the tree-depth cap come straight off `sampler_stats`, with no ArviZ needed:
+BlackJAX flags a divergence on every draw it takes. `NUTSSampler` keeps those flags in
+`sampler_stats`, a plain dict of JAX arrays:
 
 ```python title="Divergences and tree-depth saturation"
 --8<-- "docs/examples/wppm/nuts_inference_example.py:divergence_check"
@@ -67,12 +68,14 @@ to ArviZ:
 posterior and the points to evaluate $\Sigma$ at, here the reference points. From there
 `az.summary`, `az.rhat`, `az.ess` and every ArviZ plotting function work on a psyphy fit
 directly, which is where the two figures below come from.
-
-??? note "What ArviZ wants, and what it gets"
+wants
+??? note "What ArviZ needs"
 
     `covariance_to_arviz` returns an `xarray.DataTree` with dimensions
     `(chain, draw, point, quantity)`, and carries the sampler statistics across as ArviZ's
-    `sample_stats` group. ArviZ's
+    `sample_stats` group. The `sampler_stats` keys are spelled ArviZ's way on purpose
+    (`diverging`, `energy`, `n_steps`), so they go straight over and `az.plot_energy` and
+    the divergence ticks on a trace plot work out of the box. ArviZ's
     [getting started guide](https://python.arviz.org/en/latest/user_guide/getting_started.html)
     covers that format if you want the detail.
 
