@@ -6,8 +6,11 @@ constrain the threshold ellipse and wide spread means they don't. A single MAP e
 that difference. Crucially, adaptive trial placement depends on this uncertainty, because
 the next trial should go where the model is most uncertain.
 
-TODO: maybe in admonoition?
-Below we show you a converged example. Note that before you you trust the samples, you need to check whether they are representitive of the posterior first. How to do that and what diagnostics to run is what we show you in this tutorial (link to arviz tutorial).
+!!! note "Check the draws before you trust them"
+    The example below is converged. Before you trust any set of samples you need to check
+    that they are representative of the posterior.
+    [Checking MCMC draws with ArviZ](mcmc_diagnostics.md) shows how, and which diagnostics
+    to run.
 
 <div align="center">
   <img src="../plots/nuts_ellipses_uncertainty_full.jpg" width="560"/>

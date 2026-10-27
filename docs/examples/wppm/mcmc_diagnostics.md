@@ -1,13 +1,20 @@
 # Checking MCMC draws with ArviZ
 
 [Sampling the posterior with the No-U-Turn Sampler (NUTS)](nuts_inference_example.md) ends
-with a distribution of threshold contours, samples we drew from the posterior. Here we show you how to
-check whether the samples represent the posterior, and which sampler argument to change when
-they do not. The figure below represents two core sampling diagnostics, which in this tutorial we will build towards. We provide a seamless interface to  Arviz(https://python.arviz.org/projects/stats/en/latest/index.html), which is an established  library to diagnose Bayesian models and the figure below is created with Arivz.
+with a distribution of threshold contours, samples we drew from the posterior. Here we show
+you how to check whether the samples represent the posterior, and which sampler argument to
+change when they do not.
+
+[ArviZ](https://python.arviz.org/projects/stats/en/latest/index.html) is an established
+library for diagnosing Bayesian models.
+[`covariance_to_arviz`](../../reference/model.md#psyphy.model.covariance_to_arviz) hands a
+psyphy fit to it in the shape it expects, so every ArviZ function works on our draws with no
+reshaping. The figure below carries two of the core diagnostics and is ArviZ's own output.
+It is what this tutorial builds towards.
 
 <div align="center">
   <img src="../plots/nuts_convergence_sigma_full.png" width="760"/>
-  <p><em>The summary check for posterior samples with Arviz: Bulk effective sample size (ESS), tail ESS and R-hat, one panel
+  <p><em>The summary check for posterior samples with ArviZ: Bulk effective sample size (ESS), tail ESS and R-hat, one panel
   each, over every quantity at every reference point. Dashed lines are ArviZ's reference
   thresholds, in total ESS across all chains. We want both ESS curves entirely right of
   their line and the R-hat curve entirely left of its.</em></p>
@@ -26,10 +33,10 @@ python nuts_inference_example.py --mode full --from-fit
 ---
 
 ## What to check
-TODO: for stan: briefly mention that it is the libraryr for Bayesian models or sth.
 4 quantities to check. The R-hat and ESS thresholds are ArviZ's defaults, which follow
 [Vehtari et al. (2021)](https://doi.org/10.1214/20-BA1221). The divergence and tree-depth
-guidance is Stan's, from its
+guidance comes from Stan, a probabilistic programming language for Bayesian models whose
+MCMC advice is the usual reference, in its
 [reference manual](https://mc-stan.org/docs/reference-manual/mcmc.html): a divergence is a
 validity problem (e.g. step size too large), tree-depth saturation only an efficiency one (e.g., whether we need to increase tree-depth).
 
@@ -51,10 +58,8 @@ A divergent transition means the integrator, the thing approximating the traject
 steps ([sampling tutorial](nuts_inference_example.md#why-sample-the-posterior)), left the
 posterior's geometry. More sampling doesn't fix the draws it produced.
 
-TODO: maybe wrap below in admonition
-*Any non-zero count
-(even one) makes the run suspect regardless of what R-hat says, which is why we check
-divergences first*.
+!!! warning "Any divergence makes the run suspect"
+    One is enough, regardless of what R-hat says, which is why we check divergences first.
 
 The second print is the fraction of draws whose trajectory hit
 `max_num_doublings`: a large fraction means the cap is limiting mixing.
@@ -147,15 +152,13 @@ and
 [`window_adaptation`](https://blackjax-devs.github.io/blackjax/autoapi/blackjax/adaptation/window_adaptation/index.html)
 document.
 
-TODO: in table below: add a column to the right that contains psyphy's default settings for reference
-
-| argument | what it controls | raise it when |
-|---|---|---|
-| `num_warmup` | tuning steps per chain, discarded | trace plots still drift at the start |
-| `num_samples` | kept draws per chain | ESS is too low |
-| `num_chains` | independent chains, R-hat needs at least 2 | a stronger convergence check is wanted |
-| `max_num_doublings` | tree-depth cap, at most $2^k - 1$ gradients per draw | most draws hit the cap, which the script prints |
-| `target_acceptance_rate` | how cautious the tuned step size is | divergences appear |
+| argument | what it controls | psyphy default | raise it when |
+|---|---|---|---|
+| `num_warmup` | tuning steps per chain, discarded | 500 | trace plots still drift at the start |
+| `num_samples` | kept draws per chain | 1000 | ESS is too low |
+| `num_chains` | independent chains, R-hat needs at least 2 | 4 | a stronger convergence check is wanted |
+| `max_num_doublings` | tree-depth cap, at most $2^k - 1$ gradients per draw | 8, against BlackJAX's 10 | most draws hit the cap, which the script prints |
+| `target_acceptance_rate` | how cautious the tuned step size is | 0.8 | divergences appear |
 
 ??? note "Compute presets"
 
@@ -221,7 +224,7 @@ TODO: in table below: add a column to the right that contains psyphy's default s
   divergences and tree depth, including the reparameterization route when raising
   `target_acceptance_rate` is not enough
 
-The paper behind the Arviz thresholds:
+The paper behind the ArviZ thresholds:
 
 > Vehtari, A., Gelman, A., Simpson, D., Carpenter, B., & Bürkner, P.-C. (2021).
 > *Rank-normalization, folding, and localization: an improved $\widehat{R}$ for assessing
