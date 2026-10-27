@@ -112,6 +112,7 @@ nav:
     - Checking MCMC Draws with ArviZ: examples/wppm/mcmc_diagnostics.md
     - Covariance Field Visualization: examples/covariance_field/covariance_field.md
     - Plotting Ellipse Fields: examples/viz/ellipse_plots.md
+  - Developer Notes: developer-notes.md
   - Contributing: CONTRIBUTING.md
   - Changelog: changelog.md
 

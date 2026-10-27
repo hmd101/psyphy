@@ -106,28 +106,18 @@ size is still tuned, during warmup ([Step 4](#step-4-nuts-sampling)). Betancourt
     - **Posterior predictive distributions**: how uncertain are our predictions at new test
       points?
 
-??? note "Implementation details: what the sampler needs from psyphy:"
-TODO: this toggle is more of a developer note. the only user facing point that needs to be coneyed here is that maybe while expecting a stochastic process, we pass a frozen key here because Blackjax samplers require it to be deterministic etc. refer to likelihood etc. refer to neural surrogate likelihood only oneceimplmented.
+??? note "Why the sampler needs a frozen random key"
 
-for developer notes, can live in docs: could sound along the lines: here's a decision we mad to achieve Goal X this is why we decided on Y...
+    NUTS needs the log density to be a fixed function of the parameters, and psyphy's oddity
+    likelihood is estimated by simulation, so it returns a slightly different number on every
+    call. `NUTSSampler` freezes one pseudo-random number generator (PRNG) key for the whole
+    run (`logdensity_key_seed`) so the sampler sees the same density twice.
 
-    Two implementation things follow for psyphy:
+    The sampler also needs gradients, which is why the log posterior is written in JAX and
+    goes straight to BlackJAX.
 
-    1. The sampler needs gradients, which is why the log posterior is written in JAX and
-       `NUTSSampler` hands it straight to BlackJAX.
-    2. The sampler needs the log density to be a fixed function of the parameters $\theta$.
-       psyphy's oddity likelihood is estimated by simulation, so it returns a slightly
-       different number on every call. psyphy freezes one pseudo-random number generator
-       (PRNG) key for the whole run (`logdensity_key_seed`) to make it deterministic.
-
-    The frozen key is a compromise.
-    [`OddityTask`](../../reference/model.md#psyphy.model.OddityTask) has no closed-form
-    likelihood. It estimates $P(\text{correct})$ by simulating `mc_samples` noisy internal
-    representations per trial, which makes the log density expensive and slightly different
-    on every call. Freezing one key removes the variation, at the cost of sampling the
-    posterior implied by that one noise realization rather than the exact posterior. More
-    `mc_samples` reduces the discrepancy and costs proportionally more. A deterministic
-    surrogate likelihood would remove the compromise. See future `NeuralSurrogateTask`.
+    What the frozen key costs, and when it stops being needed, is in
+    [Developer notes](../../developer-notes.md#the-log-density-uses-one-frozen-prng-key).
 
 ---
 
