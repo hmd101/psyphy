@@ -22,6 +22,9 @@ site/
 # Ignore VSCode settings
 .vscode/
 
+
+.claude/
+
 # Generated plot output directories
 # docs/examples/**/plots/*
 

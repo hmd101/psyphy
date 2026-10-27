@@ -6,6 +6,9 @@ constrain the threshold ellipse and wide spread means they don't. A single MAP e
 that difference. Crucially, adaptive trial placement depends on this uncertainty, because
 the next trial should go where the model is most uncertain.
 
+TODO: maybe in admonoition?
+Below we show you a converged example. Note that before you you trust the samples, you need to check whether they are representitive of the posterior first. How to do that and what diagnostics to run is what we show you in this tutorial (link to arviz tutorial).
+
 <div align="center">
   <img src="../plots/nuts_ellipses_uncertainty_full.jpg" width="560"/>
   <p><em>What we build in this tutorial. The axes are the two model dimensions, arbitrary up to
@@ -101,6 +104,9 @@ size is still tuned, during warmup ([Step 4](#step-4-nuts-sampling)). Betancourt
       points?
 
 ??? note "Implementation details: what the sampler needs from psyphy:"
+TODO: this toggle is more of a developer note. the only user facing point that needs to be coneyed here is that maybe while expecting a stochastic process, we pass a frozen key here because Blackjax samplers require it to be deterministic etc. refer to likelihood etc. refer to neural surrogate likelihood only oneceimplmented.
+
+for developer notes, can live in docs: could sound along the lines: here's a decision we mad to achieve Goal X this is why we decided on Y...
 
     Two implementation things follow for psyphy:
 
@@ -247,7 +253,7 @@ A cloud of contours is the full answer, but a paper reports an interval. psyphy 
 one with [`contour_band`](../../reference/model.md#psyphy.model.contour_band), which
 takes the posterior and the points to evaluate at.
 
-??? note "What to pass, and what comes back"
+??? note "What to pass, and what we get back"
 
     | argument | what to pass |
     |---|---|
@@ -257,34 +263,19 @@ takes the posterior and the points to evaluate at.
     | `ci_kind` | `"eti"` for equal-tailed, `"hdi"` for the narrowest interval of that mass |
     | `n_samples`, `key` | how many draws to use, and the key to draw them with |
 
-    What comes back is a
+    What we get back is a
     [`ContourBand`](../../reference/model.md#psyphy.model.ContourBand): `lower`,
     `median` and `upper` radii, each `(n_points, n_directions)`, plus the `directions` they
     were measured along and the `ci_prob` and `ci_kind` that produced them, so a figure
     caption can state which interval it draws.
 
-It works by writing each contour as a radius per direction: along the unit direction
-$u(\varphi) = (\cos\varphi, \sin\varphi)$, draw $i$'s contour at reference point $x$ sits at
-
-$$r_i(\varphi) \;=\; \frac{1}{\sqrt{u(\varphi)^\top \Sigma_i(x)^{-1} u(\varphi)}}$$
-
-which is the discrimination threshold, the just noticeable difference, in direction
-$\varphi$. That is a scalar, one number per draw, so quantiles over draws give an interval
-at each direction. Filling between them gives us the credible band.
-
-??? note "Where the radius formula comes from"
-
-    The threshold contour of draw $i$ is the set $\{d : d^\top \Sigma_i(x)^{-1} d = 1\}$.
-    Along a fixed unit direction $u$, writing $d = r\,u$ gives
-    $r^2 u^\top \Sigma_i^{-1} u = 1$, hence the expression above. Along an eigenvector of
-    $\Sigma_i$ it reduces to $\sqrt{\lambda}$, the semi-axis the ellipse plots already draw,
-    so this is the same contour in polar form.
-
-    For a $1-\alpha$ interval, at each direction separately, the band runs between
-    $q_{\alpha/2}\{r_i(\varphi)\}$ and $q_{1-\alpha/2}\{r_i(\varphi)\}$ over the $N$ draws.
-    [`contour_radii`](../../reference/model.md#psyphy.model.contour_radii) computes
-    $r_i(\varphi)$ on its own, in any dimension, for anyone who wants a quantile psyphy does
-    not offer.
+It works by writing each contour as a radius per direction, which is the discrimination
+threshold, the just noticeable difference, in that direction. That is a scalar, one number
+per draw, so quantiles over draws give an interval at each direction. Filling between them
+gives us the credible band.
+[`contour_radii`](../../reference/model.md#psyphy.model.contour_radii) computes those radii
+on their own, in any dimension, for anyone who wants a quantile psyphy does not offer. Its
+docstring has the formula and the derivation.
 
 ```python title="Pointwise credible band on the threshold contour"
 --8<-- "docs/examples/wppm/nuts_inference_example.py:credible_band"

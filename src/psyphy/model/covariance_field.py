@@ -993,6 +993,8 @@ def contour_radii(covs: jnp.ndarray, directions: jnp.ndarray) -> jnp.ndarray:
 
     .. math:: r(u) = 1 / \sqrt{u^\top \Sigma^{-1} u}
 
+    Writing a point on the ray as :math:`v = r\,u` turns the contour condition
+    into :math:`r^2 u^\top \Sigma^{-1} u = 1`, which is the expression above.
     Along an eigenvector this is :math:`\sqrt{\lambda}`, i.e. exactly the
     semi-axis :func:`psyphy.viz.ellipse_segments` draws at ``scale=1``. For the
     oddity task this radius is the discrimination threshold, the just
@@ -1073,7 +1075,10 @@ def contour_band(
     Every draw gives one covariance field, hence one contour per point.
     Writing each contour as a radius per direction
     (:func:`contour_radii`) makes it a scalar per draw, so an interval
-    follows from quantiles over draws.
+    follows from quantiles over draws. For a :math:`1-\alpha` interval, at
+    each direction separately, the band runs between
+    :math:`q_{\alpha/2}\\{r_i\\}` and :math:`q_{1-\alpha/2}\\{r_i\\}` over the
+    :math:`N` draws.
 
     Parameters
     ----------

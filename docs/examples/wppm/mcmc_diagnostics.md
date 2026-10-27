@@ -1,9 +1,9 @@
 # Checking MCMC draws with ArviZ
 
 [Sampling the posterior with the No-U-Turn Sampler (NUTS)](nuts_inference_example.md) ends
-with a distribution of threshold contours, samples we drew from the posterior. Here we
-check whether the draws represent the posterior, and which sampler argument to change when
-they do not.
+with a distribution of threshold contours, samples we drew from the posterior. Here we show you how to
+check whether the samples represent the posterior, and which sampler argument to change when
+they do not. The figure below represents two core sampling diagnostics, which in this tutorial we will build towards. We provide a seamless interface to  Arviz(https://python.arviz.org/projects/stats/en/latest/index.html), which is an established  library to diagnose Bayesian models and the figure below is created with Arivz.
 
 <div align="center">
   <img src="../plots/nuts_convergence_sigma_full.png" width="760"/>
@@ -26,7 +26,7 @@ python nuts_inference_example.py --mode full --from-fit
 ---
 
 ## What to check
-
+TODO: for stan: briefly mention that it is the libraryr for Bayesian models or sth.
 4 quantities to check. The R-hat and ESS thresholds are ArviZ's defaults, which follow
 [Vehtari et al. (2021)](https://doi.org/10.1214/20-BA1221). The divergence and tree-depth
 guidance is Stan's, from its
@@ -49,9 +49,14 @@ BlackJAX flags a divergence on every draw it takes. `NUTSSampler` keeps those fl
 
 A divergent transition means the integrator, the thing approximating the trajectory in small
 steps ([sampling tutorial](nuts_inference_example.md#why-sample-the-posterior)), left the
-posterior's geometry. More sampling doesn't fix the draws it produced. Any non-zero count
+posterior's geometry. More sampling doesn't fix the draws it produced.
+
+TODO: maybe wrap below in admonition
+*Any non-zero count
 (even one) makes the run suspect regardless of what R-hat says, which is why we check
-divergences first. The second print is the fraction of draws whose trajectory hit
+divergences first*.
+
+The second print is the fraction of draws whose trajectory hit
 `max_num_doublings`: a large fraction means the cap is limiting mixing.
 
 ## Diagnostics on $\Sigma$, with `covariance_to_arviz`
@@ -93,8 +98,8 @@ wants
 ## Reading the figures
 
 Both figures below are one ArviZ call each, `az.plot_trace` and
-`az.plot_convergence_dist`, on the object `covariance_to_arviz` returned. We write no
-plotting code.
+`az.plot_convergence_dist`, on the object `covariance_to_arviz` returned. (We write no additional
+plotting code here.)
 
 `covariance_to_arviz` summarizes each $2\times2$ $\Sigma$ by the three numbers that
 determine it: `log_var_0` and `log_var_1`, the log variances along each axis, and
@@ -104,6 +109,8 @@ the chains converged, they should overlap, stay level, and vary fast from draw t
 ```python title="Trace plot at the worst reference point"
 --8<-- "docs/examples/wppm/nuts_inference_example.py:trace_plot"
 ```
+
+TODO: for comparison's sake, or teaching purposes, we should briefly contrast the converged trace plots to a non-converged one, maybe the one from quick run.
 
 <div align="center">
   <img src="../plots/nuts_trace_sigma_full.png" width="760"/>
@@ -128,6 +135,8 @@ curve crosses the dashed line, that fraction of quantities sits above 1.01.
 
 Useful: `az.summary` prints `R-hat max` and `ESS min`.
 
+TODO: plot output of az.summary call
+
 ---
 
 ## What to change when a check fails
@@ -136,9 +145,9 @@ A failing check is fixed by the sampler arguments, which
 [`blackjax.nuts`](https://blackjax-devs.github.io/blackjax/autoapi/blackjax/mcmc/nuts/index.html)
 and
 [`window_adaptation`](https://blackjax-devs.github.io/blackjax/autoapi/blackjax/adaptation/window_adaptation/index.html)
-document. psyphy's
-[`NUTSSampler`](../../reference/inference.md#psyphy.inference.NUTSSampler) passes them
-straight through under the same names.
+document.
+
+TODO: in table below: add a column to the right that contains psyphy's default settings for reference
 
 | argument | what it controls | raise it when |
 |---|---|---|
