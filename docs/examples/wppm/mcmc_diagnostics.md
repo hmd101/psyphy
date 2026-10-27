@@ -125,22 +125,16 @@ the chains converged, they should overlap, stay level, and vary fast from draw t
 Look along each panel for a chain holding its own level, or a slope at either end. Either
 means the chains have not mixed.
 
-<!-- Non-converged contrast, pending a `--mode quick` run on the cluster.
-     To produce it:
-         python nuts_inference_example.py --mode quick
-         mv plots/nuts_trace_sigma.png plots/nuts_trace_sigma_quick.png
-     `quick` writes unsuffixed names (see plot_path), hence the rename. Then
-     delete these comment markers and the figure below is live.
-
 <div align="center">
   <img src="../plots/nuts_trace_sigma_quick.png" width="760"/>
   <p><em>The same plot from `--mode quick`: 2 chains, 150 draws. Not converged.</em></p>
 </div>
 
-Here the chains sit at their own levels and drift across the run, which is what a trace
-plot catches. The slower failure, chains that look fine but carry too few independent
-draws, is what effective sample size (ESS) and R-hat catch instead.
--->
+Compare the two. Here each chain wanders in slow swings rather than varying fast from draw
+to draw, and in `corr_0_1` the two chains hold different levels for stretches of 40 draws or
+more. Both are what a trace plot catches. The slower failure, chains that look fine but
+carry too few independent draws, is what effective sample size (ESS) and R-hat catch
+instead.
 
 We see one reference point here. The figure at the top covers all 25 at once.
 
@@ -153,9 +147,25 @@ every reference point, so a point on it reads as "this fraction of quantities sc
 this value". More is better for ESS and less is better for R-hat. For R-hat: where its
 curve crosses the dashed line, that fraction of quantities sits above 1.01.
 
-Useful: `az.summary` prints `R-hat max` and `ESS min`.
+`az.summary` reduces the 75 quantities to one row each. The snippet above prints their
+distribution, which is what the `--mode full` run gives:
 
-TODO: plot output of az.summary call
+```text
+            mean         sd      r_hat     ess_bulk
+count  75.000000  75.000000  75.000000    75.000000
+mean   -2.796666   0.148029   1.004584  1012.223390
+std     1.892634   0.053201   0.003398   314.699325
+min    -6.242783   0.077725   0.999981   398.680579
+25%    -4.171345   0.108828   1.002054   806.839604
+50%    -3.697674   0.142442   1.003868  1034.450751
+75%    -0.410639   0.163172   1.006310  1207.652176
+max     0.333164   0.337189   1.017289  1837.560237
+  R-hat max on Σ: 1.017  (target < 1.01)
+  ESS min on Σ:   399    (target > 100 per chain)
+```
+
+Read the `max` row for R-hat and the `min` row for ESS, since one bad quantity out of 75 is
+enough to look at. Drop `.describe()` to see all 75 rows instead.
 
 ---
 
