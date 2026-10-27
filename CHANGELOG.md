@@ -8,22 +8,19 @@ breaking changes are called out below but do not force a minor-version bump.
 
 ## [Unreleased]
 
-### Breaking
+### Added
 
-- **The threshold-contour helpers in `psyphy.model` are renamed.** They compute a property
-  of any covariance matrix, the radius of its Mahalanobis-1 contour per direction, so the
-  names no longer say "threshold". For the oddity task that radius still *is* the
-  discrimination threshold, and the docstrings say so.
+- **Credible bands on the contour radii**: `contour_radii`, `contour_band` and
+  `ContourBand` in `psyphy.model`. `contour_radii` gives the radius of a covariance's
+  Mahalanobis-1 contour per direction; for the oddity task that radius is the discrimination
+  threshold. `contour_band` reduces those radii over posterior draws to a pointwise credible
+  interval.
 
-  | before | after |
-  |---|---|
-  | `threshold_radii` | `contour_radii` |
-  | `threshold_band` | `contour_band` |
-  | `ThresholdBand` | `ContourBand` |
-
-  No aliases: update the call, the arguments and the return fields are unchanged.
-  `threshold_pred` and `ThresholdConfig` in `psyphy.posterior` keep their names, because
-  the contour they recover is defined by a target probability correct.
+  These names replace `threshold_radii`, `threshold_band` and `ThresholdBand`, which were
+  never released: they compute a property of any covariance matrix, so the names no longer
+  say "threshold". Nothing in `0.0.5` or earlier exposed them, so no installed version
+  breaks. `threshold_pred` and `ThresholdConfig` in `psyphy.posterior` keep their names,
+  because the contour they recover is defined by a target probability correct.
 
 ## [0.0.5] — 2026-10-09
 

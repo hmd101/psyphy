@@ -115,8 +115,6 @@ the chains converged, they should overlap, stay level, and vary fast from draw t
 --8<-- "docs/examples/wppm/nuts_inference_example.py:trace_plot"
 ```
 
-TODO: for comparison's sake, or teaching purposes, we should briefly contrast the converged trace plots to a non-converged one, maybe the one from quick run.
-
 <div align="center">
   <img src="../plots/nuts_trace_sigma_full.png" width="760"/>
   <p><em>One panel per quantity at the reference point with the worst R-hat, one colored
@@ -126,6 +124,23 @@ TODO: for comparison's sake, or teaching purposes, we should briefly contrast th
 
 Look along each panel for a chain holding its own level, or a slope at either end. Either
 means the chains have not mixed.
+
+<!-- Non-converged contrast, pending a `--mode quick` run on the cluster.
+     To produce it:
+         python nuts_inference_example.py --mode quick
+         mv plots/nuts_trace_sigma.png plots/nuts_trace_sigma_quick.png
+     `quick` writes unsuffixed names (see plot_path), hence the rename. Then
+     delete these comment markers and the figure below is live.
+
+<div align="center">
+  <img src="../plots/nuts_trace_sigma_quick.png" width="760"/>
+  <p><em>The same plot from `--mode quick`: 2 chains, 150 draws. Not converged.</em></p>
+</div>
+
+Here the chains sit at their own levels and drift across the run, which is what a trace
+plot catches. The slower failure, chains that look fine but carry too few independent
+draws, is what effective sample size (ESS) and R-hat catch instead.
+-->
 
 We see one reference point here. The figure at the top covers all 25 at once.
 
