@@ -62,7 +62,7 @@ thresholds = WPPMPredictivePosterior(
 #
 #   W = jnp.asarray(np.load("fits/hong2025_full_fit.npz")["W"])
 #
-# The model, the config and the call above are identical either way.
+# The model, the config and the call above are identical
 # --8<-- [end:recipe]
 
 

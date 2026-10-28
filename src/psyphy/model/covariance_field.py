@@ -76,12 +76,8 @@ class CovarianceField(Protocol):
     __call__(x)
         Evaluate field at one or more locations. Supports both single points
         and arbitrary batch dimensions.
-    cov(x)
-        Evaluate Σ(x) at stimulus location x (deprecated, use __call__).
     sqrt_cov(x)
         Evaluate U(x) such that Σ(x) = U(x) @ U(x)^T + λI.
-    cov_batch(X)
-        Vectorized evaluation at multiple locations (deprecated, use __call__).
 
     Notes
     -----
@@ -96,16 +92,8 @@ class CovarianceField(Protocol):
         """Evaluate covariance field at one or more stimulus locations."""
         ...
 
-    def cov(self, x: jnp.ndarray) -> jnp.ndarray:
-        """Evaluate covariance matrix Σ(x) at stimulus location x (deprecated)."""
-        ...
-
     def sqrt_cov(self, x: jnp.ndarray) -> jnp.ndarray:
         """Evaluate "square root" matrix U(x) such that Σ(x) = U(x) @ U(x)^T + λI."""
-        ...
-
-    def cov_batch(self, X: jnp.ndarray) -> jnp.ndarray:
-        """Evaluate covariance at multiple locations (deprecated)."""
         ...
 
 
@@ -309,69 +297,6 @@ class WPPMCovarianceField:
 
         # Restore batch structure: (n_total, input_dim, input_dim) -> (..., input_dim, input_dim)
         return Sigmas_flat.reshape(batch_shape + (input_dim, input_dim))
-
-    def cov(self, x: jnp.ndarray) -> jnp.ndarray:
-        """
-        Evaluate covariance matrix Σ(x) at stimulus location x.
-
-        .. deprecated::
-            Use `field(x)` instead for unified single/batch API.
-
-        Parameters
-        ----------
-        x : jnp.ndarray, shape (input_dim,)
-            Stimulus location in [0, 1]^d
-
-        Returns
-        -------
-        jnp.ndarray, shape (input_dim, input_dim)
-            Covariance matrix Σ(x) in stimulus space
-
-        Notes
-        -----
-        With the rectangular U design, this always returns stimulus-space
-        covariance (input_dim, input_dim), regardless of extra_dims.
-        """
-        warnings.warn(
-            "cov() is deprecated. Use field(x) instead for unified single/batch API.",
-            DeprecationWarning,
-            stacklevel=2,
-        )
-        if x.ndim != 1:
-            raise ValueError(
-                f"cov() only accepts single points with shape (input_dim,), got {x.shape}. "
-                f"Use field(X) for batches."
-            )
-        return self._eval_single(x)
-
-    def cov_batch(self, X: jnp.ndarray) -> jnp.ndarray:
-        """
-        Evaluate covariance at multiple locations (vectorized).
-
-        .. deprecated::
-            Use `field(X)` instead for unified single/batch API.
-
-        Parameters
-        ----------
-        X : jnp.ndarray, shape (n_points, input_dim)
-            Multiple stimulus locations
-
-        Returns
-        -------
-        jnp.ndarray, shape (n_points, dim, dim)
-            Covariance matrices at each location
-        """
-        warnings.warn(
-            "cov_batch() is deprecated. Use field(X) instead for unified single/batch API.",
-            DeprecationWarning,
-            stacklevel=2,
-        )
-        if X.ndim < 2:
-            raise ValueError(
-                f"cov_batch() expects batch with shape (n_points, input_dim), got {X.shape}. "
-                f"Use field(x) for single points."
-            )
-        return self._eval_batch_jitted(X)
 
     @classmethod
     def from_prior(cls, model, key: jax.Array) -> WPPMCovarianceField:
@@ -728,44 +653,6 @@ class PosteriorMeanCovarianceField:
         X_flat = X.reshape(-1, input_dim)
         Sigmas_flat = jax.vmap(self._eval_single)(X_flat)
         return Sigmas_flat.reshape(batch_shape + (input_dim, input_dim))
-
-    def cov(self, x: jnp.ndarray) -> jnp.ndarray:
-        """
-        Evaluate E[Σ(x)] at a single location.
-
-        .. deprecated::
-            Use `field(x)` instead, as for ``WPPMCovarianceField``.
-        """
-        warnings.warn(
-            "cov() is deprecated. Use field(x) instead for unified single/batch API.",
-            DeprecationWarning,
-            stacklevel=2,
-        )
-        if x.ndim != 1:
-            raise ValueError(
-                f"cov() only accepts single points with shape (input_dim,), got {x.shape}. "
-                f"Use field(X) for batches."
-            )
-        return self(x)
-
-    def cov_batch(self, X: jnp.ndarray) -> jnp.ndarray:
-        """
-        Evaluate E[Σ(x)] at multiple locations.
-
-        .. deprecated::
-            Use `field(X)` instead, as for ``WPPMCovarianceField``.
-        """
-        warnings.warn(
-            "cov_batch() is deprecated. Use field(X) instead for unified single/batch API.",
-            DeprecationWarning,
-            stacklevel=2,
-        )
-        if X.ndim < 2:
-            raise ValueError(
-                f"cov_batch() expects batch with shape (n_points, input_dim), got {X.shape}. "
-                f"Use field(x) for single points."
-            )
-        return self(X)
 
     def sqrt_cov(self, x: jnp.ndarray) -> jnp.ndarray:
         """
