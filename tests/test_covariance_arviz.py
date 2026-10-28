@@ -34,7 +34,7 @@ from psyphy.posterior.posterior import MAPPosterior  # noqa: E402
 
 @pytest.fixture(autouse=True)
 def _full_matmul_precision():
-    """Full float32 matmuls: TF32 on Ampere+ GPUs would blur exact comparisons.
+    """Full float32 matmuls: TF32 on Ampere+ GPUs would blur exact comparisons
 
     See test_posterior_mean_covariance_field.py for the full reasoning.
     """
