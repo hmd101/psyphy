@@ -325,7 +325,11 @@ the predictive posterior for thresholds:
 Everything above started from the paper's weights. Here we start from the paper's data
 only: does psyphy's fit find the paper's covariance field?
 
+<<<<<<< HEAD
 The following block of code refits the WPPM's weights from the raw data, computes the covariance field and then plots resulting ellipses.
+=======
+The following block of code refits the WPPM's weights from the raw data, computes the covariance field  and then plots resulting ellipses.
+>>>>>>> origin/main
 Looking at the alignment of the ellipses in the figure below, the answer to that question is yes.
 
 ```python title="MAP fit with the paper's optimizer settings"

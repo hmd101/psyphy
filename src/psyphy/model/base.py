@@ -41,13 +41,13 @@ class Model(ABC):
     # ------------------------------------------------------------------
 
     @abstractmethod
-    def init_params(self, key: Any) -> dict:  # jax.random.KeyArray
+    def init_params(self, key: Any) -> dict:  # jax.Array
         """
         Sample initial parameters from prior.
 
         Parameters
         ----------
-        key : jax.random.KeyArray
+        key : jax.Array
             PRNG key
 
         Returns

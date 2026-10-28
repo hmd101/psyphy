@@ -137,10 +137,10 @@ class ResponseData:
     """
 
     def __init__(self) -> None:
-        self.stimuli: list[np.array] = []
-        self.responses: list[np.array] = []
+        self.stimuli: list[np.ndarray] = []
+        self.responses: list[np.ndarray] = []
         self.stim_shape: tuple | None = None  # set on first add_trial call
-        self.contexts: list[np.array] = []
+        self.contexts: list[np.ndarray] = []
 
     def add_trial(self, input: tuple[Any, ...], resp: Any, context: Any = None) -> None:
         """
