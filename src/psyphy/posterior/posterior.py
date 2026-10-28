@@ -49,16 +49,18 @@ class MAPPosterior:
         """Return the associated model."""
         return self._model
 
-    def sample(self, n: int = 1, *, key=None):
+    def sample(self, n: int, *, key):
         """
         Sample from delta distribution (returns repeated θ_MAP).
 
         Parameters
         ----------
-        n : int, default=1
+        n : int
             Number of samples
-        key : jax.Array, optional
-            PRNG key (unused for delta distribution)
+        key : jax.Array
+            PRNG key. A delta distribution has no randomness, so the key goes
+            unread. It is required to keep one signature across every
+            :class:`psyphy.posterior.ParameterSource`.
 
         Returns
         -------
@@ -68,7 +70,8 @@ class MAPPosterior:
 
         Notes
         -----
-        Delta distribution has no randomness - returns repeated MAP estimate.
+        Every row is the same parameter set, so a mean over the draws is θ_MAP and
+        their spread is zero.
         """
         return jax.tree.map(
             lambda x: jnp.tile(x[None, ...], (n,) + (1,) * x.ndim), self._params

@@ -114,11 +114,6 @@ class TestMCMCPosteriorSample:
         s = posterior.sample(50, key=key)
         assert s["W"].shape[0] == 50
 
-    def test_sample_key_none_default(self, posterior):
-        """sample() with key=None should not raise."""
-        s = posterior.sample(5)
-        assert s["W"].shape[0] == 5
-
     def test_sample_draws_from_pool(self, posterior, fake_samples):
         """Every returned sample should match some row in the pooled chain."""
         key = jr.PRNGKey(5)

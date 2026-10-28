@@ -63,6 +63,62 @@ if TYPE_CHECKING:
     pass
 
 
+def _draws_from(posterior, n_samples: int | None, key) -> tuple[dict, int]:
+    """Parameter draws for a reduction over them, and how many there are.
+
+    Two paths, picked by ``n_samples``:
+
+    - ``None`` pools every stored draw from ``posterior.samples``, in stored
+      order. No key, since a mean or a quantile over the whole pool does not
+      depend on the order it arrives in.
+    - an int calls ``posterior.sample(n_samples, key=key)``, which subsamples. The
+      result depends on the key, so we require one.
+
+    Parameters
+    ----------
+    posterior : ParameterPosterior
+        For the pooled path, one exposing ``samples``, ``n_chains`` and
+        ``n_draws``, which today means an ``MCMCPosterior``.
+    n_samples : int or None
+        Draws to use, or None for every stored draw.
+    key : jax.Array or None
+        PRNG key. Read only when ``n_samples`` is an int.
+
+    Returns
+    -------
+    draws : dict
+        Parameter PyTree with a leading axis of n_samples.
+    n_samples : int
+        The resolved count.
+
+    Raises
+    ------
+    ValueError
+        If ``n_samples`` is None and the posterior stores no fixed set of draws,
+        or if ``n_samples`` is given without a key.
+    """
+    if n_samples is None:
+        samples = getattr(posterior, "samples", None)
+        n_chains = getattr(posterior, "n_chains", None)
+        n_draws = getattr(posterior, "n_draws", None)
+        if samples is None or n_chains is None or n_draws is None:
+            raise ValueError(
+                f"{type(posterior).__name__} stores no fixed set of draws, so "
+                "n_samples cannot be inferred. Pass n_samples and a key."
+            )
+        total = int(n_chains) * int(n_draws)
+        # (n_chains, n_draws, *param_shape) -> (n_chains * n_draws, *param_shape)
+        pooled = jax.tree.map(lambda x: x.reshape(total, *x.shape[2:]), dict(samples))
+        return pooled, total
+
+    if key is None:
+        raise ValueError(
+            f"n_samples={n_samples} subsamples the draws, so pass key=. "
+            "Omit n_samples to use every stored draw, which needs no key."
+        )
+    return posterior.sample(int(n_samples), key=key), int(n_samples)
+
+
 @runtime_checkable
 class CovarianceField(Protocol):
     """
@@ -353,7 +409,7 @@ class WPPMCovarianceField:
           is systematically too small and can collapse toward λI (see
           ``PosteriorMeanCovarianceField`` for why). A ``UserWarning`` is
           raised in that case. Use ``PosteriorMeanCovarianceField(posterior)``
-          for E[Σ], or ``posterior.sample(n)`` for individual samples.
+          for E[Σ], or ``posterior.sample(n, key=...)`` for individual samples.
 
         Examples
         --------
@@ -551,13 +607,14 @@ class PosteriorMeanCovarianceField:
         Any posterior with ``.model`` and ``.sample(n, key=...)``, e.g.
         ``MCMCPosterior`` or ``MAPPosterior``.
     n_samples : int | None, default=None
-        Number of samples to average over. If None, uses every stored sample,
-        which requires the posterior to expose ``n_chains`` and ``n_draws``
-        (``MCMCPosterior`` does). Posteriors without a fixed sample count
-        (``MAPPosterior``, future variational posteriors) must pass it.
+        Number of samples to average over. If None, averages every stored sample,
+        which requires the posterior to expose ``samples``, ``n_chains`` and
+        ``n_draws`` (``MCMCPosterior`` does). Posteriors without a fixed sample
+        count (``MAPPosterior``, future variational posteriors) must pass it.
     key : jax.random.KeyArray | None, default=None
-        PRNG key forwarded to ``posterior.sample``. Only matters when
-        ``n_samples`` is smaller than the number of stored samples.
+        PRNG key for the subsample. Required when ``n_samples`` is given. With
+        ``n_samples=None`` it goes unread, since every stored sample is averaged in
+        the order it is stored.
 
     Notes
     -----
@@ -589,27 +646,9 @@ class PosteriorMeanCovarianceField:
     def __init__(self, posterior, n_samples: int | None = None, key=None):
         self.model = posterior.model
 
-        if n_samples is None:
-            # "All samples" is only well defined for posteriors that store a
-            # fixed set of samples. MCMCPosterior.sample(n) samples WITHOUT
-            # replacement when n <= n_chains * n_draws, so asking for exactly
-            # that many returns every stored sample once (in shuffled order,
-            # which does not affect a mean). This stays on the public
-            # ParameterPosterior interface instead of reading _samples.
-            n_chains = getattr(posterior, "n_chains", None)
-            n_draws = getattr(posterior, "n_draws", None)
-            if n_chains is None or n_draws is None:
-                raise ValueError(
-                    f"{type(posterior).__name__} does not expose n_chains/n_draws; "
-                    "pass n_samples explicitly."
-                )
-            n_samples = int(n_chains) * int(n_draws)
-
-        # Drawn ONCE here, so repeated evaluations of the field are
-        # deterministic and consistent with each other.
+        # Taken ONCE here, so repeated evaluations of the field agree.
         # self._draws: PyTree with leading axis n_samples, e.g. {"W": (N, *W_shape)}
-        self._draws = posterior.sample(int(n_samples), key=key)
-        self.n_samples = int(n_samples)
+        self._draws, self.n_samples = _draws_from(posterior, n_samples, key)
 
         self._eval_batch_jitted = jax.jit(self._eval_batch_impl)
 
@@ -993,12 +1032,12 @@ def contour_band(
         two differ when the samples are skewed. Radii usually are, because a
         radius cannot go below zero.
     n_samples : int, optional
-        Samples to use. Defaults to every stored sample, which needs the posterior
-        to expose ``n_chains`` and ``n_draws``. A point-mass posterior such as
-        ``MAPPosterior`` has to pass this.
+        Samples to use. Omit it for every stored sample, which needs the posterior
+        to expose ``samples``, ``n_chains`` and ``n_draws``. A point-mass posterior
+        such as ``MAPPosterior`` has to pass this.
     key : jax.Array, optional
-        PRNG key forwarded to ``posterior.sample``. Only matters when
-        ``n_samples`` is smaller than the number of stored samples.
+        PRNG key for the subsample. Required when ``n_samples`` is given, unread
+        otherwise, since every stored sample is taken in order.
 
     Returns
     -------
@@ -1058,22 +1097,12 @@ def contour_band(
             "so call it with explicit directions instead."
         )
 
-    if n_samples is None:
-        n_chains = getattr(posterior, "n_chains", None)
-        n_draws = getattr(posterior, "n_draws", None)
-        if n_chains is None or n_draws is None:
-            raise ValueError(
-                f"{type(posterior).__name__} does not expose n_chains/n_draws, "
-                "so n_samples cannot be inferred. Pass n_samples explicitly."
-            )
-        n_samples = int(n_chains) * int(n_draws)
-
     # Closed grid, so the last angle repeats the first. n_directions is a magic
     # default (181 -> one direction every two degrees); nothing depends on it.
     phi = jnp.linspace(0.0, 2 * jnp.pi, n_directions)  # radians
     directions = jnp.stack([jnp.cos(phi), jnp.sin(phi)], axis=-1)  # (n_dir, 2)
 
-    draws = posterior.sample(int(n_samples), key=key)
+    draws, n_samples = _draws_from(posterior, n_samples, key)
 
     def radii_one_draw(params):
         covs = WPPMCovarianceField(model, params)(points)  # (n_points, 2, 2)

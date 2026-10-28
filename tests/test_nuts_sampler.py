@@ -204,7 +204,7 @@ class TestNUTSDownstreamIntegration:
         p(correct | x_ref, x_comp, D)
             ≈ (1/N) Σ_i  p(correct | x_ref, x_comp, θ_i),   θ_i ~ posterior
     where p(correct | ..., θ_i) is evaluated by OddityTask.predict() and
-    averaged over N parameter samples drawn from MCMCPosterior.sample().
+    averaged over N parameter samples drawn from MCMCPosterior.sample(n, key=...).
     """
 
     def test_predictive_posterior_mean_shape(self, posterior_adaptive, tiny_model):

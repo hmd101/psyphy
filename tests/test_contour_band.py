@@ -231,7 +231,7 @@ def test_map_posterior_band_has_zero_width(tiny_model):
     post = MAPPosterior(params, tiny_model)
     pts = jnp.array([[0.0, 0.0], [0.2, 0.2]])
 
-    band = contour_band(post, pts, n_samples=8, n_directions=19)
+    band = contour_band(post, pts, n_samples=8, n_directions=19, key=jr.PRNGKey(0))
 
     assert jnp.allclose(band.upper - band.lower, 0.0, atol=1e-6)
     assert jnp.allclose(band.median, band.lower, atol=1e-6)

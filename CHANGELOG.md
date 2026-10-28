@@ -8,6 +8,41 @@ breaking changes are called out below but do not force a minor-version bump.
 
 ## [Unreleased]
 
+### Breaking
+
+- **Drawing parameters now names its key** `MCMCPosterior.sample` and `MAPPosterior.sample`
+  require both `n` and `key`! `MCMCPosterior.sample` used to fall back to
+  `jax.random.PRNGKey(0)` and `MAPPosterior.sample` used to default `n=1`, so, the 3
+  implementations now match the `ParameterSource` protocol they claim:
+
+  ```python
+  # before
+  posterior.sample(100)             # seeded PRNGKey(0) somewhere you could not see
+  map_posterior.sample()            # one draw
+
+  # now
+  posterior.sample(100, key=key)
+  map_posterior.sample(1, key=key)  # the key goes unread for a point mass
+  ```
+
+### Changed
+
+- **The every-stored-sample path no longer subsamples.** `PosteriorMeanCovarianceField(posterior)`
+  and `contour_band(posterior, points)` pool the stored samples in order instead of asking
+  `posterior.sample` for a full-size draw. Both keep their current call shape and need no
+  key, and the numbers are unchanged, because a full-size draw without replacement is a
+  permutation  (neither a mean nor a quantile depends on order)
+
+  A key is now required when `n_samples` is given, since that genuinely subsamples:
+
+  ```python
+  PosteriorMeanCovarianceField(posterior)                             # unchanged
+  PosteriorMeanCovarianceField(posterior, n_samples=100, key=key)     # key now required
+  ```
+
+  This also drops a `jax.random.choice` and a gather over every stored sample, run before
+  only to shuffle something about to be averaged.
+
 ### Added
 
 - **`ParameterSource` in `psyphy.posterior`**, a one-method protocol for anything we can
@@ -38,8 +73,8 @@ breaking changes are called out below but do not force a minor-version bump.
 ### Breaking
 
 - **`cov()` and `cov_batch()` are gone from the covariance fields.** Both methods have
-  raised `DeprecationWarning` since the single entry point landed, and `field(x)` replaces
-  both. It dispatches on the input shape, so one call covers a single point and any batch:
+  raised `DeprecationWarning` since the single entry point was introduced, and `field(x)` replaces
+  both.
 
   ```python
   # before
