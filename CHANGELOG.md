@@ -8,7 +8,6 @@ breaking changes are called out below but do not force a minor-version bump.
 
 ## [Unreleased]
 
-<<<<<<< HEAD
 ### Added
 
 - **Credible bands on the contour radii**: `contour_radii`, `contour_band` and
@@ -22,7 +21,7 @@ breaking changes are called out below but do not force a minor-version bump.
   say "threshold". Nothing in `0.0.5` or earlier exposed them, so no installed version
   breaks. `threshold_pred` and `ThresholdConfig` in `psyphy.posterior` keep their names,
   because the contour they recover is defined by a target probability correct.
-=======
+
 ### Fixed
 
 - **`OddityTask.predict` declared the wrong return type.** It was annotated
@@ -48,7 +47,6 @@ breaking changes are called out below but do not force a minor-version bump.
   unchecked by the only gate that blocked a commit.
 - **The mypy CI job no longer carries `continue-on-error: true`.** It reported 19 errors
   on every run and failed nothing. Those are fixed and the gate is live.
->>>>>>> origin/main
 
 ## [0.0.5] — 2026-10-09
 
