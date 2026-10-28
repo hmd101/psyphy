@@ -123,7 +123,7 @@ def test_map_posterior_gives_sigma_of_theta_map(model, X):
     """For a MAP posterior every 'draw' is θ_MAP, so the mean is Σ(θ_MAP)."""
     params = model.init_params(jr.PRNGKey(3))
     posterior = MAPPosterior(params, model)
-    field = PosteriorMeanCovarianceField(posterior, n_samples=3)
+    field = PosteriorMeanCovarianceField(posterior, n_samples=3, key=jr.PRNGKey(0))
     assert jnp.allclose(field(X), _sigma(model, params["W"], X), rtol=1e-5, atol=1e-9)
 
 

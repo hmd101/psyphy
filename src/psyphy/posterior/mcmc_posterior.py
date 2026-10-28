@@ -118,7 +118,7 @@ class MCMCPosterior:
         """The WPPM instance used during inference."""
         return self._model
 
-    def sample(self, n: int, *, key=None) -> dict:
+    def sample(self, n: int, *, key) -> dict:
         """Draw n parameter vectors from the pooled chain samples.
 
         Pools all chains and draws into a flat collection of
@@ -129,17 +129,20 @@ class MCMCPosterior:
         ----------
         n : int
             Number of samples to return.
-        key : jax.Array | None
-            PRNG key. Defaults to ``jax.random.PRNGKey(0)`` when None.
+        key : jax.Array
+            PRNG key for the subsample.
 
         Returns
         -------
         dict
             Parameter PyTree with leading dimension ``n``.
             For WPPM: ``{"W": ndarray of shape (n, *W_shape)}``.
+
+        Notes
+        -----
+        For every stored sample, read :attr:`samples` instead. It keeps the chain
+        axis and takes no key.
         """
-        if key is None:
-            key = jr.PRNGKey(0)
 
         def _subsample(x):
             # x     : (n_chains, n_draws, *param_shape)
