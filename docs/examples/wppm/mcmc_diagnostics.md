@@ -74,31 +74,56 @@ to ArviZ:
 --8<-- "docs/examples/wppm/nuts_inference_example.py:arviz_diagnostics"
 ```
 
+`az.summary` gives one row per quantity: two log variances and one correlation at each of
+the 25 reference points we chose, (75 rows total). We see the print output from above for the  `--mode full`
+run below:
+
+```text
+            mean         sd      r_hat     ess_bulk
+count  75.000000  75.000000  75.000000    75.000000
+mean   -2.796666   0.148029   1.004584  1012.223390
+std     1.892634   0.053201   0.003398   314.699325
+min    -6.242783   0.077725   0.999981   398.680579
+25%    -4.171345   0.108828   1.002054   806.839604
+50%    -3.697674   0.142442   1.003868  1034.450751
+75%    -0.410639   0.163172   1.006310  1207.652176
+max     0.333164   0.337189   1.017289  1837.560237
+  R-hat max on Σ: 1.017  (target < 1.01)
+  ESS min on Σ:   399    (target > 100 per chain)
+```
+
+Drop the `.describe()` to see all 75 rows instead:
+
+```python title="Every quantity, one row each"
+print(summary[["mean", "sd", "r_hat", "ess_bulk"]])
+```
+
 [`covariance_to_arviz`](../../reference/model.md#psyphy.model.covariance_to_arviz) takes the
 posterior and the points to evaluate $\Sigma$ at, here the reference points. From there
 `az.summary`, `az.rhat`, `az.ess` and every ArviZ plotting function work on a psyphy fit
 directly, which is where the two figures below come from.
-wants
-??? note "What ArviZ needs"
+
+??? note "Careful about ArviZ the spelling of  keywords"
 
     `covariance_to_arviz` returns an `xarray.DataTree` with dimensions
-    `(chain, draw, point, quantity)`, and carries the sampler statistics across as ArviZ's
-    `sample_stats` group. The `sampler_stats` keys are spelled ArviZ's way on purpose
-    (`diverging`, `energy`, `n_steps`), so they go straight over and `az.plot_energy` and
-    the divergence ticks on a trace plot work out of the box. ArviZ's
+    `(chain, draw, point, quantity)`, and carries the sampler statistics into ArviZ's
+    `sample_stats` group under the keys ArviZ expects:
+
+    - `diverging`
+    - `energy`
+    - `n_steps`
+
+    Nothing needs renaming, so `az.plot_energy` and the divergence ticks on a trace plot
+    work directly. ArviZ's
     [getting started guide](https://python.arviz.org/en/latest/user_guide/getting_started.html)
-    covers that format if you want the detail.
+    covers the format in more detail.
 
-    Note it takes the posterior itself, not draws from it. `posterior.sample(n)` *pools* the
-    chains: it flattens `(n_chains, n_draws, ...)` into `(n_chains * n_draws, ...)` and picks
-    `n` at random, so a draw no longer carries the chain it came from.
+??? note "Watch out what to compute the ESS on"
 
-    R-hat asks whether the chains agree, by comparing the spread between them to the spread
-    within each one. Pooling blends the chains evenly into one collection, so any way of
-    splitting it afterwards gives pieces that look alike. ArviZ returns `nan` for a single
-    chain, and if pooled draws are reshaped into chains it returns about 1.00 no matter how
-    badly the real chains disagreed. ESS behaves the same way, since shuffling removes the
-    autocorrelation it measures.
+    `posterior.sample(n)` pools the chains: `(n_chains, n_draws, ...)` flattens to
+    `(n_chains * n_draws, ...)`, so a draw no longer carries the chain it came from. R-hat
+    and ESS both need that axis. On pooled draws R-hat returns about 1.00 however badly the
+    real chains disagreed, so the check passes when it should fail.
 
 ## Reading the figures
 
@@ -146,26 +171,6 @@ Each curve there is the distribution of one diagnostic over every $\Sigma$ quant
 every reference point, so a point on it reads as "this fraction of quantities scored at most
 this value". More is better for ESS and less is better for R-hat. For R-hat: where its
 curve crosses the dashed line, that fraction of quantities sits above 1.01.
-
-`az.summary` reduces the 75 quantities to one row each. The snippet above prints their
-distribution, which is what the `--mode full` run gives:
-
-```text
-            mean         sd      r_hat     ess_bulk
-count  75.000000  75.000000  75.000000    75.000000
-mean   -2.796666   0.148029   1.004584  1012.223390
-std     1.892634   0.053201   0.003398   314.699325
-min    -6.242783   0.077725   0.999981   398.680579
-25%    -4.171345   0.108828   1.002054   806.839604
-50%    -3.697674   0.142442   1.003868  1034.450751
-75%    -0.410639   0.163172   1.006310  1207.652176
-max     0.333164   0.337189   1.017289  1837.560237
-  R-hat max on Σ: 1.017  (target < 1.01)
-  ESS min on Σ:   399    (target > 100 per chain)
-```
-
-Read the `max` row for R-hat and the `min` row for ESS, since one bad quantity out of 75 is
-enough to look at. Drop `.describe()` to see all 75 rows instead.
 
 ---
 
