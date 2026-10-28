@@ -118,12 +118,16 @@ def test_band_matches_the_inline_tutorial_computation(tiny_model, posterior, poi
     band = contour_band(posterior, points, ci_prob=0.89, n_samples=50, key=key)
 
     # The reference loops over samples in Python, contour_band vmaps, so float32
-    # accumulates in a different order. The gap is ~2e-6 relative on radii of
-    # order 1; a real regression (wrong axis, wrong quantile, ETI vs HDI) moves
-    # these by percent.
-    assert jnp.allclose(band.lower, r_lo, rtol=1e-5, atol=1e-7)
-    assert jnp.allclose(band.median, r_med, rtol=1e-5, atol=1e-7)
-    assert jnp.allclose(band.upper, r_hi, rtol=1e-5, atol=1e-7)
+    # accumulates in a different order. The gap that leaves is absolute, about
+    # 1.5e-6 on a radius, and does not shrink with the radius: r_lo holds the
+    # smallest radii here (~0.06), so an rtol alone would set a tolerance below
+    # the noise floor and fail on one platform and not another. atol carries it
+    # instead. A real regression moves these by percent, so the pin is still
+    # tight: ci_prob 0.90 instead of 0.89 is 1266x this tolerance, and HDI
+    # instead of ETI is 10000x.
+    assert jnp.allclose(band.lower, r_lo, rtol=1e-5, atol=1e-5)
+    assert jnp.allclose(band.median, r_med, rtol=1e-5, atol=1e-5)
+    assert jnp.allclose(band.upper, r_hi, rtol=1e-5, atol=1e-5)
 
 
 # ---------------------------------------------------------------------------
