@@ -132,11 +132,11 @@ classic Weber's Law result on simulated one-dimensional data.
 </div>
 
 
-## The short version
+## In a nutshell
 
 The block below downloads one observer's data, loads the paper's fitted weights and turns
-them into threshold contours. It runs on a laptop as it stands. The sections after it go
-through the same steps one at a time and add the refit.
+them into threshold contours shown above. Because we use the fitted weights, this runs on a laptop. The sections after it go
+through the same steps in detail and in particular, we refit the model, which requires a GPU.
 
 ```python title="Published data to threshold contours"
 --8<-- "docs/examples/wppm/hong2025_recipe.py:recipe"
@@ -210,9 +210,9 @@ we transcribed once into `PAPER_HYPERPARAMS`.
 
 ## Exact check
 
-Does psyphy build the same covariance field as Hong et al.? We hand psyphy the paper's own
-weights and ask it for the covariance field, with no optimizer and nothing random. If this
-disagrees, the problem is in the model implementation itself.
+The first question we ask: Does psyphy build the same covariance field as Hong et al.? For this, we hand psyphy the paper's published
+weights and compute the covariance field. If this
+disagrees, the problem is in the model implementation itself, as so far no optimizer has been involved.
 
 ```python title="Published weights through psyphy's covariance field"
 --8<-- "docs/examples/wppm/hong2025_reproduction.py:stage1"
@@ -289,9 +289,9 @@ with `threshold_pred=True` computes this inverse.
 ??? note "Why the ellipse fit is closed-form"
 
     A point at radius `r` in direction `u` satisfies $u^T\Sigma^{-1}u = 1/r^2$, which
-    is linear in the three free entries of $\Sigma^{-1}$. So the fit is least
-    squares over those three unknowns, followed by a single matrix inverse to
-    recover $\Sigma$ itself.
+    is linear in the three free entries of $\Sigma^{-1}$. So, the fit is least
+    squares over those three unknowns. We then do a single matrix inverse to
+    recover $\Sigma$.
 
 We run the inversion at the paper's own settings (16 directions, 1,000
 distances along each, 2,000 Monte Carlo samples per evaluation). That
@@ -320,12 +320,13 @@ the predictive posterior for thresholds:
 
 ---
 
-## Refit
+## Refitting the model from scratch
 
-Everything above started from the paper's weights. Here we start from the paper's data
-only: does psyphy's fit find the paper's covariance field?
+Everything above started from the paper's weights. Here, we start from the paper's data
+only and ask: does psyphy's fit find the paper's covariance field?
 
 The following block of code refits the WPPM's weights from the raw data, computes the covariance field and then plots resulting ellipses.
+Note again, that this is the compute-heavy part and requires a GPU.
 
 Looking at the alignment of the ellipses in the figure below, the answer to that question is yes.
 
@@ -451,7 +452,7 @@ sense *psyphy's refit is indistinguishable from their fit*.
 The full refit takes about 16 min on a single GPU. The table breaks the runtime down by
 step.
 
-??? note "Measured runtimes, step by step"
+??? note "Measured runtimes:"
 
     CPU figures are an Apple Silicon laptop (M5); GPU is one A100 unless otherwise noted.
 

@@ -8,6 +8,27 @@ breaking changes are called out below but do not force a minor-version bump.
 
 ## [Unreleased]
 
+### Breaking
+
+- **`cov()` and `cov_batch()` are gone from the covariance fields.** Both methods have
+  raised `DeprecationWarning` since the single entry point landed, and `field(x)` replaces
+  both. It dispatches on the input shape, so one call covers a single point and any batch:
+
+  ```python
+  # before
+  field.cov(jnp.array([0.5, 0.3]))        # (2, 2),  single point only
+  field.cov_batch(jnp.zeros((10, 2)))     # (10, 2, 2), batch only
+
+  # now
+  field(jnp.array([0.5, 0.3]))            # (2, 2)
+  field(jnp.zeros((10, 2)))               # (10, 2, 2)
+  ```
+
+  The removal covers `WPPMCovarianceField`, `PosteriorMeanCovarianceField` and the
+  `CovarianceField` `Protocol`, which now states `__call__` and `sqrt_cov`. The numbers are
+  unchanged: `cov()` forwarded to the same evaluation `field(x)` uses. `sqrt_cov` and
+  `sqrt_cov_batch` are untouched.
+
 ### Added
 
 - **Credible bands on the contour radii**: `contour_radii`, `contour_band` and
