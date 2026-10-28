@@ -190,9 +190,9 @@ BANDWIDTH = 1e-2
 #                    thin for this many coefficients, and under-determined
 #                    posteriors are wide for reasons that have nothing to do
 #                    with the sampler.
-#   4 x 1000 draws   the standard NUTS configuration, and what the shapes in
+#   4 x 1000 samples the standard NUTS configuration, and what the shapes in
 #                    the design note assume. R-hat needs >= 2 chains (4 is
-#                    convention) and ESS > 100 per parameter needs the draws.
+#                    convention) and ESS > 100 per parameter needs the samples.
 #   warmup 1000      dual averaging tunes the step size AND the mass matrix;
 #                    for WPPM the mass matrix matters a lot, because
 #                    coefficients at different Chebyshev degrees have genuinely
@@ -248,9 +248,9 @@ MAP_MOMENTUM = 0.9
 NUM_WARMUP = _cfg["warmup"]
 NUM_SAMPLES = _cfg["draws"]
 NUM_CHAINS = _cfg["chains"]
-# Tree-depth cap: a draw costs at most 2**MAX_NUM_DOUBLINGS - 1 gradient
+# Tree-depth cap: a sample costs at most 2**MAX_NUM_DOUBLINGS - 1 gradient
 # evaluations (255 here; BlackJAX's default 10 would allow 1023). Check
-# sampler_stats["n_steps"] after the run; if most draws hit 255, raise it.
+# sampler_stats["n_steps"] after the run; if most samples hit 255, raise it.
 MAX_NUM_DOUBLINGS = 8
 # Sampling seed, and the frozen key the Monte Carlo likelihood is evaluated
 # with. Both define *which* posterior was sampled, not just how, so they are
@@ -267,7 +267,7 @@ print(
 )
 
 # Everything that changes what was fitted. Stored with the cache and compared
-# on load: a figure captioned `balanced` that was drawn from `quick` draws is
+# on load: a figure captioned `balanced` that was drawn from `quick` samples is
 # precisely the failure this cache could otherwise introduce, so a mismatch is
 # a hard error naming the field rather than a warning nobody reads.
 RUN_SETTINGS = {
@@ -454,12 +454,12 @@ model = WPPM(
 # 3. MAP warm-start, and 4. NUTS sampling
 #
 # Both are skipped under --from-fit: they are the only expensive steps, and
-# everything after them is post-processing of the draws. Initializing NUTS near
+# everything after them is post-processing of the samples. Initializing NUTS near
 # the posterior mode greatly reduces warmup steps.
 # ---------------------------------------------------------------------------
 if FROM_FIT:
     print(f"[3/7] --from-fit: skipping MAP ({os.path.basename(fit_path())})")
-    print("[4/7] --from-fit: skipping NUTS; loading cached draws...")
+    print("[4/7] --from-fit: skipping NUTS; loading cached samples...")
     map_posterior, nuts_posterior = load_fit(model, ref_points, truth_params)
 else:
     print("[3/7] MAP warm-start (fast initialization near posterior mode)...")
@@ -479,7 +479,7 @@ else:
 
     # --8<-- [start:cost_probe]
     # Project the sampling cost before committing to it. NUTS costs
-    # O(2^tree_depth) gradient evaluations per draw and the depth is data
+    # O(2^tree_depth) gradient evaluations per sample and the depth is data
     # dependent, so the honest output is a bracket, not a number. Cheap insurance
     # against submitting a batch job that cannot finish inside its time limit --
     # and the only way to know whether --mode full is hours or days on this
@@ -504,12 +504,12 @@ else:
     )
     # Chains are vmapped (one batched call), so on a GPU the wall clock is closer
     # to the per-chain figure below than to the all-chains total; on a CPU it is
-    # closer to the total. The upper bracket is the tree-depth cap: no draw can
+    # closer to the total. The upper bracket is the tree-depth cap: no sample can
     # cost more than 2**MAX_NUM_DOUBLINGS - 1 gradient evaluations.
-    print(f"  {_total_draws} draws total ({NUM_CHAINS} chains vmapped)")
+    print(f"  {_total_draws} samples total ({NUM_CHAINS} chains vmapped)")
     for _g_per_draw in (16, 64, 2**MAX_NUM_DOUBLINGS - 1):
         _hours = _per_grad * _total_draws * _g_per_draw / 3600.0
-        print(f"    at {_g_per_draw:2d} grad evals/draw -> {_hours:7.2f} h")
+        print(f"    at {_g_per_draw:2d} grad evals/sample -> {_hours:7.2f} h")
     # The probe times *execution* of an already-compiled gradient. It therefore
     # EXCLUDES XLA compilation of the warmup scan, which is a one-off cost but can
     # take minutes and, on a short run like --mode quick, dominates everything the
@@ -522,7 +522,7 @@ else:
     # 4. NUTS sampling
     # ---------------------------------------------------------------------------
     print("[4/7] Running NUTS posterior sampling (BlackJAX)...")
-    print(f"  {NUM_CHAINS} chains × {NUM_WARMUP} warmup + {NUM_SAMPLES} draws")
+    print(f"  {NUM_CHAINS} chains × {NUM_WARMUP} warmup + {NUM_SAMPLES} samples")
     print(
         "  Note: warmup compiles once for all chains — may take ~30s+ before it runs."
     )
@@ -534,7 +534,7 @@ else:
         num_chains=NUM_CHAINS,
         logdensity_key_seed=LOGDENSITY_KEY_SEED,  # fixed MC key -> deterministic
         target_acceptance_rate=TARGET_ACCEPTANCE_RATE,
-        max_num_doublings=MAX_NUM_DOUBLINGS,  # cap: <= 255 grad evals per draw
+        max_num_doublings=MAX_NUM_DOUBLINGS,  # cap: <= 255 grad evals per sample
         # Sample z = W / prior_std so warmup starts from a metric matched to the
         # prior scales instead of the identity (the default; shown for clarity).
         prior_preconditioning=True,
@@ -555,26 +555,28 @@ else:
     except OSError as _exc:
         print(f"  WARNING: could not cache the fit ({_exc}); continuing")
 
-print(f"  Posterior: {nuts_posterior.n_chains} chains × {nuts_posterior.n_draws} draws")
+print(
+    f"  Posterior: {nuts_posterior.n_chains} chains × {nuts_posterior.n_draws} samples"
+)
 acc = nuts_posterior.sampler_stats["acceptance_rate"]
 print(f"  Mean acceptance rate: {float(jnp.mean(acc)):.3f}")
 # Divergences first: a divergent transition means the integrator blew up rather
-# than following the posterior's geometry, so the kept draws are biased in a way
+# than following the posterior's geometry, so the kept samples are biased in a way
 # more sampling does not fix. Any non-zero count makes the run suspect whatever
 # R-hat says, which is why it is printed before the convergence diagnostics.
 # --8<-- [start:divergence_check]
 _div = nuts_posterior.sampler_stats["diverging"]
 _n_div = int(jnp.sum(_div))
 print(
-    f"  Divergences: {_n_div} / {_div.size} draws ({_n_div / _div.size:.1%})"
+    f"  Divergences: {_n_div} / {_div.size} samples ({_n_div / _div.size:.1%})"
     f"{'  <-- investigate; try target_acceptance_rate=0.9' if _n_div else ''}"
 )
-# Fraction of post-warmup draws whose trajectory was cut off by the depth cap.
+# Fraction of post-warmup samples whose trajectory was cut off by the depth cap.
 # A large fraction means max_num_doublings is limiting mixing.
 _n_steps = nuts_posterior.sampler_stats["n_steps"]
 _at_cap = float(jnp.mean(_n_steps >= 2**MAX_NUM_DOUBLINGS - 1))
 print(
-    f"  Leapfrog steps/draw: mean {float(jnp.mean(_n_steps)):.0f}, "
+    f"  Leapfrog steps/sample: mean {float(jnp.mean(_n_steps)):.0f}, "
     f"{_at_cap:.0%} at the cap ({2**MAX_NUM_DOUBLINGS - 1})"
 )
 # --8<-- [end:divergence_check]
@@ -588,7 +590,7 @@ ELLIPSE_SCALE = 1.2  # magnification; ellipses are not drawn at true size
 
 
 def ensemble_covs(param_samples, points):
-    """Covariance field at `points` for every posterior draw.
+    """Covariance field at `points` for every posterior sample.
 
     Returns (n_samples, n_points, 2, 2), which is the "several fields" spelling
     plot_ellipses accepts, so the whole ensemble draws in one call.
@@ -603,20 +605,18 @@ def ensemble_covs(param_samples, points):
 
 # Draw posterior parameter samples
 # --8<-- [start:posterior_samples]
-n_ensemble = N_ENSEMBLE  # number of draws to visualize
+n_ensemble = N_ENSEMBLE  # number of samples to visualize
 param_samples = nuts_posterior.sample(n_ensemble, key=jr.PRNGKey(0))
 # param_samples["W"].shape == (n_ensemble, *W_shape)
 # --8<-- [end:posterior_samples]
 
 # Posterior mean covariance field, E[Σ(x)]: Σ is computed for EVERY stored
-# draw and the matrices are averaged. Deliberately NOT
+# sample and the matrices are averaged. Deliberately NOT
 # WPPMCovarianceField(model, nuts_posterior.params): params is the mean
-# parameter E[W], and Σ(E[W]) comes out far too small. Σ = U Uᵀ + λI is
-# quadratic in W, and W is only defined up to a rotation of its embedding
-# axis, so draws (especially from different chains) at different orientations
-# cancel when W is averaged. See PosteriorMeanCovarianceField's docstring.
+# parameter E[W], and Σ is nonlinear in W, so Σ(E[W]) comes out far too
+# small. See PosteriorMeanCovarianceField's docstring.
 # --8<-- [start:posterior_mean]
-mean_field = PosteriorMeanCovarianceField(nuts_posterior)  # all draws by default
+mean_field = PosteriorMeanCovarianceField(nuts_posterior)  # all samples by default
 covs_mean = mean_field(ref_points)  # (n_ref, 2, 2)
 # --8<-- [end:posterior_mean]
 covs_truth = truth_field(ref_points)
@@ -666,7 +666,7 @@ ax.set_xlabel("Model dimension 1")
 ax.set_ylabel("Model dimension 2")
 ax.set_title(
     f"Posterior predictive covariance field\n"
-    f"chains={NUM_CHAINS}, draws={NUM_SAMPLES}, MC_samples={MC_SAMPLES}"
+    f"chains={NUM_CHAINS}, samples={NUM_SAMPLES}, MC_samples={MC_SAMPLES}"
 )
 ax.legend(loc="upper right")
 ax.grid(True, alpha=0.3)
@@ -677,14 +677,14 @@ save_ellipse_figure(fig, "nuts_ellipses_uncertainty")
 # 5b. Pointwise credible band on the threshold contour
 #
 # The ensemble figure above shows a cloud of contours. A cloud is not what gets
-# reported in a paper; an interval is. Writing each draw's contour as a radius
+# reported in a paper; an interval is. Writing each sample's contour as a radius
 # per direction turns the cloud into a quantile band.
 # ---------------------------------------------------------------------------
 print("[5b/7] Pointwise credible band on the threshold contours...")
 
 
 # --8<-- [start:credible_band]
-N_BAND = min(400, NUM_CHAINS * NUM_SAMPLES)  # posterior draws to use for the band
+N_BAND = min(400, NUM_CHAINS * NUM_SAMPLES)  # posterior samples to use for the band
 CI_PROB = 0.89  # ArviZ's default, so the band and az.summary match
 
 band = contour_band(
@@ -737,7 +737,7 @@ ax.set_xlabel("Model dimension 1")
 ax.set_ylabel("Model dimension 2")
 ax.set_title(
     f"Pointwise {CI_PROB:.0%} credible band on the threshold contour\n"
-    f"{N_BAND} draws, chains={NUM_CHAINS}, draws={NUM_SAMPLES}, MC_samples={MC_SAMPLES}"
+    f"{N_BAND} samples, chains={NUM_CHAINS}, samples={NUM_SAMPLES}, MC_samples={MC_SAMPLES}"
 )
 ax.legend(loc="upper right", fontsize=8)
 ax.grid(True, alpha=0.3)
@@ -801,7 +801,7 @@ ax.set_xlabel("Model dimension 1")
 ax.set_ylabel("Model dimension 2")
 ax.set_title(
     "Nested credible bands on one threshold contour\n"
-    f"ci_prob=[0.5, 0.8, 0.95], {N_BAND} draws"
+    f"ci_prob=[0.5, 0.8, 0.95], {N_BAND} samples"
 )
 handles, labels = ax.get_legend_handles_labels()
 ax.legend(handles[::-1], labels[::-1], loc="upper right", fontsize=8)
@@ -885,7 +885,7 @@ configs = [
     (
         mean_field,
         "#cc2222",
-        f"NUTS mean ({NUM_CHAINS}×{NUM_SAMPLES} draws) + {n_ensemble} posterior samples",
+        f"NUTS mean ({NUM_CHAINS}×{NUM_SAMPLES} samples) + {n_ensemble} of them shown",
         True,
     ),
 ]
@@ -997,7 +997,7 @@ ax.set_xlabel("Model dimension 1")
 ax.set_ylabel("Model dimension 2")
 ax.set_title(
     f"Truth vs MAP vs posterior  ({MODE}: mc={MC_SAMPLES}, "
-    f"{NUM_CHAINS}×{NUM_SAMPLES} draws, ellipses ×{ELLIPSE_SCALE})"
+    f"{NUM_CHAINS}×{NUM_SAMPLES} samples, ellipses ×{ELLIPSE_SCALE})"
 )
 ax.grid(True, alpha=0.3)
 save_ellipse_figure(fig, "nuts_overlay")

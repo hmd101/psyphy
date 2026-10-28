@@ -6,10 +6,10 @@ constrain the threshold ellipse and wide spread means they don't. A single MAP e
 that difference. Crucially, adaptive trial placement depends on this uncertainty, because
 the next trial should go where the model is most uncertain.
 
-!!! note "Check the draws before you trust them"
+!!! note "Check the samples before you trust them"
     The example below is converged. Before you trust any set of samples you need to check
     that they are representative of the posterior.
-    [Checking MCMC draws with ArviZ](mcmc_diagnostics.md) shows how, and which diagnostics
+    [Checking MCMC samples with ArviZ](mcmc_diagnostics.md) shows how, and which diagnostics
     to run.
 
 <div align="center">
@@ -18,7 +18,7 @@ the next trial should go where the model is most uncertain.
   an affine transformation of the input space (e.g., RGB). Each green dot is one of the 25 reference
   points at which the model is compared against the ground truth. Around each of them, black
   is the true threshold contour, red is the posterior mean of the covariance field, \(\mathbb{E}[\Sigma(x)]\), and the
-  200 faint blue contours are individual draws from the posterior. Built in <a href="#step-5-plotting-posterior-samples-and-credible-intervals">Step 5</a>.</em></p>
+  200 faint blue contours are individual samples from the posterior. Built in <a href="#step-5-plotting-posterior-samples-and-credible-intervals">Step 5</a>.</em></p>
 </div>
 
 The companion script is
@@ -29,8 +29,8 @@ The companion script is
 | 1–2 | simulate data, build the Wishart Process Psychophysical Model (WPPM) | a [`TrialData`](../../reference/data.md#psyphy.data.TrialData) and a model, as in the [MAP tutorial](full_wppm_fit_example.md) |
 | 3 | run a short MAP fit | a starting point near the posterior peak |
 | 4 | run the sampler, here the No-U-Turn Sampler (NUTS), via [BlackJAX](https://blackjax-devs.github.io/blackjax/) | an [`MCMCPosterior`](../../reference/posterior.md#psyphy.posterior.MCMCPosterior): thousands of plausible parameter arrays $W$ |
-| 5 | evaluate the covariance field for every draw | a distribution of threshold contours, and a credible band |
-| next | check the chains with [ArviZ](https://python.arviz.org/) | evidence that the draws are representative of the posterior, see [Checking MCMC draws with ArviZ](mcmc_diagnostics.md) |
+| 5 | evaluate the covariance field for every sample | a distribution of threshold contours, and a credible band |
+| next | check the chains with [ArviZ](https://python.arviz.org/) | evidence that the samples are representative of the posterior, see [Checking MCMC samples with ArviZ](mcmc_diagnostics.md) |
 
 ??? note "How to run the script"
 
@@ -61,7 +61,7 @@ The companion script is
     code path. Its chains are far too short to converge, so its diagnostics are not to be interpreted.
 
     Only MAP and NUTS are expensive, and the script caches them. The diagnostics and all
-    figures are post-processing of the stored draws and don't need a GPU and can easily be done like this:
+    figures are post-processing of the stored samples and don't need a GPU and can easily be done like this:
 
     ```bash
     python nuts_inference_example.py --mode full --from-fit
@@ -140,7 +140,7 @@ ground-truth WPPM, so there is something to compare the fit against.
 
 The model's output is a covariance *field* $\Sigma(x)$: a $2\times2$ covariance matrix at
 every point $x$ of the stimulus space, whose contour is the threshold contour we plot. Every
-$\Sigma$ below means this, evaluated at one reference point and one posterior draw unless
+$\Sigma$ below means this, evaluated at one reference point and one posterior sample unless
 said otherwise.
 
 ??? note "Recap: the model and its parameters"
@@ -163,8 +163,8 @@ said otherwise.
 
 ### Step 3: MAP warm-start
 
-A sampler started far from the posterior spends its first draws getting
-there, and those draws are then thrown away. Starting at the MAP estimate instead avoids
+A sampler started far from the posterior spends its first samples getting
+there, and those samples are then thrown away. Starting at the MAP estimate instead avoids
 this:
 
 ```python title="MAP warm-start"
@@ -181,33 +181,35 @@ this:
 
 `NUTSSampler` has the same `fit(model, data)` interface as [`MAPOptimizer`](../../reference/inference.md#psyphy.inference.MAPOptimizer), and the BlackJAX
 backend stays hidden. Each chain runs a warmup phase, where the step size and mass matrix
-are tuned and the draws discarded, then a sampling phase where the tuning is frozen and
-every draw is kept. What comes back is an `MCMCPosterior`. We use 3 things on it:
+are tuned and the samples discarded, then a sampling phase where the tuning is frozen and
+every sample is kept. The code and ArviZ call these draws. We say samples.
+
+What comes back is an `MCMCPosterior`. We use 3 things on it:
 
 | call | returns | used in |
 |---|---|---|
-| `nuts_posterior.sample(n, key=...)` | `n` draws, `{"W": (n, *W_shape)}` | Step 5, the contour ensemble |
+| `nuts_posterior.sample(n, key=...)` | `n` samples, `{"W": (n, *W_shape)}` | Step 5, the contour ensemble |
 | `PosteriorMeanCovarianceField(nuts_posterior)` | the posterior mean field $\mathbb{E}[\Sigma(x)]$ | Step 5, the red contours |
-| `covariance_to_arviz(nuts_posterior, points)` | $\Sigma$ at chosen points for every draw, in ArviZ's format | [the diagnostics page](mcmc_diagnostics.md) |
+| `covariance_to_arviz(nuts_posterior, points)` | $\Sigma$ at chosen points for every sample, in ArviZ's format | [the diagnostics page](mcmc_diagnostics.md) |
 
-One draw is one complete covariance field, so one threshold contour at every reference
+One sample is one complete covariance field, so one threshold contour at every reference
 point. `MCMCPosterior` and [`MAPPosterior`](../../reference/posterior.md#psyphy.posterior.MAPPosterior) share this interface, so code written for a MAP
 fit, [`WPPMPredictivePosterior`](../../reference/posterior.md#psyphy.posterior.WPPMPredictivePosterior) for instance, takes a NUTS fit unchanged.
 
 !!! warning "Do not build a covariance field from `nuts_posterior.params`"
     `nuts_posterior.params` is the mean *parameter* $\mathbb{E}[W]$. It is a valid parameter
-    set and works as `init_params`, but
+    set and works as `init_params`, but the model is nonlinear in its parameters, so
+    building a field from the mean parameter is not the same as averaging the fields.
     [`WPPMCovarianceField`](../../reference/model.md#psyphy.model.WPPMCovarianceField)`(model, nuts_posterior.params)`
-    gives contours that are far too small, because $\Sigma$ is quadratic in $W$ and $W$ is
-    only identified up to a rotation. Use
+    gives contours several times too small on a typical fit. Use
     [`PosteriorMeanCovarianceField`](../../reference/model.md#psyphy.model.PosteriorMeanCovarianceField)
-    ([Step 5](#step-5-plotting-posterior-samples-and-credible-intervals)), whose docstring
-    has the detail.
+    ([Step 5](#step-5-plotting-posterior-samples-and-credible-intervals)), which averages
+    $\Sigma$ rather than $W$. Its docstring has the detail.
     `WPPMCovarianceField.from_posterior` warns when handed an MCMC posterior.
 
 ### Step 5: Plotting posterior samples and credible intervals
 
-Every draw is a complete covariance field, so the ensemble of draws is an ensemble of
+Every sample is a complete covariance field, so the ensemble of samples is an ensemble of
 threshold contours.
 
 ```python title="Draw posterior parameter samples"
@@ -216,12 +218,12 @@ threshold contours.
 
 For one summary field,
 [`PosteriorMeanCovarianceField`](../../reference/model.md#psyphy.model.PosteriorMeanCovarianceField)
-builds $\Sigma$ from each draw and averages the matrices. The other route,
-`WPPMCovarianceField(model, posterior.params)`, averages the draws of $W$ first and builds a
-single field from that mean parameter. It reports contours that are too small at every
-reference point, and gives no sign that it has: $\Sigma$ is quadratic in $W$, so averaging
-before squaring drops the spread between draws, and $W$ is identified only up to a rotation,
-so draws from different chains cancel. Checkout the class docstring for more details.
+builds $\Sigma$ from each sample and averages the matrices. The other route,
+`WPPMCovarianceField(model, posterior.params)`, averages the samples of $W$ first and builds a
+single field from that mean parameter. The model is nonlinear in its parameters, so the two
+orders do not agree: averaging first drops the spread between samples. It reports contours
+several times too small at every reference point, and gives no sign that it has. The class
+docstring has the identity behind it.
 
 ```python title="Posterior mean covariance field"
 --8<-- "docs/examples/wppm/nuts_inference_example.py:posterior_mean"
@@ -233,12 +235,12 @@ so draws from different chains cancel. Checkout the class docstring for more det
 
 <div align="center">
   <img src="../plots/nuts_ellipses_uncertainty_full.jpg" width="560"/>
-  <p><em>Faint blue: one threshold contour per posterior draw, 200 of them. Red: the
+  <p><em>Faint blue: one threshold contour per posterior sample, 200 of them. Red: the
   posterior mean $\mathbb{E}[\Sigma(x)]$. Black: ground truth. Green: the 25 reference
   points.</em></p>
 </div>
 
-One threshold contour per posterior draw, at every reference point. Tight clusters mean the
+One threshold contour per posterior sample, at every reference point. Tight clusters mean the
 data constrain the threshold, wide spread means they do not. This is the figure at the top
 of the page, repeated here because it is what the snippet above produces.
 
@@ -254,7 +256,7 @@ takes the posterior and the points to evaluate at.
     | `points` | the reference points, `(n_points, 2)` |
     | `ci_prob` | how much posterior mass the interval holds. `0.89` by default, matching ArviZ |
     | `ci_kind` | `"eti"` for equal-tailed, `"hdi"` for the narrowest interval of that mass |
-    | `n_samples`, `key` | how many draws to use, and the key to draw them with |
+    | `n_samples`, `key` | how many samples to use, and the key to draw them with |
 
     What we get back is a
     [`ContourBand`](../../reference/model.md#psyphy.model.ContourBand): `lower`,
@@ -264,7 +266,7 @@ takes the posterior and the points to evaluate at.
 
 It works by writing each contour as a radius per direction, which is the discrimination
 threshold, the just noticeable difference, in that direction. That is a scalar, one number
-per draw, so quantiles over draws give an interval at each direction. Filling between them
+per sample, so quantiles over samples give an interval at each direction. Filling between them
 gives us the credible band.
 [`contour_radii`](../../reference/model.md#psyphy.model.contour_radii) computes those radii
 on their own, in any dimension, for anyone who wants a quantile psyphy does not offer. Its
@@ -285,7 +287,7 @@ fit reports the same contours with no way to tell those two cases apart.
 
 ??? note "Nested bands: several levels in one call"
 
-    Passing a sequence to `ci_prob` gives one interval per level, from one set of draws:
+    Passing a sequence to `ci_prob` gives one interval per level, from one set of samples:
 
     ```python title="Nested bands from one call"
     --8<-- "docs/examples/wppm/nuts_inference_example.py:nested_bands"
@@ -309,17 +311,17 @@ fit reports the same contours with no way to tell those two cases apart.
     An 89% pointwise band is expected to miss some directions.
 ## Next steps
 
-- **Check the posterior draws.** How well do the draws represent the posterior distribution?
-  [This tutorial shows how to check the MCMC draws with the established library ArviZ](mcmc_diagnostics.md).
+- **Check the posterior samples.** How well do the samples represent the posterior distribution?
+  [This tutorial shows how to check the MCMC samples with the established library ArviZ](mcmc_diagnostics.md).
    We also look at which sampler arguments to change when one diganostic fails.
 - **Predictions at new stimuli.** `WPPMPredictivePosterior` takes this posterior and gives
   the posterior predictive distribution over responses, averaging $P(\text{correct})$ over
-  draws instead of over one point estimate.
+  samples instead of over one point estimate.
 - **Adaptive trial placement.** The spread shown here is what an acquisition function needs
   in order to choose where the next trial goes.
 - **Other samplers.** Nothing downstream of the sampler is NUTS-specific: any psyphy
   [`InferenceEngine`](../../reference/inference.md#psyphy.inference.InferenceEngine)
-  returning an `MCMCPosterior` with draws shaped `(n_chains, n_draws, *W_shape)` works with
+  returning an `MCMCPosterior` with samples shaped `(n_chains, n_draws, *W_shape)` works with
   `covariance_to_arviz`, `PosteriorMeanCovarianceField` and `WPPMPredictivePosterior`
   unchanged. Note that note all the diagnostics will carry over, since a sampler without trajectories has for example
   no divergences.

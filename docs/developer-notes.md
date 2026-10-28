@@ -42,7 +42,7 @@ that is the main argument for building one.
 inviting the wrong summary.
 
 **What psyphy does.** `PosteriorMeanCovarianceField` takes a posterior, builds $\Sigma$ from
-each draw, and averages the matrices. It is a separate class rather than a `mean=True`
+each sample, and averages the matrices. It is a separate class rather than a `mean=True`
 argument on `WPPMCovarianceField`, because the two need different inputs: one takes a
 parameter set, the other takes a posterior and samples from it. A flag would make `params`
 meaningful in one mode and ignored in the other.
@@ -67,8 +67,8 @@ the parameterization.
 axis, so two chains can describe the same covariance field from different orientations.
 R-hat on $W$ calls that non-convergence. `covariance_to_arviz` evaluates $\Sigma$ at points
 the caller chooses and hands ArviZ that instead, in an `xarray.DataTree` with dimensions
-`(chain, draw, point, quantity)`. It takes the posterior object rather than draws from it,
-because `posterior.sample(n)` pools the chains and R-hat needs to know which chain a draw
+`(chain, draw, point, quantity)`. It takes the posterior object rather than samples from it,
+because `posterior.sample(n)` pools the chains and R-hat needs to know which chain a sample
 came from.
 
 The sampler statistics ride along in ArviZ's `sample_stats` group, and `NUTSSampler` spells

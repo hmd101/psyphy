@@ -13,10 +13,10 @@ This module provides:
 - CovarianceField: Protocol defining the interface
 - WPPMCovarianceField: Concrete implementation for WPPM models
 - construction from priors, posteriors, or arbitrary parameters
-- PosteriorMeanCovarianceField: E[Σ(x)] over posterior draws -- the correct
+- PosteriorMeanCovarianceField: E[Σ(x)] over posterior samples -- the correct
   "posterior mean" field for sample-based posteriors (see its docstring for
   why averaging W instead gives too-small ellipses)
-- covariance_to_arviz: per-draw Σ(x) at chosen points as an ArviZ DataTree,
+- covariance_to_arviz: per-sample Σ(x) at chosen points as an ArviZ DataTree,
   for convergence diagnostics that are not fooled by the non-identifiable
   orientation of W (see its docstring)
 - contour_radii / contour_band / ContourBand: the Mahalanobis-1 contour of a
@@ -428,7 +428,7 @@ class WPPMCovarianceField:
           is systematically too small and can collapse toward λI (see
           ``PosteriorMeanCovarianceField`` for why). A ``UserWarning`` is
           raised in that case. Use ``PosteriorMeanCovarianceField(posterior)``
-          for E[Σ], or ``posterior.sample(n)`` for individual draws.
+          for E[Σ], or ``posterior.sample(n)`` for individual samples.
 
         Examples
         --------
@@ -443,7 +443,7 @@ class WPPMCovarianceField:
         (2, 2)
         """
         # Sample-based posteriors are recognized by duck typing (they expose a
-        # draw count), the same criterion PosteriorMeanCovarianceField uses.
+        # sample count), the same criterion PosteriorMeanCovarianceField uses.
         # isinstance(posterior, MCMCPosterior) would need an import from
         # psyphy.posterior, which already imports psyphy.model -> cycle.
         #
@@ -453,9 +453,8 @@ class WPPMCovarianceField:
         if getattr(posterior, "n_draws", None) is not None:
             warnings.warn(
                 f"from_posterior() on a {type(posterior).__name__} builds Σ from the "
-                "mean parameter E[W]. For the WPPM, Σ(E[W]) is not the posterior "
-                "mean of Σ: it is systematically too small, because Σ is quadratic "
-                "in W and W is only identified up to an embedding rotation. Use "
+                "mean parameter E[W]. Σ is nonlinear in W, so Σ(E[W]) is not the "
+                "posterior mean of Σ and comes out systematically too small. Use "
                 "PosteriorMeanCovarianceField(posterior) for E[Σ].",
                 UserWarning,
                 stacklevel=2,
@@ -586,7 +585,7 @@ class PosteriorMeanCovarianceField:
     r"""
     Posterior mean of the covariance field, E[Σ(x) | data].
 
-    Evaluates Σ(x) separately for every posterior draw W_k and averages the
+    Evaluates Σ(x) separately for every posterior sample W_k and averages the
     resulting matrices:
 
         Σ̂(x) = (1/N) Σ_k [ U_k(x) U_k(x)^T + λI ]
@@ -612,7 +611,7 @@ class PosteriorMeanCovarianceField:
     1. The gap is there for any posterior with spread. No symmetry is needed.
     2. W is not identifiable. For orthogonal R on the embedding axis,
        W -> W R leaves U Uᵀ unchanged, and so leaves Σ and the prior
-       unchanged. Draws at different orientations, in practice different
+       unchanged. Samples at different orientations, in practice different
        chains cancel when W is averaged. At the extreme: W and -W describe
        the same Σ and average to E[W] = 0, collapsing Σ(E[W]) to λI.
 
@@ -627,13 +626,13 @@ class PosteriorMeanCovarianceField:
         Any posterior with ``.model`` and ``.sample(n, key=...)``, e.g.
         ``MCMCPosterior`` or ``MAPPosterior``.
     n_samples : int | None, default=None
-        Number of draws to average over. If None, uses every stored draw,
+        Number of samples to average over. If None, uses every stored sample,
         which requires the posterior to expose ``n_chains`` and ``n_draws``
-        (``MCMCPosterior`` does). Posteriors without a fixed draw count
+        (``MCMCPosterior`` does). Posteriors without a fixed sample count
         (``MAPPosterior``, future variational posteriors) must pass it.
     key : jax.random.KeyArray | None, default=None
         PRNG key forwarded to ``posterior.sample``. Only matters when
-        ``n_samples`` is smaller than the number of stored draws.
+        ``n_samples`` is smaller than the number of stored samples.
 
     Notes
     -----
@@ -651,7 +650,7 @@ class PosteriorMeanCovarianceField:
     >>> from psyphy.model import WPPM, OddityTask, Prior, WPPMCovarianceField
     >>> model = WPPM(Prior(input_dim=2, basis_degree=2), OddityTask(), input_dim=2)
     >>> from psyphy.posterior import MCMCPosterior
-    >>> # stand-in for NUTSSampler().fit(model, data): 2 chains of 50 prior draws
+    >>> # stand-in for NUTSSampler().fit(model, data): 2 chains of 50 prior samples
     >>> keys = jr.split(jr.PRNGKey(1), 100)
     >>> W = jnp.stack([model.init_params(k)["W"] for k in keys])  # (100, 3, 3, 2, 3)
     >>> nuts_posterior = MCMCPosterior({"W": W.reshape(2, 50, *W.shape[1:])}, model)
@@ -666,10 +665,10 @@ class PosteriorMeanCovarianceField:
         self.model = posterior.model
 
         if n_samples is None:
-            # "All draws" is only well defined for posteriors that store a
-            # fixed set of draws. MCMCPosterior.sample(n) samples WITHOUT
+            # "All samples" is only well defined for posteriors that store a
+            # fixed set of samples. MCMCPosterior.sample(n) samples WITHOUT
             # replacement when n <= n_chains * n_draws, so asking for exactly
-            # that many returns every stored draw once (in shuffled order,
+            # that many returns every stored sample once (in shuffled order,
             # which does not affect a mean). This stays on the public
             # ParameterPosterior interface instead of reading _samples.
             n_chains = getattr(posterior, "n_chains", None)
@@ -705,13 +704,13 @@ class PosteriorMeanCovarianceField:
         return self._eval_batch_jitted(x)
 
     def _eval_single(self, x: jnp.ndarray) -> jnp.ndarray:
-        """E[Σ(x)] at one location: Σ for every draw, THEN the mean.
+        """E[Σ(x)] at one location: Σ for every sample, THEN the mean.
 
         The order is the whole point of this class -- see the class
-        docstring. Do not "optimize" this into Σ(x; mean of draws).
+        docstring. Do not "optimize" this into Σ(x; mean of samples).
         """
-        # vmap over the leading draw axis of every leaf of self._draws:
-        # (N, d, d) -- one covariance matrix per posterior draw
+        # vmap over the leading sample axis of every leaf of self._draws:
+        # (N, d, d) -- one covariance matrix per posterior sample
         per_draw = jax.vmap(lambda params: self.model.local_covariance(params, x))(
             self._draws
         )
@@ -721,7 +720,7 @@ class PosteriorMeanCovarianceField:
         """Flatten -> vmap -> reshape, as in ``WPPMCovarianceField``.
 
         Memory note: the intermediate is (n_points, n_draws, d, d), e.g.
-        25 x 4000 x 2 x 2 floats = 1.6 MB; dense grids with many draws scale
+        25 x 4000 x 2 x 2 floats = 1.6 MB; dense grids with many samples scale
         as their product.
         """
         input_dim = self.model.input_dim
@@ -772,7 +771,7 @@ class PosteriorMeanCovarianceField:
         """
         Not available: a posterior mean of Σ has no WPPM square root U(x).
 
-        Each draw has its own U_k(x), but the average of U_k U_k^T is not
+        Each sample has its own U_k(x), but the average of U_k U_k^T is not
         U U^T for any single U from the model (and averaging the U_k instead
         reintroduces exactly the cancellation this class exists to avoid).
         Any matrix returned here would be a different object under the same
@@ -781,14 +780,14 @@ class PosteriorMeanCovarianceField:
         """
         raise NotImplementedError(
             "PosteriorMeanCovarianceField has no square root U(x): an average "
-            "of U U^T over draws is not U U^T for any single U. Use "
+            "of U U^T over samples is not U U^T for any single U. Use "
             "jnp.linalg.cholesky(field(x)) for a factor of the mean matrix."
         )
 
 
 def covariance_to_arviz(posterior, points):
     r"""
-    Per-draw covariance Σ(x) at chosen points, as an ArviZ DataTree.
+    Per-sample covariance Σ(x) at chosen points, as an ArviZ DataTree.
 
     Use this, not ``posterior.to_arviz()``, for convergence diagnostics
     (R-hat, ESS, trace plots) of a WPPM fit.
@@ -816,7 +815,7 @@ def covariance_to_arviz(posterior, points):
 
     Quantities
     ----------
-    For each draw and point, the d x d matrix Σ is summarized by its d log
+    For each sample and point, the d x d matrix Σ is summarized by its d log
     variances and d(d-1)/2 correlations, which together determine Σ:
 
     - ``log_var_i``  = log Σ_ii
@@ -861,7 +860,7 @@ def covariance_to_arviz(posterior, points):
     >>> from psyphy.model import WPPM, OddityTask, Prior, WPPMCovarianceField
     >>> model = WPPM(Prior(input_dim=2, basis_degree=2), OddityTask(), input_dim=2)
     >>> from psyphy.posterior import MCMCPosterior
-    >>> # stand-in for NUTSSampler().fit(model, data): 2 chains of 50 prior draws
+    >>> # stand-in for NUTSSampler().fit(model, data): 2 chains of 50 prior samples
     >>> keys = jr.split(jr.PRNGKey(1), 100)
     >>> W = jnp.stack([model.init_params(k)["W"] for k in keys])  # (100, 3, 3, 2, 3)
     >>> nuts_posterior = MCMCPosterior({"W": W.reshape(2, 50, *W.shape[1:])}, model)
@@ -892,7 +891,7 @@ def covariance_to_arviz(posterior, points):
             f"Last axis of points must be input_dim={d}, got {points.shape[-1]}"
         )
 
-    # Chain-structured draws via the public API (raises ImportError without
+    # Chain-structured samples via the public API (raises ImportError without
     # ArviZ). Every posterior variable keeps its leading (chain, draw) axes,
     # e.g. {"W": (C, S, *W_shape)}.
     idata = to_arviz()
@@ -908,7 +907,7 @@ def covariance_to_arviz(posterior, points):
         # Σ at every point for ONE draw: (n_points, d, d)
         return jax.vmap(lambda x: model.local_covariance(p, x))(points)
 
-    # vmap over draws, then chains: (C, S, n_points, d, d)
+    # vmap over samples, then chains: (C, S, n_points, d, d)
     Sig = jax.vmap(jax.vmap(sigma_one_draw))(params)
 
     # Identifiable summary of each Σ: log variances, then correlations (i < j).
@@ -1017,7 +1016,7 @@ def contour_radii(covs: jnp.ndarray, directions: jnp.ndarray) -> jnp.ndarray:
     This is a *polar* parameterization of the same ellipse that
     ``ellipse_segments`` produces, and the two are not interchangeable. That
     function maps a circle through the Cholesky factor, so its parameter angle
-    is not the direction from the center. Any statistic taken across draws at
+    is not the direction from the center. Any statistic taken across samples at
     fixed angle, a quantile or a mean, must use this parameterization, or it
     compares points lying in different directions.
     """
@@ -1036,13 +1035,13 @@ def _eti(radii: jnp.ndarray, prob: float) -> tuple[jnp.ndarray, jnp.ndarray]:
 def _hdi(radii: jnp.ndarray, prob: float) -> tuple[jnp.ndarray, jnp.ndarray]:
     """Highest-density interval over axis 0: the narrowest window holding p mass.
 
-    Sorts the draws and takes the narrowest window of ``ceil(prob * n)`` of
+    Sorts the samples and takes the narrowest window of ``ceil(prob * n)`` of
     them. This is the standard sample HDI. ArviZ computes the same quantity
     with a slightly different window convention, so the two agree closely but
     not bit for bit.
     """
     n = radii.shape[0]
-    width = max(int(jnp.ceil(prob * n)), 2)  # draws inside the interval
+    width = max(int(jnp.ceil(prob * n)), 2)  # samples inside the interval
     ordered = jnp.sort(radii, axis=0)
     los = ordered[: n - width + 1]  # (n_windows, ...)
     his = ordered[width - 1 :]  # (n_windows, ...)
@@ -1070,15 +1069,15 @@ def contour_band(
 
     The posterior-interval counterpart to
     :class:`PosteriorMeanCovarianceField` (a posterior *mean*) and
-    :func:`covariance_to_arviz` (posterior *draws*, for diagnostics).
+    :func:`covariance_to_arviz` (posterior *samples*, for diagnostics).
 
-    Every draw gives one covariance field, hence one contour per point.
+    Every sample gives one covariance field, hence one contour per point.
     Writing each contour as a radius per direction
-    (:func:`contour_radii`) makes it a scalar per draw, so an interval
-    follows from quantiles over draws. For a :math:`1-\alpha` interval, at
+    (:func:`contour_radii`) makes it a scalar per sample, so an interval
+    follows from quantiles over samples. For a :math:`1-\alpha` interval, at
     each direction separately, the band runs between
     :math:`q_{\alpha/2}\\{r_i\\}` and :math:`q_{1-\alpha/2}\\{r_i\\}` over the
-    :math:`N` draws.
+    :math:`N` samples.
 
     Parameters
     ----------
@@ -1094,7 +1093,7 @@ def contour_band(
         enough that a filled band looks smooth, small enough to stay cheap.
         Nothing in the result depends on the choice.
     ci_prob : float or sequence of float, default=0.89
-        How much posterior mass the interval holds. At 0.89, 89% of the draws
+        How much posterior mass the interval holds. At 0.89, 89% of the samples
         of the radius lie between ``lower`` and ``upper``, in each direction
         separately. 0.89 is ArviZ's default too, so a band and ``az.summary``
         agree. Pass a sequence for nested bands, and each level gets its own
@@ -1104,15 +1103,15 @@ def contour_band(
         ``"eti"`` is equal-tailed: it cuts the same probability off each end,
         so ``lower`` and ``upper`` are quantiles. ``"hdi"`` is
         highest-density: it takes the narrowest interval holding the mass. The
-        two differ when the draws are skewed. Radii usually are, because a
+        two differ when the samples are skewed. Radii usually are, because a
         radius cannot go below zero.
     n_samples : int, optional
-        Draws to use. Defaults to every stored draw, which needs the posterior
+        Samples to use. Defaults to every stored sample, which needs the posterior
         to expose ``n_chains`` and ``n_draws``. A point-mass posterior such as
         ``MAPPosterior`` has to pass this.
     key : jax.Array, optional
         PRNG key forwarded to ``posterior.sample``. Only matters when
-        ``n_samples`` is smaller than the number of stored draws.
+        ``n_samples`` is smaller than the number of stored samples.
 
     Returns
     -------
@@ -1134,7 +1133,7 @@ def contour_band(
     >>> from psyphy.model import WPPM, OddityTask, Prior, WPPMCovarianceField
     >>> model = WPPM(Prior(input_dim=2, basis_degree=2), OddityTask(), input_dim=2)
     >>> from psyphy.posterior import MCMCPosterior
-    >>> # stand-in for NUTSSampler().fit(model, data): 2 chains of 50 prior draws
+    >>> # stand-in for NUTSSampler().fit(model, data): 2 chains of 50 prior samples
     >>> keys = jr.split(jr.PRNGKey(1), 100)
     >>> W = jnp.stack([model.init_params(k)["W"] for k in keys])  # (100, 3, 3, 2, 3)
     >>> nuts_posterior = MCMCPosterior({"W": W.reshape(2, 50, *W.shape[1:])}, model)

@@ -1,4 +1,4 @@
-# Checking MCMC draws with ArviZ
+# Checking MCMC samples with ArviZ
 
 [Sampling the posterior with the No-U-Turn Sampler (NUTS)](nuts_inference_example.md) ends
 with a distribution of threshold contours, samples we drew from the posterior. Here we show
@@ -8,8 +8,9 @@ change when they do not.
 [ArviZ](https://python.arviz.org/projects/stats/en/latest/index.html) is an established
 library for diagnosing Bayesian models.
 [`covariance_to_arviz`](../../reference/model.md#psyphy.model.covariance_to_arviz) hands a
-psyphy fit to it in the shape it expects, so every ArviZ function works on our draws with no
-reshaping. The figure below carries two of the core diagnostics and is a teaser of what this tutorial builds towards.
+psyphy fit to it in the shape it expects, so every ArviZ function works on our samples with no
+reshaping. ArviZ and the code call these draws, as in the `draw` dimension and `n_draws`.
+We say samples. The figure below carries two of the core diagnostics and is a teaser of what this tutorial builds towards.
 
 <div align="center">
   <img src="../plots/nuts_convergence_sigma_full.png" width="760"/>
@@ -22,7 +23,7 @@ reshaping. The figure below carries two of the core diagnostics and is a teaser 
 Everything here runs on the fit from the
 [sampling tutorial](nuts_inference_example.md), from the same script,
 [`nuts_inference_example.py`](https://github.com/flatironinstitute/psyphy/blob/main/docs/examples/wppm/nuts_inference_example.py).
-You can rebuild every diagnostic and figure from the cached draws without a GPU (a laptop
+You can rebuild every diagnostic and figure from the cached samples without a GPU (a laptop
 CPU is fine), like this:
 
 ```bash
@@ -43,10 +44,11 @@ validity problem (e.g. step size too large), tree-depth saturation only an effic
 |---|---|---|
 | divergences, `sampler_stats["diverging"]` | the integrator failed, usually in a region of high curvature | any divergence at all |
 | [R-hat](https://python.arviz.org/projects/stats/en/latest/api/generated/arviz_stats.rhat.html) | chains have not mixed to the same distribution | $\hat{R} > 1.01$ |
-| [Effective Sample Size (ESS)](https://python.arviz.org/projects/stats/en/latest/api/generated/arviz_stats.ess.html) | autocorrelation: how many independent draws the chain is worth | bulk or tail ESS $< 100$ per chain, so $< 400$ in total across 4 chains |
-| `sampler_stats["n_steps"]` | trajectories truncated at the tree-depth cap | at the cap for most draws |
+| [Effective Sample Size (ESS)](https://python.arviz.org/projects/stats/en/latest/api/generated/arviz_stats.ess.html) | autocorrelation: how many independent samples the chain is worth | bulk or tail ESS $< 100$ per chain, so $< 400$ in total across 4 chains |
+| `sampler_stats["n_steps"]` | trajectories truncated at the tree-depth cap | at the cap for most samples |
 
-BlackJAX flags a divergence on every draw it takes. `NUTSSampler` keeps those flags in
+BlackJAX flags a divergence on every sample it takes.
+[`NUTSSampler`](../../reference/inference.md#psyphy.inference.NUTSSampler) keeps those flags in
 `sampler_stats`, a plain dict of JAX arrays:
 
 ```python title="Divergences and tree-depth saturation"
@@ -55,12 +57,12 @@ BlackJAX flags a divergence on every draw it takes. `NUTSSampler` keeps those fl
 
 A divergent transition means the integrator, the thing approximating the trajectory in small
 steps ([sampling tutorial](nuts_inference_example.md#why-sample-the-posterior)), left the
-posterior's geometry. More sampling doesn't fix the draws it produced.
+posterior's geometry. More sampling doesn't fix the samples it produced.
 
 !!! warning "Any divergence makes the run suspect"
     One is enough, regardless of what R-hat says, which is why we check divergences first.
 
-The second print is the fraction of draws whose trajectory hit
+The second print is the fraction of samples whose trajectory hit
 `max_num_doublings`: a large fraction means the cap is limiting mixing.
 
 ## Diagnostics on $\Sigma$, with `covariance_to_arviz`
@@ -103,7 +105,7 @@ posterior and the points to evaluate $\Sigma$ at, here the reference points. Fro
 directly, which is where the two figures below come from.
 
 !!! warning "Hand it the posterior, not samples from it"
-    `posterior.sample(n)` flattens `(n_chains, n_draws, ...)` into one axis, so a draw no
+    `posterior.sample(n)` flattens `(n_chains, n_draws, ...)` into one axis, so a sample no
     longer carries the chain it came from. R-hat compares the spread between chains against
     the spread within them, so once the chains are gone it comes back near 1.00 however
     badly they disagreed. ESS is inflated the same way, since shuffling removes the
@@ -118,7 +120,7 @@ plotting code here.)
 `covariance_to_arviz` summarizes each $2\times2$ $\Sigma$ by the three numbers that
 determine it: `log_var_0` and `log_var_1`, the log variances along each axis, and
 `corr_0_1`, their correlation. A trace plot shows how each of those moved over the run. If
-the chains converged, they should overlap, stay level, and vary fast from draw to draw.
+the chains converged, they should overlap, stay level, and vary fast from sample to sample.
 
 ```python title="Trace plot at the worst reference point"
 --8<-- "docs/examples/wppm/nuts_inference_example.py:trace_plot"
@@ -127,28 +129,28 @@ the chains converged, they should overlap, stay level, and vary fast from draw t
 <div align="center">
   <img src="../plots/nuts_trace_sigma_full.png" width="760"/>
   <p><em>&#10003; Chains mixed. One panel per quantity at the reference point with the worst R-hat, one colored
-  line per chain. Horizontal axis is the draw/sample index, vertical axis the value of that
-  quantity.</em></p>
+  line per chain. Horizontal axis is the sample index, which ArviZ labels `Draw`. Vertical
+  axis is the value of that quantity.</em></p>
 </div>
 
 For comparison, below we show the trace plot of the same reference point from a run that did not converge:
 
 <div align="center">
   <img src="../plots/nuts_trace_sigma_quick.png" width="760"/>
-  <p><em>&#10007; Chains not mixed. The same plot from `--mode quick`: 2 chains, 150 draws.</em></p>
+  <p><em>&#10007; Chains not mixed. The same plot from `--mode quick`: 2 chains, 150 samples.</em></p>
 </div>
 
 Read each panel along the horizontal axis:
 
 | in the trace | interpretation | where to see it |
 |---|---|---|
-| chains overlap, each level, values varying fast from draw to draw | &#10003; mixed | the `--mode full` figure |
-| one chain holds its own level | &#10007; not mixed | `corr_0_1` in `--mode quick`, the two chains apart for stretches of 40 draws or more |
+| chains overlap, each level, values varying fast from sample to sample | &#10003; mixed | the `--mode full` figure |
+| one chain holds its own level | &#10007; not mixed | `corr_0_1` in `--mode quick`, the two chains apart for stretches of 40 samples or more |
 | a slope at either end | &#10007; still drifting, so not mixed | |
-| slow swings instead of fast variation | &#10007; autocorrelated, so few independent draws | all three `--mode quick` panels |
+| slow swings instead of fast variation | &#10007; autocorrelated, so few independent samples | all three `--mode quick` panels |
 
 A trace plot catches those. It does not catch chains that look fine and still carry too few
-independent draws, which is what ESS and R-hat are for.
+independent samples, which is what ESS and R-hat are for.
 
 We see one reference point here. The figure at the top covers all 25 at once.
 
@@ -183,9 +185,9 @@ document.
 | argument | what it controls | psyphy default | raise it when |
 |---|---|---|---|
 | `num_warmup` | tuning steps per chain, discarded | 500 | trace plots still drift at the start |
-| `num_samples` | kept draws per chain | 1000 | ESS is too low |
+| `num_samples` | kept samples per chain | 1000 | ESS is too low |
 | `num_chains` | independent chains, R-hat needs at least 2 | 4 | a stronger convergence check is wanted |
-| `max_num_doublings` | tree-depth cap, at most $2^k - 1$ gradients per draw | 8, against BlackJAX's 10 | most draws hit the cap, which the script prints |
+| `max_num_doublings` | tree-depth cap, at most $2^k - 1$ gradients per sample | 8, against BlackJAX's 10 | most samples hit the cap, which the script prints |
 | `target_acceptance_rate` | how cautious the tuned step size is | 0.8 | divergences appear |
 
 ??? note "Compute presets"
@@ -202,13 +204,13 @@ document.
     ??? note "Compute costs of a run"
 
         - The Monte Carlo likelihood dominates. Each gradient evaluation simulates
-          `mc_samples` draws for every trial, so cost scales with `mc_samples * n_trials`.
+          `mc_samples` noisy internal representations for every trial, so cost scales with `mc_samples * n_trials`.
           `quick` to `full` raises that product by about 440 times.
-        - Cost per draw varies. NUTS needs $O(2^{\text{tree depth}})$ gradient
+        - Cost per sample varies. NUTS needs $O(2^{\text{tree depth}})$ gradient
           evaluations and the depth is data dependent, commonly 16 to 64.
         - Tree depth is capped. The default `max_num_doublings=8` allows at most
-          $2^8 - 1$ gradient evaluations per draw. If `sampler_stats["n_steps"]` sits at the
-          cap for most draws, trajectories are being truncated: still valid, but mixing more
+          $2^8 - 1$ gradient evaluations per sample. If `sampler_stats["n_steps"]` sits at the
+          cap for most samples, trajectories are being truncated: still valid, but mixing more
           slowly.
         - Warmup starts from a prior-scaled metric. By default the sampler works in
           $z = W / \sigma_\text{prior}$ (`prior_preconditioning=True`), so adaptation does
@@ -230,7 +232,7 @@ document.
     | a float | no adaptation and an identity mass matrix. Warmup becomes plain burn-in, so it is faster, and the step size has to be chosen by hand | `NUTSSampler(..., step_size=0.01)` |
 
     psyphy deviates in two places from the BlackJax defaults:
-    `prior_preconditioning=True` samples $z = W / \sigma_\text{prior}$ and maps the draws
+    `prior_preconditioning=True` samples $z = W / \sigma_\text{prior}$ and maps the samples
     back to $W$, so adaptation starts from a metric matched to the prior scales. And
     `max_num_doublings` defaults to 8 here (against BlackJAX's own 10).
 
