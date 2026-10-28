@@ -47,7 +47,7 @@ def _full_matmul_precision():
     precision keeps them strict. The JIT cache keys on this setting, so
     functions compiled inside a test use it.
     """
-    with jax.default_matmul_precision("highest"):
+    with jax.default_matmul_precision("float32"):
         yield
 
 

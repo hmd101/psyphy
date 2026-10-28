@@ -44,7 +44,7 @@ def _full_matmul_precision():
     The pin below compares two implementations elementwise, so it needs the
     same arithmetic from both.
     """
-    with jax.default_matmul_precision("highest"):
+    with jax.default_matmul_precision("float32"):
         yield
 
 
@@ -117,9 +117,13 @@ def test_band_matches_the_inline_tutorial_computation(tiny_model, posterior, poi
 
     band = contour_band(posterior, points, ci_prob=0.89, n_samples=50, key=key)
 
-    assert jnp.allclose(band.lower, r_lo, rtol=1e-6, atol=1e-6)
-    assert jnp.allclose(band.median, r_med, rtol=1e-6, atol=1e-6)
-    assert jnp.allclose(band.upper, r_hi, rtol=1e-6, atol=1e-6)
+    # The reference loops over samples in Python, contour_band vmaps, so float32
+    # accumulates in a different order. The gap is ~2e-6 relative on radii of
+    # order 1; a real regression (wrong axis, wrong quantile, ETI vs HDI) moves
+    # these by percent.
+    assert jnp.allclose(band.lower, r_lo, rtol=1e-5, atol=1e-7)
+    assert jnp.allclose(band.median, r_med, rtol=1e-5, atol=1e-7)
+    assert jnp.allclose(band.upper, r_hi, rtol=1e-5, atol=1e-7)
 
 
 # ---------------------------------------------------------------------------

@@ -38,7 +38,7 @@ def _full_matmul_precision():
 
     See test_posterior_mean_covariance_field.py for the full reasoning.
     """
-    with jax.default_matmul_precision("highest"):
+    with jax.default_matmul_precision("float32"):
         yield
 
 
