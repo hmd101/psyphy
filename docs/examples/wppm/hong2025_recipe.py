@@ -54,6 +54,7 @@ thresholds = WPPMPredictivePosterior(
     n_samples=1,
     threshold_pred=True,  # ask for thresholds
     threshold_config=config,
+    key=jax.random.PRNGKey(0),
 ).mean  # -> (49, 2, 2)
 
 # This used the authors' weights, so it reproduces their published inversion
@@ -76,6 +77,7 @@ if __name__ == "__main__":
             n_samples=1,
             threshold_pred=True,
             threshold_config=config,
+            key=jax.random.PRNGKey(0),
         ).mean
     print(f"thresholds: {thresholds.shape}")
     print(f"published : {published.shape}")

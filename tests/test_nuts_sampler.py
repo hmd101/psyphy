@@ -217,7 +217,10 @@ class TestNUTSDownstreamIntegration:
             [[0.1, 0.0], [0.3, 0.2]]
         )  # comparison stimuli, one per reference
         pred = WPPMPredictivePosterior(
-            posterior_adaptive, jnp.stack([refs, comparisons], axis=1), n_samples=5
+            posterior_adaptive,
+            jnp.stack([refs, comparisons], axis=1),
+            n_samples=5,
+            key=jr.PRNGKey(0),
         )
         # pred.mean[i] ≈ E[p(correct | refs[i], comparisons[i], θ) | D]
         mean = pred.mean
@@ -233,7 +236,10 @@ class TestNUTSDownstreamIntegration:
             [[0.1, 0.0], [0.3, 0.2]]
         )  # comparison stimuli, one per reference
         pred = WPPMPredictivePosterior(
-            posterior_adaptive, jnp.stack([refs, comparisons], axis=1), n_samples=5
+            posterior_adaptive,
+            jnp.stack([refs, comparisons], axis=1),
+            n_samples=5,
+            key=jr.PRNGKey(0),
         )
         var = pred.variance
         assert var.shape == (2,)
@@ -256,7 +262,10 @@ class TestNUTSDownstreamIntegration:
 
         for post in [map_posterior, posterior_adaptive]:
             pred = WPPMPredictivePosterior(
-                post, jnp.stack([refs, comparisons], axis=1), n_samples=3
+                post,
+                jnp.stack([refs, comparisons], axis=1),
+                n_samples=3,
+                key=jr.PRNGKey(0),
             )
             assert pred.mean.shape == (1,)
 

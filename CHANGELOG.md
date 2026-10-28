@@ -10,6 +10,37 @@ breaking changes are called out below but do not force a minor-version bump.
 
 ### Breaking
 
+- **`WPPMPredictivePosterior` takes a required `key`, and `cov_field` is gone.**
+  `mean` and `variance` are properties, so the constructor is the only place their
+  randomness can enter. The key is split once into a key for drawing parameters and a key
+  for the threshold sweep:
+
+  ```python
+  # before
+  WPPMPredictivePosterior(posterior, X, n_samples=100)
+
+  # now
+  WPPMPredictivePosterior(posterior, X, n_samples=100, key=key)
+  ```
+
+  This removed 2 hardcoded keys, at `predictive_posterior.py:414` (which carried a
+  `# TODO: Make configurable via init`) and `:397`. A third, the direction grid for
+  `input_dim > 2`, stays fixed on purpose and says so in a comment.
+
+  `cov_field` is removed from `WPPMPredictivePosterior` and from the
+  `PredictivePosterior` protocol. It computed `PosteriorMeanCovarianceField`'s quantity at
+  a different default under its own key, so there were 2 public paths to
+  E[Σ(X) | data] returning numbers up to a few percent apart. Use
+  `PosteriorMeanCovarianceField(posterior)`. A model with no covariance field can now
+  satisfy `PredictivePosterior`.
+
+  **Threshold predictions shift.** The sweep key was `jax.random.PRNGKey(1)` and is now
+  derived from the key you pass, so `threshold_pred=True` results move. At the settings
+  the Hong et al. reproduction uses (`n_theta=16`, `n_length=1000`, `mc=2000`), 4 keys
+  spread the recovered threshold trace by 4.3%, so this is the inversion's own Monte Carlo
+  noise rather than a change of method. Record the key alongside any figure built from the
+  sweep.
+
 - **Drawing parameters now names its key** `MCMCPosterior.sample` and `MAPPosterior.sample`
   require both `n` and `key`! `MCMCPosterior.sample` used to fall back to
   `jax.random.PRNGKey(0)` and `MAPPosterior.sample` used to default `n=1`, so, the 3
