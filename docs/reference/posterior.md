@@ -7,7 +7,7 @@
 
 ---
 
-## Parameter Posterior Protocol
+## Parameter Protocols
 ---
 
 ::: psyphy.posterior.parameter_posterior

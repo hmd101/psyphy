@@ -84,3 +84,47 @@ the divergence ticks on a trace plot will not find the statistics they draw.
 **What it costs.** The caller has to choose evaluation points, which is why `points` has no
 default. The diagnostics then describe $\Sigma$ at those points rather than the parameters
 themselves.
+
+---
+
+## A parameter source is one method, and a posterior extends it
+
+**Symbols:** [`ParameterSource`](reference/posterior.md#psyphy.posterior.ParameterSource),
+[`ParameterPosterior`](reference/posterior.md#psyphy.posterior.ParameterPosterior),
+[`Prior.sample`](reference/model.md#psyphy.model.Prior.sample).
+**Last updated:** 2026-10-28
+
+**What we wanted.** One type for "a thing we can draw parameters from", so that a prior
+predictive check and a posterior predictive check are the same code called twice. Before it,
+`Prior.sample_params(key)` returned one draw and `ParameterPosterior.sample(n, key=...)`
+returned $n$, so nothing accepted both. Four docstrings in the source built prior draws in a
+Python loop and wrapped the result in an `MCMCPosterior` to get something samplable.
+
+**What psyphy does.** `ParameterSource` declares `sample(n, *, key)` and nothing else.
+`ParameterPosterior` extends it with `params` and `model`, so the source protocol is the
+narrower of the two. The asymmetry is structural rather than an oversight: a prior has no
+point estimate, and `WPPM` holds its `Prior`, so a prior carrying a model back would close a
+cycle. Drawing parameters is the whole overlap.
+
+Three things stayed off the protocol:
+
+- **Chain structure.** `sample` pools the chains, and R-hat needs to know which chain a
+  draw came from, so chain-shaped draws remain an `MCMCPosterior` capability. See the
+  diagnostics note above.
+- **A density.** `MCMCPosterior` has no `log_prob`, so a `Distribution`-style base class
+  requiring one would be failed by the main implementation.
+- **Weights.** No psyphy engine produces weighted draws. An unweighted mean over
+  importance-sampled or SMC draws would be wrong rather than imprecise, so the day one
+  arrives it needs its own type instead of a silent reinterpretation of this one.
+
+The key is a required keyword argument. A default would put the seed behind a result
+somewhere other than the call site, which is how two public paths to
+$\mathbb{E}[\Sigma(x)]$ came to agree at exactly 100 stored draws and disagree by a few
+percent at every other fit size.
+
+**What it costs.** Three draw semantics hide behind one method name: a prior generates
+independent draws, a `MAPPosterior` repeats one parameter set, an `MCMCPosterior` subsamples.
+The protocol docstring has to state all three, or the ambiguity moves one level down rather
+than going away. Requiring the key also means a caller who does not care has to write
+`key=jr.PRNGKey(0)` themselves, which is the intended trade: the seed is visible in their
+code.

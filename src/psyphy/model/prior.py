@@ -12,6 +12,7 @@ Hyperparameters:
 Connections
 -----------
 - WPPM calls Prior.sample_params() to initialize model parameters
+- Prior.sample(n, key=...) draws n of them at once
 - WPPM adds Prior.log_prob(params) to task log-likelihoods to form the log posterior
 - Prior will generate structured parameters for basis expansions
   and decay_rate-controlled smooth covariance fields
@@ -22,6 +23,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Any
 
+import jax
 import jax.numpy as jnp
 import jax.random as jr
 
@@ -212,6 +214,40 @@ class Prior:
             )
 
         return {"W": W}
+
+    def sample(self, n: int, *, key: Any) -> Params:
+        """
+        Sample n independent parameter draws from the prior.
+
+        The vectorized form of :meth:`sample_params`: draw ``i`` equals
+        ``sample_params(jax.random.split(key, n)[i])``.
+
+        Parameters
+        ----------
+        n : int
+            Number of draws.
+        key : jax.Array
+            PRNG key, split n ways.
+
+        Returns
+        -------
+        params : dict
+            Parameter dictionary with a leading axis of n, so for 2D
+            {"W": (n, degree+1, degree+1, input_dim, embedding_dim)}
+
+        Notes
+        -----
+        Satisfies :class:`psyphy.posterior.ParameterSource`.
+
+        Examples
+        --------
+        >>> import jax.random as jr
+        >>> from psyphy.model import Prior
+        >>> prior = Prior(input_dim=2, basis_degree=2)
+        >>> prior.sample(5, key=jr.PRNGKey(0))["W"].shape
+        (5, 3, 3, 2, 3)
+        """
+        return jax.vmap(self.sample_params)(jr.split(key, n))
 
     def log_prob(self, params: Params) -> jnp.ndarray:
         """

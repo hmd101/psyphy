@@ -8,6 +8,33 @@ breaking changes are called out below but do not force a minor-version bump.
 
 ## [Unreleased]
 
+### Added
+
+- **`ParameterSource` in `psyphy.posterior`**, a one-method protocol for anything we can
+  draw parameters from: `sample(n, *, key)` returning a PyTree with a leading axis of `n`.
+  `Prior`, `MAPPosterior` and `MCMCPosterior` all satisfy it, and `ParameterPosterior` now
+  extends it with `params` and `model`.
+
+  Code written against `ParameterSource` accepts a prior and a fitted posterior alike, so a
+  prior predictive check and a posterior predictive check become one function called twice.
+  Chain structure and a density stay off it: `sample` pools the chains, and `MCMCPosterior`
+  has no `log_prob`.
+
+- **`Prior.sample(n, *, key)`**, the vectorized form of `sample_params`. Draw `i` equals
+  `sample_params(jax.random.split(key, n)[i])`, so a prior ensemble matches the Python loop
+  it replaces:
+
+  ```python
+  # before
+  W = jnp.stack([prior.sample_params(k)["W"] for k in jr.split(key, 100)])
+
+  # now
+  prior.sample(100, key=key)["W"]     # (100, 3, 3, 2, 3)
+  ```
+
+  `sample_params(key)` keeps its single-draw signature, because `model.init_params` is on
+  the inference path and wants one unbatched draw rather than a batch of 1 to index.
+
 ### Breaking
 
 - **`cov()` and `cov_batch()` are gone from the covariance fields.** Both methods have
