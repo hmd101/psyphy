@@ -98,7 +98,7 @@ class NUTSSampler(InferenceEngine):
         If None (default), use blackjax.window_adaptation to
         automatically tune step_size and mass matrix (Mode A).
         If a float, skip adaptation and use this fixed step_size for all
-        chains — warmup becomes plain burn-in and all chains are vmapped
+        chains; warmup becomes plain burn-in and all chains are vmapped
         in parallel (Mode B). The user is responsible for choosing a
         suitable value.
     max_num_doublings : int, default=8
@@ -114,7 +114,7 @@ class NUTSSampler(InferenceEngine):
         (WPPM does), sample z = W / prior_std instead of W, so adaptation
         starts from a mass matrix matched to the prior scales rather than
         the identity. Results are returned in W coordinates either way. Set
-        False to reproduce the old identity-start behaviour.
+        False to reproduce the old identity-start behavior.
     seed : int, default=0
         Master PRNG seed for chain initialization and sampling keys.
     show_progress : bool, default=True
@@ -143,8 +143,10 @@ class NUTSSampler(InferenceEngine):
     --------
     >>> from psyphy.inference import NUTSSampler
     >>> sampler = NUTSSampler(num_warmup=200, num_samples=500, num_chains=4)
-    >>> nuts_posterior = sampler.fit(model, data, init_params=map_posterior.params)
-    >>> print(nuts_posterior.n_chains, nuts_posterior.n_draws)
+    >>> nuts_posterior = sampler.fit(
+    ...     model, data, init_params=map_posterior.params
+    ... )  # doctest: +SKIP
+    >>> print(nuts_posterior.n_chains, nuts_posterior.n_draws)  # doctest: +SKIP
     4 500
     """
 
@@ -231,30 +233,30 @@ class NUTSSampler(InferenceEngine):
             init_params if init_params is not None else model.init_params(init_key)
         )
 
-        # Fixed MC key baked into logdensity — makes the stochastic
+        # Fixed MC key baked into logdensity: makes the stochastic
         # likelihood deterministic for NUTS gradient evaluations.
         fixed_mc_key = jax.random.PRNGKey(self.logdensity_key_seed)
 
         # -- BlackJAX API boundary --------------------------------
         # logdensity_fn is the ONLY thing BlackJAX needs from psyphy.
         # Contract:
-        #   input:  params  — dict, same structure as init_position
+        #   input:  params, a dict with the same structure as init_position
         #                      e.g. {"W": (2, 2, 2, 3)}
-        #   output: scalar  — log p(θ | data), a JAX float (shape ())
+        #   output: scalar, log p(θ | data), a JAX float (shape ())
         #   must be: JAX-differentiable (jax.grad must work on it)
-        #            (nearly) deterministic — hence the fixed_mc_key
+        #            (nearly) deterministic; hence the fixed_mc_key
         # -----------------------------------------
         def logdensity_fn(params: dict) -> jnp.ndarray:
             return model.log_posterior_from_data(params, data, key=fixed_mc_key)
 
-        # chain_keys: shape (num_chains, 2) — one PRNGKey per chain,
+        # chain_keys: shape (num_chains, 2), one PRNGKey per chain,
         # split further inside each mode into warmup_key and sample_key.
         chain_keys = jax.random.split(chain_key, self.num_chains)
 
         # blackjax is passed as an argument rather than imported again in each
         # private method. Because it is a soft dependency, the single import
         # (with its error-handling) lives here in fit(). In Python, modules are
-        # first-class objects — 'import blackjax' just binds the module to a
+        # first-class objects; 'import blackjax' just binds the module to a
         # local variable, which can be passed around like any other value.
         if self.step_size is None:
             # Prior preconditioning (Mode A only -- in Mode B the user picked
@@ -292,7 +294,7 @@ class NUTSSampler(InferenceEngine):
 
         # positions: dict, each value shaped (n_chains, n_draws, *param_shape)
         #   e.g. {"W": (num_chains, num_samples, 2, 2, 2, 3)}
-        # sampler_stats: each value shaped (num_chains, num_samples) — one scalar
+        # sampler_stats: each value shaped (num_chains, num_samples), one scalar
         # per draw per chain. Keys follow ArviZ's sample_stats convention.
         return MCMCPosterior(positions, model, sampler_stats=sampler_stats)
 
@@ -501,7 +503,7 @@ class NUTSSampler(InferenceEngine):
     #
     # WHY vmappable (contrast with Mode A):
     # step_size and inverse_mass_matrix are fixed constants provided upfront.
-    # Every piece of state — NUTSState, step_size, M^-1 — is a JAX array
+    # Every piece of state (NUTSState, step_size, M^-1) is a JAX array
     # from the start. jax.vmap can stack these along a new chain axis and
     # compile all chains into a single XLA kernel (one compiled call).
     # Trade-off: the user must supply a reasonable step_size manually, and
@@ -510,14 +512,14 @@ class NUTSSampler(InferenceEngine):
     # ------------------------------------------------------------------
 
     def _run_fixed_stepsize(self, blackjax, logdensity_fn, init_position, chain_keys):
-        """Run NUTS with fixed step_size — all chains vmapped in one call.
+        """Run NUTS with fixed step_size: all chains vmapped in one call.
 
         BlackJAX inputs
         ---------------
         logdensity_fn        : dict -> scalar   (see fit() for full contract)
         init_position        : dict             e.g. {"W": (2, 2, 2, 3)}
         step_size            : float            user-supplied; no adaptation
-        inverse_mass_matrix  : (n_params,)      diagonal identity — no per-parameter scaling
+        inverse_mass_matrix  : (n_params,)      diagonal identity, no per-parameter scaling
 
         BlackJAX outputs (via jax.vmap over chain_keys)
         ------------------------------------------------
@@ -526,7 +528,7 @@ class NUTSSampler(InferenceEngine):
         """
         # n_params: total scalar count across all parameter leaves.
         # For WPPM {"W": (2,2,2,3)}: n_params = 2*2*2*3 = 48.
-        # inverse_mass_matrix shape: (n_params,) — diagonal of M^-1 (identity = no scaling).
+        # inverse_mass_matrix shape: (n_params,), diagonal of M^-1 (identity = no scaling).
         flat_leaves = jax.tree.leaves(init_position)
         n_params = sum(x.size for x in flat_leaves)
         inverse_mass_matrix = jnp.ones(n_params)  # shape: (n_params,)
@@ -545,7 +547,7 @@ class NUTSSampler(InferenceEngine):
         )
 
         def run_one_chain(chain_key):
-            # chain_key: PRNGKey shape (2,) — one per chain, vmapped over
+            # chain_key: PRNGKey shape (2,), one per chain, vmapped over
             warmup_key, sample_key = jax.random.split(chain_key)
 
             # nuts.init: position dict -> NUTSState

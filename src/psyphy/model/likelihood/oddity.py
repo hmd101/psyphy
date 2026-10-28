@@ -56,7 +56,6 @@ class OddityTask(BernoulliTaskLikelihood):
     Implements the full 3-stimulus oddity task using Monte Carlo simulation:
         - Samples three internal representations per trial (z0, z1, z2)
         - Uses proper oddity decision rule with three pairwise distances
-        - Suitable for complex covariance structures
 
     Notes
     -----
@@ -68,7 +67,7 @@ class OddityTask(BernoulliTaskLikelihood):
            - d^2(z_ref, z_comparison) = distance from ref to comparison
            - d^2(z_refprime, z_comparison) = distance from reference_prime to comparison
         4. Apply oddity decision rule: delta = min(d^2(z_ref,z_comparison), d^2(z_refprime,z_comparison)) - d^2(z_ref,z_refprime)
-        5. Logistic smoothing: P(correct) \approx logistic.cdf(delta / bandwidth)
+        5. Logistic smoothing: P(correct) ~ logistic.cdf(delta / bandwidth)
         6. Average over samples
 
     Examples
@@ -87,17 +86,20 @@ class OddityTask(BernoulliTaskLikelihood):
     >>> model = WPPM(
     ...     input_dim=2,
     ...     prior=Prior(input_dim=2),
-    ...     likelihood=task,
+    ...     likelihood=likelihood,
     ...     noise=GaussianNoise(),
     ... )
     >>> params = model.init_params(jr.PRNGKey(0))
 
-    >>> # MC simulation
+    >>> # MC simulation, one trial
     >>> from psyphy.data.dataset import ResponseData
+    >>> ref = jnp.array([0.0, 0.0])  # (2,)
+    >>> comparison = jnp.array([0.1, 0.0])  # (2,)
     >>> data = ResponseData()
-    >>> data.add_trial(ref, comparison, resp=1)
+    >>> data.add_trial((ref, comparison), resp=1)
     >>> ll_mc = likelihood.loglik(params, data, model, key=jr.PRNGKey(42))
-    >>> print(f"Log-likelihood (MC): {ll_mc:.4f}")
+    >>> ll_mc.shape
+    ()
     """
 
     def __init__(self, config: OddityTaskConfig | None = None) -> None:

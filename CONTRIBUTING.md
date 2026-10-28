@@ -98,6 +98,8 @@ pytest
 * Write clear commit messages
 * Add tests when appropriate
 * Update documentation if APIs change
+* Update the developer notes (`docs/developer-notes.md`) if the PR changes *why* something works
+  the way it does, not just what it does
 
 ---
 
@@ -108,6 +110,12 @@ A good PR should:
 * Clearly describe what changed and why
 * Reference related issues if applicable
 * Be easy to review (avoid large unrelated changes)
+
+If the change turns on a decision a future reader would not guess from the signature, add or
+amend an entry in `docs/developer-notes.md`. An entry names the symbols it describes, what
+we wanted, what psyphy does, and what it costs. Bump its
+**Last updated** date when you touch it, and check the symbols it names still exist, since a
+rename is what usually leaves one of these quietly wrong.
 
 ---
 

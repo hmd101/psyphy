@@ -12,8 +12,8 @@ This tutorial explains the example that can be found and run
 
 Runtime depends heavily on your device and on a few computation-driving hyperparameters (see below).
 - GPU (A100 40GB): With the default settings below, the script runs in ~3 minutes.
-- CPU: To make the script practical on CPU, reduce `MC_SAMPLES` aggressively (e.g., to 5–20 and `NUM_TRIALS_Per_Ref`) and shorten the **optimizer** run (reduce `num_steps`). These two knobs usually give the biggest speedups.
-- Apple Silicon / MPS: With the current configuration, the script takes 1h 45 min on  CPU (M5 Max, 64 GB)
+- CPU: To make the script practical on CPU, reduce `MC_SAMPLES` aggressively (e.g., to 5–20) and `NUM_TRIALS_Per_Ref` and shorten the **optimizer** run (reduce `num_steps`). These two knobs usually give the biggest speedups.
+- Apple Silicon / MPS: With the current configuration, the script takes 1h 45 min on CPU (M5 Max, 64 GB)
 
 #### Default compute settings (GPU)
 ```python
@@ -47,15 +47,15 @@ $$
 
 where $U(x)$ is a smooth, basis-expanded matrix-valued function and $\varepsilon$ is a small diagonal “jitter” (`diag_term`) to avoid numerical issues. Alternatively, in Gaussian Process (GP) terms, you can think of $U(x)$ defining a GP in weight space, i.e., a "Bayesian linear model".
 
-A psychophysical task model (here: `OddityTask`) uses $\Sigma$ to compute probability of a correct response on each trial, and `MAPOptimizer` fits WPPM parameters by maximizing
-
-For more details on the psychophysical task used in this example as well as some more details on the model, please checkout the paper by [Hong et al (2025)](https://elifesciences.org/reviewed-preprints/108943) and this [tutorial](`docs/examples/wppm/wppm_tutorial.md`).
-
->The most important thing to keep in mind is that the **task** used in the experiment (with humans) implicitly defines the **likelihood**. So, in this context, you can think of task and likelihood as interchangeable.
+A psychophysical task model (here: `OddityTask`) uses $\Sigma$ to compute probability of a correct response on each trial, and [`MAPOptimizer`](../../reference/inference.md#psyphy.inference.MAPOptimizer) fits WPPM parameters by maximizing
 
 \[
 \log p(W \mid \mathcal{D}) = \log p(\mathcal{D} \mid W) + \log p(W).
 \]
+
+For more details on the psychophysical task used in this example as well as some more details on the model, please check out the paper by [Hong et al. (2025)](https://elifesciences.org/reviewed-preprints/108943).
+
+>The most important thing to keep in mind is that the **task** used in the experiment (with humans) implicitly defines the **likelihood**. So, in this context, you can think of task and likelihood as interchangeable.
 
 ---
 ## Step 0 -- Load data
@@ -66,12 +66,12 @@ For OddityTask, we store trials as (ref, comparison) even though the task involv
 --8<-- "docs/examples/wppm/full_wppm_fit_example.py:data"
 ```
 
-Note on data used in this script: here, we simulate data (and hence have a ground truth to compare agains). To how to conveniently simulate data yourself, checkout  the [script](https://github.com/flatironinstitute/psyphy/blob/main/docs/examples/wppm/full_wppm_fit_example.py)
+Note on data used in this script: here, we simulate data (and hence have a ground truth to compare against). To see how to conveniently simulate data yourself, check out the [script](https://github.com/flatironinstitute/psyphy/blob/main/docs/examples/wppm/full_wppm_fit_example.py)
 
 ### 2 ways of representing data in `psyphy` (important)
 `psyphy` provides two lightweight containers for trial data (defined in [`src/psyphy/data/dataset.py`](https://github.com/flatironinstitute/psyphy/blob/main/src/psyphy/data/dataset.py)):
 
-**`TrialData` (compute-first; used for fitting):**
+**[`TrialData`](../../reference/data.md#psyphy.data.TrialData) (compute-first; used for fitting):**
 
 - The canonical, (batched) input expected by likelihood evaluation and optimizers (e.g., MAPOptimizer.fit(...)).
 It holds JAX arrays:
@@ -82,20 +82,20 @@ It holds JAX arrays:
 
 where $N$ is the number of trials, $K$ is the number of distinct stimuli per trial (e.g. K=2 in the Oddity task: reference and comparison), $d$ is the stimulus space dimensionality, $R$ is the number of response channels, and $C$ is the number of context channels.
 
-Context is an optional attribute which is intended to track task-wide features that vary across trials which might condition likelihoods. For example, psyiological metrics like pupil dilation could be included as context. PsyPhy does not yet have inbuilt uses for context.
+Context is an optional attribute which is intended to track task-wide features that vary across trials which might condition likelihoods. For example, physiological metrics like pupil dilation could be included as context. psyphy does not yet have inbuilt uses for context.
 
-**`ResponseData` (collection/I/O-first; convenient for experiments):**
+**[`ResponseData`](../../reference/data.md#psyphy.data.ResponseData) (collection/I/O-first; convenient for experiments):**
 - A Python-friendly log (stores trials in lists) designed for incremental collection, saving/loading (e.g., CSV), and adaptive experiments but expensive for computation
 
 #### Typical workflow:
 Avoid repeatedly converting Python lists -> JAX arrays inside tight loops.
 
 - If you’re doing online fitting with adaptive trial placement, it’s usually better to:
--  collect trials in ResponseData (easy incremental updates).
-- then convert to `TrialData` with `to_trial_data()` when you’re ready to fit/evaluate a model once or  in batches (e.g. every K trials) before running expensive optimizaiton.
+- collect trials in ResponseData (easy incremental updates).
+- then convert to `TrialData` with `to_trial_data()` when you’re ready to fit/evaluate a model once or in batches (e.g. every K trials) before running expensive optimization.
 
 
-Note that here, we simlulate data, for details check out  [`full_wppm_fit_example.py`](full_wppm_fit_example.py) directly resulting in a `TrialData` object.
+Note that here, we simulate data, for details check out [`full_wppm_fit_example.py`](full_wppm_fit_example.py) directly resulting in a `TrialData` object.
 
 
 ---
@@ -123,7 +123,7 @@ where:
 
 - $d$ = `basis_degree`
 
-      - -> we're representing a function using a Chebychev expansion with terms up to degree `basis_degree`, which is 4 here
+      - -> we're representing a function using a Chebyshev expansion with terms up to degree `basis_degree`, which is 4 here
 
       - T_0(x), T_1(x), T_2(x), T_3(x), T_4(x)
 - $D$ = `input_dim` (here 2)
@@ -144,7 +144,7 @@ The prior variance decays with basis “total degree”. In code:
 W_{ijde} \sim \mathcal{N}(0, \sigma^2_{ij}).
 \]
 
-This is the  state of the  WPPM: **before any data**, WPPM draws smooth random fields because high-frequency coefficients are shrunk by the decay.
+This is the state of the WPPM: **before any data**, WPPM draws smooth random fields because high-frequency coefficients are shrunk by the decay.
 
 
 ---
@@ -167,7 +167,7 @@ This is the  state of the  WPPM: **before any data**, WPPM draws smooth random f
     </picture>
     <p><em>A sample from the prior</em></p>
 </div>
-To see how we generate the covariance field figures, checkout the plotting code in this [script](https://github.com/flatironinstitute/psyphy/blob/main/docs/examples/wppm/full_wppm_fit_example.py), which reproduces the figures in this tutorial.
+To see how we generate the covariance field figures, check out the plotting code in this [script](https://github.com/flatironinstitute/psyphy/blob/main/docs/examples/wppm/full_wppm_fit_example.py), which reproduces the figures in this tutorial.
 
 ---
 
@@ -176,9 +176,9 @@ To see how we generate the covariance field figures, checkout the plotting code 
 Like good Bayesians, we build a model by combining a **prior** and a **likelihood**.
 
 
-In `psyphy`, `model` acts as  a container for both
+In `psyphy`, `model` acts as a container for both
 
-- Prior specific hyerparameters, owned by the `Prior`.
+- Prior-specific hyperparameters, owned by the [`Prior`](../../reference/model.md#psyphy.model.Prior).
 
 - Likelihood-specific hyperparameters are owned by the `Task`
 
@@ -192,7 +192,7 @@ In `psyphy`, `model` acts as  a container for both
 
 ## Step 3 — Fit with MAP optimization
 
-We obtain a MAP estimate over weights $W$ by  computing the negative log likelihood  using
+We obtain a MAP estimate over weights $W$ by computing the negative log likelihood using
 SGD + momentum:
 
 
@@ -211,18 +211,18 @@ W_\text{MAP} = \arg\max_{W} \big[\log p(\mathcal{D}\mid W) + \log p(W)\big].
 - $\log p(W)$ is from `Prior.log_prob(params)` (see `prior.py`).
 - $\log p(\mathcal{D}\mid W)$ is computed by the task’s log-likelihood (here via Monte Carlo inside `OddityTask.loglik`).
 
-The result in this example is a `MAPPosterior` object that contains a point estimate `map_posterior.params`.
+The result in this example is a [`MAPPosterior`](../../reference/posterior.md#psyphy.posterior.MAPPosterior) object that contains a point estimate `map_posterior.params`.
 
 
 ---
 
 ## Step 4 — Visualize fit vs. truth vs. prior sample
-To see how we generate the covariance field figures, checkout the plotting code in this [script](https://github.com/flatironinstitute/psyphy/blob/main/docs/examples/wppm/full_wppm_fit_example.py), which reproduces the figures in this tutorial.
+To see how we generate the covariance field figures, check out the plotting code in this [script](https://github.com/flatironinstitute/psyphy/blob/main/docs/examples/wppm/full_wppm_fit_example.py), which reproduces the figures in this tutorial.
 <div align="center">
     <picture>
     <img align="center" src="../plots/ellipses.png" width="600"/>
     </picture>
-    <p><em>Fitted ellipsoids (red) overlayed with ground truth (gray) and model initialization (blue), a sample from the prior. The fitted ellipsoids (read) are very close to the ground truth (gray). Note the top left or bottom right corner, where they diverge.</em></p>
+    <p><em>Fitted ellipsoids (red) overlaid with ground truth (gray) and model initialization (blue), a sample from the prior. The fitted ellipsoids (red) are very close to the ground truth (gray). Note the top left or bottom right corner, where they diverge.</em></p>
 </div>
 ---
 
@@ -238,10 +238,8 @@ To see how we generate the covariance field figures, checkout the plotting code 
 
 ---
 
-## To recap: Minimal recipe (copy/paste mental model)
-We are Bayesian, so we need to define the Prior and Likelihood and choose an inference method (here MAP) that will hand us the posterior distribution over the parameters.
+For a minimal code setup that doesn't require a GPU but will run on your CPU in < 1 min, you may find [`quickstart`](https://flatironinstitute.github.io/psyphy/examples/wppm/quick_start/) helpful.
 
-For an even more minimal code setup that doesn't require a GPU but will run on your CPU in < 1 min, you may find [`quickstart`](https://flatironinstitute.github.io/psyphy/examples/wppm/quick_start/) helpful.
 ---
 
 ## Notes and pitfalls
@@ -261,7 +259,7 @@ For an even more minimal code setup that doesn't require a GPU but will run on y
 
 
 
-## If your curious about some of the implementation details, checkout these files:
+## If you're curious about some of the implementation details, check out these files:
 
 <!--
 Note on links:
@@ -272,10 +270,10 @@ instead of using relative filesystem paths.
 
 - Example script: [`docs/examples/wppm/full_wppm_fit_example.py`](full_wppm_fit_example.py)
 - Prior (how weights are initialized / regularized): [`src/psyphy/model/prior.py`](https://github.com/flatironinstitute/psyphy/blob/main/src/psyphy/model/prior.py)
-- Model definition: [`src/psyphy/model/wppm.py`](https://github.com/flatironinstitute/psyphy/blob/main/src/psyphy/model/wppm.py) (see `WPPM`)
-- Covariance field wrapper: [`src/psyphy/model/covariance_field.py`](https://github.com/flatironinstitute/psyphy/blob/main/src/psyphy/model/covariance_field.py) (see `WPPMCovarianceField`)
-- Task / likelihood: [`src/psyphy/model/likelihood/oddity.py`](https://github.com/flatironinstitute/psyphy/blob/main/src/psyphy/model/likelihood/oddity.py) (see `OddityTask`)
-- Noise model: [`src/psyphy/model/noise.py`](https://github.com/flatironinstitute/psyphy/blob/main/src/psyphy/model/noise.py) (see `GaussianNoise`)
+- Model definition: [`src/psyphy/model/wppm.py`](https://github.com/flatironinstitute/psyphy/blob/main/src/psyphy/model/wppm.py) (see [`WPPM`](../../reference/model.md#psyphy.model.WPPM))
+- Covariance field wrapper: [`src/psyphy/model/covariance_field.py`](https://github.com/flatironinstitute/psyphy/blob/main/src/psyphy/model/covariance_field.py) (see [`WPPMCovarianceField`](../../reference/model.md#psyphy.model.WPPMCovarianceField))
+- Task / likelihood: [`src/psyphy/model/likelihood/oddity.py`](https://github.com/flatironinstitute/psyphy/blob/main/src/psyphy/model/likelihood/oddity.py) (see [`OddityTask`](../../reference/model.md#psyphy.model.OddityTask))
+- Noise model: [`src/psyphy/model/noise.py`](https://github.com/flatironinstitute/psyphy/blob/main/src/psyphy/model/noise.py) (see [`GaussianNoise`](../../reference/model.md#psyphy.model.GaussianNoise))
 - MAP fitting: [`src/psyphy/inference/map_optimizer.py`](https://github.com/flatironinstitute/psyphy/blob/main/src/psyphy/inference/map_optimizer.py) (see `MAPOptimizer`)
 - Data container: [`src/psyphy/data/dataset.py`](https://github.com/flatironinstitute/psyphy/blob/main/src/psyphy/data/dataset.py) (see `ResponseData`)
 

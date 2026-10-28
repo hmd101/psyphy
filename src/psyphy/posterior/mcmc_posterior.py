@@ -30,7 +30,8 @@ class MCMCPosterior:
     Backend-agnostic container for MCMC posterior samples.
 
     Satisfies the ParameterPosterior protocol:
-    - ``params``: posterior mean over all chains and draws
+    - ``params``: posterior mean *parameter* over all chains and draws (for
+      WPPM, do not turn this into a covariance field -- see ``params``)
     - ``model``: the fitted WPPM instance
     - ``sample(n, key)``: draw n parameter vectors from the chain pool
 
@@ -77,17 +78,39 @@ class MCMCPosterior:
 
     @property
     def params(self) -> dict:
-        """Posterior mean over all chains and draws.
+        """Posterior mean of the parameters over all chains and draws.
 
         Returns
         -------
         dict
             Parameter PyTree with the same structure as a single draw.
             For WPPM: ``{"W": ndarray of shape (*W_shape)}``.
-            e.g. {"W": (2, 2, 2, 3)} — mean over axes 0 (chains) and 1 (draws).
+            e.g. {"W": (2, 2, 2, 3)}, mean over axes 0 (chains) and 1 (draws).
+
+        Warnings
+        --------
+        For WPPM, do **not** build a covariance field from this, e.g.
+        ``WPPMCovarianceField(model, posterior.params)``. That gives Σ(E[W]),
+        which is not the posterior mean of Σ and is systematically too small:
+
+        - Σ = U Uᵀ + λI is quadratic in W, so E[Σ] = Σ(E[W]) + Cov[U] and
+          averaging W first drops the (positive semidefinite) Cov[U] term.
+        - W is only identified up to an orthogonal rotation of its embedding
+          axis (W -> W R leaves Σ unchanged), so draws at different
+          orientations partly cancel in E[W], pulling Σ(E[W]) toward λI.
+
+        For the posterior mean covariance field use
+        ``PosteriorMeanCovarianceField(posterior)``; for individual covariance
+        draws use ``sample(n)``. E[W] remains a valid parameter set, e.g. as
+        ``init_params`` for another fit.
         """
         # _samples["W"]: (n_chains, n_draws, *param_shape)
         # mean over (0, 1)  ->  (*param_shape)
+        # Kept as the plain parameter mean on purpose: the ParameterPosterior
+        # protocol requires params to be a parameter PyTree (NUTSSampler and
+        # MAPOptimizer accept it as init_params), and E[Σ] cannot be expressed
+        # as any single W. The fix for covariance summaries therefore lives in
+        # PosteriorMeanCovarianceField, not here.
         return jax.tree.map(lambda x: jnp.mean(x, axis=(0, 1)), self._samples)
 
     @property
@@ -122,9 +145,9 @@ class MCMCPosterior:
             # x     : (n_chains, n_draws, *param_shape)
             #           e.g. (4, 1000, 2, 2, 2, 3)
             # pool  : (n_chains * n_draws, *param_shape)
-            #           e.g. (4000, 2, 2, 2, 3)  — all draws from all chains flattened
+            #           e.g. (4000, 2, 2, 2, 3)  : all draws from all chains flattened
             # output: (n, *param_shape)
-            #           e.g. (100, 2, 2, 2, 3)   — n draws subsampled from pool
+            #           e.g. (100, 2, 2, 2, 3)   : n draws subsampled from pool
             n_chains, n_draws = x.shape[:2]
             event_shape = x.shape[2:]
             pool = x.reshape(n_chains * n_draws, *event_shape)
@@ -137,6 +160,29 @@ class MCMCPosterior:
 
     # Convenience properties
     # -----------------------------------------------
+
+    @property
+    def samples(self) -> dict:
+        """All draws, chain structure preserved.
+
+        Returns
+        -------
+        dict
+            ``{name: array of shape (n_chains, n_draws, *param_shape)}``.
+            For WPPM: ``{"W": (n_chains, n_draws, d0, d1, d2, d3)}``.
+
+        Notes
+        -----
+        This is the raw posterior, not a summary: use it to persist a fit, to
+        pass the draws to another library, or for any computation that needs
+        the per-chain layout (diagnostics do). For a random subset of draws use
+        :meth:`sample`; for the posterior mean parameter use :attr:`params`.
+
+        The returned dict is a fresh mapping, so adding or removing keys does
+        not affect the posterior, but the arrays themselves are shared. JAX
+        arrays are immutable, so that is safe.
+        """
+        return dict(self._samples)
 
     @property
     def n_chains(self) -> int:
@@ -174,7 +220,7 @@ class MCMCPosterior:
 
         Notes
         -----
-        ArviZ handles arbitrary-dimensional variables natively — no
+        ArviZ handles arbitrary-dimensional variables natively, no
         flattening required. R-hat and ESS are computed per scalar element.
 
         If ``sampler_stats`` were provided at construction (e.g.
@@ -183,9 +229,20 @@ class MCMCPosterior:
 
         Examples
         --------
-        >>> idata = nuts_posterior.to_arviz()
+        >>> import jax.numpy as jnp
+        >>> import jax.random as jr
         >>> import arviz as az
-        >>> print(az.summary(idata))
+        >>> from psyphy.model import WPPM, OddityTask, Prior
+        >>> from psyphy.posterior import MCMCPosterior
+        >>> model = WPPM(Prior(input_dim=2, basis_degree=2), OddityTask(), input_dim=2)
+        >>> # stand-in for NUTSSampler().fit(model, data): 2 chains of 50 prior draws
+        >>> keys = jr.split(jr.PRNGKey(1), 100)
+        >>> W = jnp.stack(
+        ...     [model.init_params(k)["W"] for k in keys]
+        ... )  # (100, 3, 3, 2, 3)
+        >>> nuts_posterior = MCMCPosterior({"W": W.reshape(2, 50, *W.shape[1:])}, model)
+        >>> idata = nuts_posterior.to_arviz()
+        >>> print(az.summary(idata))  # doctest: +SKIP
         """
         try:
             import arviz as az
@@ -211,12 +268,12 @@ class MCMCPosterior:
         # For WPPM with 4 chains, 1000 draws, W shape (2,2,2,3):
         #   {"posterior": {"W": np.ndarray (4, 1000, 2, 2, 2, 3)}}
         #
-        # Returns: xarray.DataTree  (ArviZ 1.0 — was InferenceData in ArviZ 0.x)
+        # Returns: xarray.DataTree  (ArviZ 1.0; was InferenceData in ArviZ 0.x)
         #   idata["posterior"]["W"].values  -> np.ndarray (4, 1000, 2, 2, 2, 3)
         #   list(idata.children)            -> ["posterior", "sample_stats"]
         #   az.rhat(idata).ds.data_vars     -> {"W"}  (R-hat per scalar element)
         #
-        # Note: must convert JAX arrays to numpy — ArviZ uses numpy/xarray internally.
+        # Note: must convert JAX arrays to numpy; ArviZ uses numpy/xarray internally.
         # ----------------------------------------------------------------
         data: dict = {"posterior": {k: np.asarray(v) for k, v in self._samples.items()}}
 

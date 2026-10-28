@@ -22,6 +22,9 @@ site/
 # Ignore VSCode settings
 .vscode/
 
+
+.claude/
+
 # Generated plot output directories
 # docs/examples/**/plots/*
 
@@ -37,8 +40,9 @@ venv/
 
 
 
+NOTE_posterior_mean_shrinkage.md
 
-
+research/**/
 # docs/examples/wppm/hong2025_reproduction.md
 
 docs/examples/wppm/plots/hong2025_quick_ellipses.png
@@ -49,3 +53,17 @@ docs/examples/wppm/plots/hong2025_quick_thresholds_end_to_end.png
 # full-mode .npz is ~2 KB and worth committing, since it lets anyone
 # regenerate the end-to-end figure without a GPU.
 docs/examples/wppm/fits/hong2025_quick_fit.npz
+
+# Same split for the NUTS example. The documentation is written from
+# --mode balanced, so plots/nuts_*_balanced.* and fits/nuts_balanced_fit.npz
+# are committed: with the cached fit, `--from-fit` regenerates every figure and
+# every printed diagnostic on the page without a GPU. Quick mode writes the
+# unsuffixed names, which are smoke-test output and must never be mistaken for
+# the figures the docs embed.
+docs/examples/wppm/fits/nuts_quick_fit.npz
+docs/examples/wppm/plots/nuts_ellipses_uncertainty.jpg
+docs/examples/wppm/plots/nuts_overlay.jpg
+docs/examples/wppm/plots/nuts_vs_map_comparison.jpg
+docs/examples/wppm/plots/nuts_threshold_band.jpg
+docs/examples/wppm/plots/nuts_trace_sigma.png
+docs/examples/wppm/plots/nuts_convergence_sigma.png

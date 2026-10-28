@@ -15,7 +15,7 @@ loaders that return psyphy objects such as
 
 Available datasets
 ------------------
-- :mod:`~psyphy.data.published.hong2025` — human color discrimination,
+- :mod:`~psyphy.data.published.hong2025`: human color discrimination,
   8 observers, Wishart process fits. Hong et al. (2026), eLife 14:RP108943.
 
 Examples

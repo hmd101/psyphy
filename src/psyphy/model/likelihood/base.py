@@ -30,11 +30,11 @@ class TaskLikelihood(ABC):
     Abstract base class for task likelihoods.
 
     Subclasses must implement:
-    - ``predict(params, stimuli, model, *, key)`` → probability parameters for one trial
+    - ``predict(params, stimuli, model, *, key)`` -> probability parameters for one trial
 
     The base class provides concrete implementations of:
-    - ``loglik(params, data, model, *, key)`` → Bernoulli log-likelihood over a batch
-    - ``simulate(params, stimuli, model, *, key)`` → simulated responses & probability parameters
+    - ``loglik(params, data, model, *, key)`` -> Bernoulli log-likelihood over a batch
+    - ``simulate(params, stimuli, model, *, key)`` -> simulated responses & probability parameters
 
     The Bernoulli log-likelihood step is identical for all binary-response tasks,
     so it lives here rather than being re-implemented in every subclass.
@@ -151,11 +151,11 @@ class BernoulliTaskLikelihood(TaskLikelihood):
     Intermediate abstract subclass for task likelihoods.
 
     Subclasses must implement:
-    - ``predict(params, stimuli, model, *, key)`` → p(correct) for one trial
+    - ``predict(params, stimuli, model, *, key)`` -> p(correct) for one trial
 
     This abstract subclass provides concrete implementations of:
-    - ``loglik(params, data, model, *, key)`` → Bernoulli log-likelihood over a batch
-    - ``simulate(params, inputs, model, *, key)`` → simulated responses
+    - ``loglik(params, data, model, *, key)`` -> Bernoulli log-likelihood over a batch
+    - ``simulate(params, inputs, model, *, key)`` -> simulated responses
 
     The Bernoulli log-likelihood step is identical for all binary-response tasks,
     so it lives here rather than being re-implemented in every subclass.
@@ -193,7 +193,7 @@ class BernoulliTaskLikelihood(TaskLikelihood):
             Scalar sum of Bernoulli log-likelihoods over all trials.
         """
         stimuli = jnp.asarray(data.stimuli)
-        # TrialData stores responses as (N, R) — R=1 for binary tasks.
+        # TrialData stores responses as (N, R): R=1 for binary tasks.
         # Extract the single binary channel to get shape (N,).
         # Without this, jnp.where broadcasts (N, 1) against probs (N,),
         # treating (N,) as (1, N) and producing an (N, N) result whose
@@ -270,11 +270,11 @@ class GaussianTaskLikelihood(TaskLikelihood):
     Intermediate abstract subclass for task likelihoods.
 
     Subclasses must implement:
-    - ``predict(params, stimuli, model, *, key)`` → (mu, sigma) of distribution for one trial
+    - ``predict(params, stimuli, model, *, key)`` -> (mu, sigma) of distribution for one trial
 
     This abstract subclass provides concrete implementations of:
-    - ``loglik(params, data, model, *, key)`` → Gaussian log-likelihood over a batch
-    - ``simulate(params, inputs, model, *, key)`` → simulated responses
+    - ``loglik(params, data, model, *, key)`` -> Gaussian log-likelihood over a batch
+    - ``simulate(params, inputs, model, *, key)`` -> simulated responses
 
     The Gaussian log-likelihood step is identical for all tasks with the assumption
     of Gaussian response distributions, so it lives here rather than being

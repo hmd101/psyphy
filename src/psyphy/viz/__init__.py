@@ -2,7 +2,7 @@
 viz
 ===
 
-Plotting helpers for psyphy, kept separate from the modelling code.
+Plotting helpers for psyphy, kept separate from the modeling code.
 
 This subpackage provides:
 

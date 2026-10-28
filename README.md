@@ -18,25 +18,29 @@
 
 ## Overview
 
-`psyphy` is an open-source, JAX-based framework for psychophysics research. It leverages GPU acceleration and efficient approximate inference to power Bayesian, active-learning-driven adaptive experiments.
+`psyphy` is an open-source, JAX-based package for psychophysics research. It fits Bayesian
+models of perceptual discrimination, currently the Wishart Process Psychophysical Model
+(WPPM), on CPU or GPU. A fit gives either a single maximum a posteriori (MAP) estimate or
+samples from the full posterior with the No-U-Turn Sampler (NUTS). The aim is to use that
+posterior to choose the next trial in an adaptive experiment.
 
-Designed to be modular and extensible, `psyphy` accelerates research workflows and enables real-time adaptive experiments. While currently focused on human color perception, it can be adapted to other perceptual modalities.
+The examples so far are on human color perception, but the model applies to any stimulus
+space where discrimination noise varies smoothly.
 
 The package is under active development, and we welcome contributions.
 
 ## Install
-`psyphy` only supports python 3.10+. We recommend installing `psyphy` under a virtual environment. Once you've created a virtual environment for `psyphy` and activated it, you can install `psyphy` using pip:
+`psyphy` supports Python 3.10 and later. We recommend installing `psyphy` under a virtual environment. Once you've created a virtual environment for `psyphy` and activated it, you can install `psyphy` using pip:
 
 ```bash
 pip install psyphy
 ```
 
-If you're developer or want to use the latest features, you can install from GitHub using:
+If you're a developer or want the latest features, install from GitHub:
 ```bash
-git clone https://flatironinstitute.github.io/psyphy.git
+git clone https://github.com/flatironinstitute/psyphy.git
 cd psyphy
 pip install -e .
-
 ```
 Contributors can also use [uv](https://docs.astral.sh/uv/), which installs from the committed `uv.lock` for a reproducible environment instead of resolving the loose ranges above fresh each time; see [CONTRIBUTING.md](CONTRIBUTING.md) for the uv-based workflow.
 
