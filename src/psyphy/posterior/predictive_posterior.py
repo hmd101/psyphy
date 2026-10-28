@@ -170,29 +170,6 @@ class PredictivePosterior(Protocol):
         """
         ...
 
-    def cov_field(self, X: jnp.ndarray) -> jnp.ndarray:
-        """
-        Posterior over perceptual covariance field Σ(X).
-
-        Parameters
-        ----------
-        X : jnp.ndarray
-            Test stimuli, shape (n_test, input_dim)
-
-        Returns
-        -------
-        jnp.ndarray
-            Posterior mean covariance E[Σ(X) | data],
-            shape (n_test, input_dim, input_dim)
-
-        Notes
-        -----
-        WPPM-specific method for visualizing perceptual noise structure.
-        This is NOT the predictive covariance - it's the model's
-        internal representation of perceptual uncertainty.
-        """
-        ...
-
 
 class WPPMPredictivePosterior:
     """
@@ -226,6 +203,10 @@ class WPPMPredictivePosterior:
     threshold_config : ThresholdConfig, optional
         Settings for the threshold inversion. Only used when
         ``threshold_pred=True``; defaults to ``ThresholdConfig()``.
+    key : jax.Array, keyword-only
+        PRNG key, split once here into a key for drawing parameters and a key
+        for the threshold sweep's Monte Carlo. ``mean`` and ``variance`` are
+        properties, so this is where their randomness enters.
 
     Attributes
     ----------
@@ -252,12 +233,18 @@ class WPPMPredictivePosterior:
         n_samples: int = 100,
         threshold_pred: bool = False,
         threshold_config: ThresholdConfig | None = None,
+        *,
+        key: jax.Array,
     ):
         self.param_posterior = param_posterior
         self.X = X
         self.n_samples = n_samples
         self.threshold_pred = threshold_pred
         self.threshold_config = threshold_config
+
+        # Split by purpose at construction: `mean` and `variance` are
+        # properties, so they have nowhere to take a key, and both read these.
+        self._draw_key, self._sweep_key = jr.split(key)
 
         # Lazy evaluation cache. Annotated explicitly: without it the
         # initialiser alone makes these `None`, and the `mean`/`variance`
@@ -394,7 +381,7 @@ class WPPMPredictivePosterior:
         # the dimension `chunk` exists to bound. `_p_correct_chunk` is
         # compiled once (shapes are static across every iteration) and
         # reused, so the loop's overhead is dispatch only, not compilation.
-        sweep_keys = jr.split(jr.PRNGKey(1), n_param_samples * n_test)
+        sweep_keys = jr.split(self._sweep_key, n_param_samples * n_test)
         results = []
         for s in range(n_param_samples):
             params_s = jax.tree_util.tree_map(lambda leaf, s=s: leaf[s], param_samples)
@@ -411,8 +398,7 @@ class WPPMPredictivePosterior:
             return
 
         # Sample parameters from posterior
-        key = jr.PRNGKey(0)  # TODO: Make configurable via init
-        param_samples = self.param_posterior.sample(self.n_samples, key=key)
+        param_samples = self.param_posterior.sample(self.n_samples, key=self._draw_key)
 
         model = self.param_posterior.model
 
@@ -516,50 +502,3 @@ class WPPMPredictivePosterior:
         if sample_shape:
             return samples.reshape(*sample_shape, -1)
         return samples
-
-    def cov_field(self, X: jnp.ndarray) -> jnp.ndarray:
-        """
-        Posterior mean covariance field E[Σ(X) | data].
-
-        Parameters
-        ----------
-        X : jnp.ndarray
-            Test stimuli, shape (n_test, input_dim) OR (n_test, k_stim, input_dim)
-            Note that standard use for OddityTask is 2D with X as test REFS, not all stimuli.
-
-        Returns
-        -------
-        jnp.ndarray
-            Covariance matrices, shape (n_test, input_dim, input_dim) OR (n_test, k_stim, input_dim, input_dim)
-
-        Notes
-        -----
-        Averages local_covariance(x) over parameter posterior samples.
-        """
-        key = jr.PRNGKey(0)
-        param_samples = self.param_posterior.sample(self.n_samples, key=key)
-
-        model = self.param_posterior.model
-
-        def cov_at_x(params, x):
-            """Evaluate Σ(x) with given parameters."""
-            return model.local_covariance(params, x)
-
-        # Vectorized evaluation: (n_samples, n_test, k_stim, input_dim, input_dim)
-        if jnp.ndim(X) == 3:  # more than 1 stimulus
-            cov_samples = jax.vmap(
-                lambda params: jax.vmap(jax.vmap(lambda s: cov_at_x(params, s)))(X)
-            )(param_samples)
-        elif jnp.ndim(X) == 2:  # only 1 stimulus
-            cov_samples = jax.vmap(
-                lambda params: jax.vmap(lambda s: cov_at_x(params, s))(X)
-            )(param_samples)
-        else:
-            raise ValueError(
-                "Incorrect input dimensionality"
-                "Expected 2D (n_test, input_dim) or 3D (n_test, k_stim, input_dim)"
-                f"Received {jnp.ndim(X)}D."
-            )
-
-        # Return posterior mean
-        return jnp.mean(cov_samples, axis=0)
