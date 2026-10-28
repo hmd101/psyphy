@@ -9,8 +9,7 @@ change when they do not.
 library for diagnosing Bayesian models.
 [`covariance_to_arviz`](../../reference/model.md#psyphy.model.covariance_to_arviz) hands a
 psyphy fit to it in the shape it expects, so every ArviZ function works on our draws with no
-reshaping. The figure below carries two of the core diagnostics and is ArviZ's own output.
-It is what this tutorial builds towards.
+reshaping. The figure below carries two of the core diagnostics and is a teaser of what this tutorial builds towards.
 
 <div align="center">
   <img src="../plots/nuts_convergence_sigma_full.png" width="760"/>
@@ -127,7 +126,7 @@ the chains converged, they should overlap, stay level, and vary fast from draw t
 
 <div align="center">
   <img src="../plots/nuts_trace_sigma_full.png" width="760"/>
-  <p><em>The trace plots of a converged run. One panel per quantity at the reference point with the worst R-hat, one colored
+  <p><em>&#10003; Chains mixed. One panel per quantity at the reference point with the worst R-hat, one colored
   line per chain. Horizontal axis is the draw/sample index, vertical axis the value of that
   quantity.</em></p>
 </div>
@@ -136,17 +135,17 @@ For comparison, below we show the trace plot of the same reference point from a 
 
 <div align="center">
   <img src="../plots/nuts_trace_sigma_quick.png" width="760"/>
-  <p><em>The same plot from `--mode quick`: 2 chains, 150 draws. Not converged.</em></p>
+  <p><em>&#10007; Chains not mixed. The same plot from `--mode quick`: 2 chains, 150 draws.</em></p>
 </div>
 
 Read each panel along the horizontal axis:
 
 | in the trace | interpretation | where to see it |
 |---|---|---|
-| chains overlap, each level, values varying fast from draw to draw | mixed | the `--mode full` figure |
-| one chain holds its own level | not mixed | `corr_0_1` in `--mode quick`, the two chains apart for stretches of 40 draws or more |
-| a slope at either end | still drifting, so not mixed | |
-| slow swings instead of fast variation | autocorrelated, so few independent draws | all three `--mode quick` panels |
+| chains overlap, each level, values varying fast from draw to draw | &#10003; mixed | the `--mode full` figure |
+| one chain holds its own level | &#10007; not mixed | `corr_0_1` in `--mode quick`, the two chains apart for stretches of 40 draws or more |
+| a slope at either end | &#10007; still drifting, so not mixed | |
+| slow swings instead of fast variation | &#10007; autocorrelated, so few independent draws | all three `--mode quick` panels |
 
 A trace plot catches those. It does not catch chains that look fine and still carry too few
 independent draws, which is what ESS and R-hat are for.
@@ -157,10 +156,19 @@ We see one reference point here. The figure at the top covers all 25 at once.
 --8<-- "docs/examples/wppm/nuts_inference_example.py:convergence_plot"
 ```
 
+<div align="center">
+  <img src="../plots/nuts_convergence_sigma_full.png" width="760"/>
+  <p><em>The figure from the top of this page, from the code above. The summary check for posterior samples with ArviZ: Bulk effective sample size (ESS), tail ESS and R-hat, one panel
+  each, over every quantity at every reference point. Dashed lines are ArviZ's reference
+  thresholds, in total ESS across all chains. We want both ESS curves entirely right of
+  their line and the R-hat curve entirely left of its.</em></p>
+</div>
+
 Each curve there is the distribution of one diagnostic over every $\Sigma$ quantity at
 every reference point, so a point on it reads as "this fraction of quantities scored at most
 this value". More is better for ESS and less is better for R-hat. For R-hat: where its
-curve crosses the dashed line, that fraction of quantities sits above 1.01.
+curve crosses the dashed line, that fraction of quantities sits above 1.01. Here a small
+fraction does, which is the `1.017` the summary reported.
 
 ---
 
