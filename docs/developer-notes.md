@@ -71,6 +71,16 @@ the caller chooses and hands ArviZ that instead, in an `xarray.DataTree` with di
 because `posterior.sample(n)` pools the chains and R-hat needs to know which chain a draw
 came from.
 
+The sampler statistics ride along in ArviZ's `sample_stats` group, and `NUTSSampler` spells
+their keys the way ArviZ reads them:
+
+- `diverging`
+- `energy`
+- `n_steps`
+
+A new engine that fills `sampler_stats` has to use those spellings, or `az.plot_energy` and
+the divergence ticks on a trace plot will not find the statistics they draw.
+
 **What it costs.** The caller has to choose evaluation points, which is why `points` has no
 default. The diagnostics then describe $\Sigma$ at those points rather than the parameters
 themselves.

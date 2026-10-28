@@ -92,7 +92,7 @@ max     0.333164   0.337189   1.017289  1837.560237
   ESS min on Σ:   399    (target > 100 per chain)
 ```
 
-Drop the `.describe()` to see all 75 rows instead:
+If you'd like to see all 75 rows instead, just drop the `.describe()`:
 
 ```python title="Every quantity, one row each"
 print(summary[["mean", "sd", "r_hat", "ess_bulk"]])
@@ -103,29 +103,14 @@ posterior and the points to evaluate $\Sigma$ at, here the reference points. Fro
 `az.summary`, `az.rhat`, `az.ess` and every ArviZ plotting function work on a psyphy fit
 directly, which is where the two figures below come from.
 
-??? note "Careful about ArviZ the spelling of  keywords"
+!!! warning "Hand it the posterior, not samples from it"
+    `posterior.sample(n)` flattens `(n_chains, n_draws, ...)` into one axis, so a draw no
+    longer carries the chain it came from. R-hat compares the spread between chains against
+    the spread within them, so once the chains are gone it comes back near 1.00 however
+    badly they disagreed. ESS is inflated the same way, since shuffling removes the
+    autocorrelation it measures.
 
-    `covariance_to_arviz` returns an `xarray.DataTree` with dimensions
-    `(chain, draw, point, quantity)`, and carries the sampler statistics into ArviZ's
-    `sample_stats` group under the keys ArviZ expects:
-
-    - `diverging`
-    - `energy`
-    - `n_steps`
-
-    Nothing needs renaming, so `az.plot_energy` and the divergence ticks on a trace plot
-    work directly. ArviZ's
-    [getting started guide](https://python.arviz.org/en/latest/user_guide/getting_started.html)
-    covers the format in more detail.
-
-??? note "Watch out what to compute the ESS on"
-
-    `posterior.sample(n)` pools the chains: `(n_chains, n_draws, ...)` flattens to
-    `(n_chains * n_draws, ...)`, so a draw no longer carries the chain it came from. R-hat
-    and ESS both need that axis. On pooled draws R-hat returns about 1.00 however badly the
-    real chains disagreed, so the check passes when it should fail.
-
-## Reading the figures
+## Interpreting the figures
 
 Both figures below are one ArviZ call each, `az.plot_trace` and
 `az.plot_convergence_dist`, on the object `covariance_to_arviz` returned. (We write no additional
@@ -142,24 +127,29 @@ the chains converged, they should overlap, stay level, and vary fast from draw t
 
 <div align="center">
   <img src="../plots/nuts_trace_sigma_full.png" width="760"/>
-  <p><em>One panel per quantity at the reference point with the worst R-hat, one colored
-  line per chain. Horizontal axis is the draw index, vertical axis the value of that
+  <p><em>The trace plots of a converged run. One panel per quantity at the reference point with the worst R-hat, one colored
+  line per chain. Horizontal axis is the draw/sample index, vertical axis the value of that
   quantity.</em></p>
 </div>
 
-Look along each panel for a chain holding its own level, or a slope at either end. Either
-means the chains have not mixed.
+For comparison, below we show the trace plot of the same reference point from a run that did not converge:
 
 <div align="center">
   <img src="../plots/nuts_trace_sigma_quick.png" width="760"/>
   <p><em>The same plot from `--mode quick`: 2 chains, 150 draws. Not converged.</em></p>
 </div>
 
-Compare the two. Here each chain wanders in slow swings rather than varying fast from draw
-to draw, and in `corr_0_1` the two chains hold different levels for stretches of 40 draws or
-more. Both are what a trace plot catches. The slower failure, chains that look fine but
-carry too few independent draws, is what effective sample size (ESS) and R-hat catch
-instead.
+Read each panel along the horizontal axis:
+
+| in the trace | interpretation | where to see it |
+|---|---|---|
+| chains overlap, each level, values varying fast from draw to draw | mixed | the `--mode full` figure |
+| one chain holds its own level | not mixed | `corr_0_1` in `--mode quick`, the two chains apart for stretches of 40 draws or more |
+| a slope at either end | still drifting, so not mixed | |
+| slow swings instead of fast variation | autocorrelated, so few independent draws | all three `--mode quick` panels |
+
+A trace plot catches those. It does not catch chains that look fine and still carry too few
+independent draws, which is what ESS and R-hat are for.
 
 We see one reference point here. The figure at the top covers all 25 at once.
 
@@ -246,6 +236,9 @@ document.
   [`MCMCPosterior`](../../reference/posterior.md#psyphy.posterior.MCMCPosterior)
 - The fit these diagnostics run on:
   [Sampling the posterior with NUTS](nuts_inference_example.md).
+- Why the diagnostics take $\Sigma$ and the posterior object, and which `sample_stats` keys
+  a new sampler has to spell ArviZ's way:
+  [developer notes](../../developer-notes.md#diagnostics-run-on-sigma-and-take-the-posterior-rather-than-samples).
 - [ArviZ](https://python.arviz.org/) for the diagnostics, with its
   [getting started guide](https://python.arviz.org/en/latest/user_guide/getting_started.html)
   and the [arviz-stats API](https://python.arviz.org/projects/stats/en/latest/)
