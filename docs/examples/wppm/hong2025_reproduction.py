@@ -177,6 +177,7 @@ THRESHOLD_SETTINGS = {
         "config": ThresholdConfig(n_theta=16, n_length=300),
     },
 }
+# --8<-- [end:threshold_settings]
 
 
 # ---------------------------------------------------------------------------
