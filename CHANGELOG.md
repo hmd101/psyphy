@@ -10,6 +10,20 @@ breaking changes are called out below but do not force a minor-version bump.
 
 ### Breaking
 
+- **`ThresholdConfig.target_pc` is now `target_prob_correct` (cleanup only, no behavior change)
+
+  ```python
+  # before
+  ThresholdConfig(n_theta=16, n_length=1000, target_pc=2 / 3)
+
+  # now
+  ThresholdConfig(n_theta=16, n_length=1000, target_prob_correct=2 / 3)
+  ```
+ The default is unchanged at 2/3, the oddity task's criterion, so a
+  caller relying on the default needs no edit.
+
+
+
 - **`PosteriorMeanCovarianceField` and `contour_band` are gone, and their reductions are
   methods on the new `WPPMCovarianceFieldSamples`.** The draws are taken once, when the
   object is built, so the ensemble, the mean and the band describe one sample of the
