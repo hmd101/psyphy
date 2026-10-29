@@ -13,15 +13,15 @@ This module provides:
 - CovarianceField: Protocol defining the interface
 - WPPMCovarianceField: Concrete implementation for WPPM models
 - construction from priors, posteriors, or arbitrary parameters
-- PosteriorMeanCovarianceField: E[Σ(x)] over posterior samples -- the correct
-  "posterior mean" field for sample-based posteriors (see its docstring for
+- WPPMCovarianceFieldSamples: N draws of the field, with E[Σ(x)] and a
+  credible band on its contour as reductions over them (see its docstring on
   why averaging W instead gives too-small ellipses)
 - covariance_to_arviz: per-sample Σ(x) at chosen points as an ArviZ DataTree,
   for convergence diagnostics that are not fooled by the non-identifiable
   orientation of W (see its docstring)
-- contour_radii / contour_band / ContourBand: the Mahalanobis-1 contour of a
-  covariance as a radius per direction, and pointwise credible bands over it.
-  For the oddity task that radius is the discrimination threshold
+- contour_radii / ContourBand: the Mahalanobis-1 contour of a covariance as a
+  radius per direction. For the oddity task that radius is the discrimination
+  threshold
 
 Mathematical Background
 -----------------------
@@ -407,8 +407,9 @@ class WPPMCovarianceField:
         - Sample-based posteriors (e.g. ``MCMCPosterior``): ``params`` is the
           mean parameter E[W], and Σ(E[W]) is NOT the posterior mean of Σ. It
           is systematically too small and can collapse toward λI (see
-          ``PosteriorMeanCovarianceField`` for why). A ``UserWarning`` is
-          raised in that case. Use ``PosteriorMeanCovarianceField(posterior)``
+          ``WPPMCovarianceFieldSamples`` for why). A ``UserWarning`` is
+          raised in that case. Use
+          ``WPPMCovarianceFieldSamples.from_posterior(posterior).mean(x)``
           for E[Σ], or ``posterior.sample(n, key=...)`` for individual samples.
 
         Examples
@@ -424,7 +425,7 @@ class WPPMCovarianceField:
         (2, 2)
         """
         # Sample-based posteriors are recognized by duck typing (they expose a
-        # sample count), the same criterion PosteriorMeanCovarianceField uses.
+        # sample count), the same criterion _draws_from uses.
         # isinstance(posterior, MCMCPosterior) would need an import from
         # psyphy.posterior, which already imports psyphy.model -> cycle.
         #
@@ -436,7 +437,8 @@ class WPPMCovarianceField:
                 f"from_posterior() on a {type(posterior).__name__} builds Σ from the "
                 "mean parameter E[W]. Σ is nonlinear in W, so Σ(E[W]) is not the "
                 "posterior mean of Σ and comes out systematically too small. Use "
-                "PosteriorMeanCovarianceField(posterior) for E[Σ].",
+                "WPPMCovarianceFieldSamples.from_posterior(posterior).mean(x) "
+                "for E[Σ].",
                 UserWarning,
                 stacklevel=2,
             )
@@ -560,155 +562,6 @@ class WPPMCovarianceField:
         if "W" not in self.params:
             raise ValueError("sqrt_cov_batch only available in Wishart mode")
         return jax.vmap(self.sqrt_cov)(X)
-
-
-class PosteriorMeanCovarianceField:
-    r"""
-    Posterior mean of the covariance field, E[Σ(x) | data].
-
-    Evaluates Σ(x) separately for every posterior sample W_k and averages the
-    resulting matrices:
-
-        Σ̂(x) = (1/N) Σ_k [ U_k(x) U_k(x)^T + λI ]
-
-    Use this, not ``WPPMCovarianceField(model, posterior.params)``, to draw a
-    "posterior mean" covariance field from a sample-based posterior such as
-    ``MCMCPosterior``.
-
-    Why average Σ and not W
-    -----------------------
-    ``posterior.params`` is the mean parameter E[W]. A field built from it,
-    Σ(E[W]), comes out too small:
-
-        E[Σ(x)] = Σ(x; E[W]) + Cov[U(x)]
-
-    This is the definition of covariance rearranged, using Σ = U Uᵀ + λI with
-    U linear in W. Cov[U] is a covariance matrix, so it is positive
-    semi-definite. Averaging W first therefore gives ellipses that are too
-    small.
-
-    Two things follow:
-
-    1. The gap is there for any posterior with spread. No symmetry is needed.
-    2. W is not identifiable. For orthogonal R on the embedding axis,
-       W -> W R leaves U Uᵀ unchanged, and so leaves Σ and the prior
-       unchanged. Samples at different orientations, in practice different
-       chains cancel when W is averaged. At the extreme: W and -W describe
-       the same Σ and average to E[W] = 0, collapsing Σ(E[W]) to λI.
-
-    Averaging Σ avoids both. Every Σ(x; W_k) is unchanged by W_k -> W_k R, and
-    nothing is squared after averaging. E[Σ(x)] is also the Bayes estimate of
-    Σ(x) under squared (Frobenius) loss, which is what "posterior mean of Σ"
-    means.
-
-    Parameters
-    ----------
-    posterior : ParameterPosterior
-        Any posterior with ``.model`` and ``.sample(n, key=...)``, e.g.
-        ``MCMCPosterior`` or ``MAPPosterior``.
-    n_samples : int | None, default=None
-        Number of samples to average over. If None, averages every stored sample,
-        which requires the posterior to expose ``samples``, ``n_chains`` and
-        ``n_draws`` (``MCMCPosterior`` does). Posteriors without a fixed sample
-        count (``MAPPosterior``, future variational posteriors) must pass it.
-    key : jax.random.KeyArray | None, default=None
-        PRNG key for the subsample. Required when ``n_samples`` is given. With
-        ``n_samples=None`` it goes unread, since every stored sample is averaged in
-        the order it is stored.
-
-    Notes
-    -----
-    - Implements the ``CovarianceField`` protocol, so it can be passed
-      wherever a field is expected (e.g. ``psyphy.viz.plot_ellipses`` after
-      evaluating it). ``sqrt_cov`` raises: see its docstring.
-    - Deliberately not a subclass of ``WPPMCovarianceField``: that class is
-      "one parameter set W", and its ``params``, ``from_params`` and
-      ``sqrt_cov`` have no meaning for an average over many W.
-
-    Examples
-    --------
-    >>> import jax.numpy as jnp
-    >>> import jax.random as jr
-    >>> from psyphy.model import WPPM, OddityTask, Prior, WPPMCovarianceField
-    >>> model = WPPM(Prior(input_dim=2, basis_degree=2), OddityTask(), input_dim=2)
-    >>> from psyphy.posterior import MCMCPosterior
-    >>> # stand-in for NUTSSampler().fit(model, data): 2 chains of 50 prior samples
-    >>> keys = jr.split(jr.PRNGKey(1), 100)
-    >>> W = jnp.stack([model.init_params(k)["W"] for k in keys])  # (100, 3, 3, 2, 3)
-    >>> nuts_posterior = MCMCPosterior({"W": W.reshape(2, 50, *W.shape[1:])}, model)
-    >>> ref_points = jnp.array([[-0.5, -0.5], [0.5, 0.5]])  # (n_points, 2)
-    >>> from psyphy.model import PosteriorMeanCovarianceField
-    >>> mean_field = PosteriorMeanCovarianceField(nuts_posterior)
-    >>> mean_field(ref_points).shape  # (n_points, 2, 2)
-    (2, 2, 2)
-    """
-
-    def __init__(self, posterior, n_samples: int | None = None, key=None):
-        self.model = posterior.model
-
-        # Taken ONCE here, so repeated evaluations of the field agree.
-        # self._draws: PyTree with leading axis n_samples, e.g. {"W": (N, *W_shape)}
-        self._draws, self.n_samples = _draws_from(posterior, n_samples, key)
-
-        self._eval_batch_jitted = jax.jit(self._eval_batch_impl)
-
-    def __call__(self, x: jnp.ndarray) -> jnp.ndarray:
-        """
-        Evaluate E[Σ(x)] at one or more stimulus locations.
-
-        Same shape contract as ``WPPMCovarianceField.__call__``: ``(d,)`` ->
-        ``(d, d)`` and ``(..., d)`` -> ``(..., d, d)``.
-        """
-        if x.shape[-1] != self.model.input_dim:
-            raise ValueError(
-                f"Last axis must be input_dim={self.model.input_dim}, got {x.shape[-1]}"
-            )
-        if x.ndim == 1:
-            return self._eval_single(x)
-        return self._eval_batch_jitted(x)
-
-    def _eval_single(self, x: jnp.ndarray) -> jnp.ndarray:
-        """E[Σ(x)] at one location: Σ for every sample, THEN the mean.
-
-        The order is the whole point of this class -- see the class
-        docstring. Do not "optimize" this into Σ(x; mean of samples).
-        """
-        # vmap over the leading sample axis of every leaf of self._draws:
-        # (N, d, d) -- one covariance matrix per posterior sample
-        per_draw = jax.vmap(lambda params: self.model.local_covariance(params, x))(
-            self._draws
-        )
-        return jnp.mean(per_draw, axis=0)  # (d, d)
-
-    def _eval_batch_impl(self, X: jnp.ndarray) -> jnp.ndarray:
-        """Flatten -> vmap -> reshape, as in ``WPPMCovarianceField``.
-
-        Memory note: the intermediate is (n_points, n_draws, d, d), e.g.
-        25 x 4000 x 2 x 2 floats = 1.6 MB; dense grids with many samples scale
-        as their product.
-        """
-        input_dim = self.model.input_dim
-        batch_shape = X.shape[:-1]
-        X_flat = X.reshape(-1, input_dim)
-        Sigmas_flat = jax.vmap(self._eval_single)(X_flat)
-        return Sigmas_flat.reshape(batch_shape + (input_dim, input_dim))
-
-    def sqrt_cov(self, x: jnp.ndarray) -> jnp.ndarray:
-        """
-        Not available: a posterior mean of Σ has no WPPM square root U(x).
-
-        Each sample has its own U_k(x), but the average of U_k U_k^T is not
-        U U^T for any single U from the model (and averaging the U_k instead
-        reintroduces exactly the cancellation this class exists to avoid).
-        Any matrix returned here would be a different object under the same
-        name, so this raises instead. For a factor of the mean matrix itself,
-        use ``jnp.linalg.cholesky(field(x))``.
-        """
-        raise NotImplementedError(
-            "PosteriorMeanCovarianceField has no square root U(x): an average "
-            "of U U^T over samples is not U U^T for any single U. Use "
-            "jnp.linalg.cholesky(field(x)) for a factor of the mean matrix."
-        )
 
 
 def covariance_to_arviz(posterior, points):
@@ -981,152 +834,394 @@ def _hdi(radii: jnp.ndarray, prob: float) -> tuple[jnp.ndarray, jnp.ndarray]:
 _CI_KINDS = {"eti": _eti, "hdi": _hdi}
 
 
-def contour_band(
-    posterior,
-    points: jnp.ndarray,
-    *,
-    n_directions: int = 181,
-    ci_prob: float | Sequence[float] = 0.89,
-    ci_kind: str = "eti",
-    n_samples: int | None = None,
-    key=None,
-) -> ContourBand:
-    """Pointwise credible band on the Mahalanobis-1 contour at each point.
+class WPPMCovarianceFieldSamples:
+    r"""
+    N draws of the WPPM covariance field, with the reductions over them.
 
-    The posterior-interval counterpart to
-    :class:`PosteriorMeanCovarianceField` (a posterior *mean*) and
-    :func:`covariance_to_arviz` (posterior *samples*, for diagnostics).
+    A fit gives many parameter draws, so it gives many covariance fields. This
+    class holds the draws and evaluates them: ``fields(x)`` for every draw,
+    :meth:`mean` for :math:`\mathbb{E}[\Sigma(x)]`, :meth:`band` for a credible
+    band on the contour. The draws are taken when the object is built, so the
+    three reductions are three views of one sample.
 
-    Every sample gives one covariance field, hence one contour per point.
-    Writing each contour as a radius per direction
-    (:func:`contour_radii`) makes it a scalar per sample, so an interval
-    follows from quantiles over samples. For a :math:`1-\alpha` interval, at
-    each direction separately, the band runs between
-    :math:`q_{\alpha/2}\\{r_i\\}` and :math:`q_{1-\alpha/2}\\{r_i\\}` over the
-    :math:`N` samples.
+    :meth:`mean` averages :math:`\Sigma` over the draws. A field built from the
+    averaged parameters gives contours several times too small, because
+    :math:`\Sigma(x) = U(x) U(x)^\top + \lambda I` is nonlinear in :math:`W`.
+
+    There is no ``sqrt_cov``. An average of :math:`U U^\top` is not
+    :math:`U U^\top` for any single :math:`U`, so no matrix here is the field's
+    square root. For a factor of the mean matrix, use
+    ``jnp.linalg.cholesky(fields.mean(x))``. :class:`WPPMCovarianceField` has
+    ``sqrt_cov``, for one parameter set.
 
     Parameters
     ----------
-    posterior : ParameterPosterior
-        A fitted posterior, typically an ``MCMCPosterior``. A ``MAPPosterior``
-        is a point mass, so its band has zero width.
-    points : jnp.ndarray, shape (n_points, 2)
-        Stimulus locations, usually the reference points we report.
-    n_directions : int, default=181
-        Directions per contour. The grid is closed, so the last direction
-        repeats the first, and 181 gives 180 distinct directions, one every two
-        degrees. The number is a magic default with nothing behind it: large
-        enough that a filled band looks smooth, small enough to stay cheap.
-        Nothing in the result depends on the choice.
-    ci_prob : float or sequence of float, default=0.89
-        How much posterior mass the interval holds. At 0.89, 89% of the samples
-        of the radius lie between ``lower`` and ``upper``, in each direction
-        separately. 0.89 is ArviZ's default too, so a band and ``az.summary``
-        agree. Pass a sequence for nested bands, and each level gets its own
-        interval stacked on a leading axis.
-    ci_kind : {"eti", "hdi"}, default="eti"
-        Which interval of that mass to take, since many of them hold it.
-        ``"eti"`` is equal-tailed: it cuts the same probability off each end,
-        so ``lower`` and ``upper`` are quantiles. ``"hdi"`` is
-        highest-density: it takes the narrowest interval holding the mass. The
-        two differ when the samples are skewed. Radii usually are, because a
-        radius cannot go below zero.
-    n_samples : int, optional
-        Samples to use. Omit it for every stored sample, which needs the posterior
-        to expose ``samples``, ``n_chains`` and ``n_draws``. A point-mass posterior
-        such as ``MAPPosterior`` has to pass this.
-    key : jax.Array, optional
-        PRNG key for the subsample. Required when ``n_samples`` is given, unread
-        otherwise, since every stored sample is taken in order.
+    model : WPPM
+        Model providing the evaluation logic.
+    samples : dict
+        Parameter draws with a leading axis, ``{"W": (n_samples, *W_shape)}``.
+        Build this with :meth:`from_posterior` or :meth:`from_prior` rather
+        than by hand.
 
-    Returns
-    -------
-    ContourBand
+    Attributes
+    ----------
+    model : WPPM
+        The model the draws belong to.
+    samples : dict
+        The draws, leading axis ``n_samples``. Public, so a per-draw quantity
+        psyphy does not ship can be had with ``jax.vmap`` over it.
+    n_samples : int
+        Draws held.
 
-    Raises
-    ------
-    NotImplementedError
-        If the model is not 2-D. The direction grid is a circle, and there is
-        no canonical equivalent in higher dimensions.
-    ValueError
-        If ``ci_kind`` is unknown, if any ``ci_prob`` is outside (0, 1), or if
-        ``n_samples`` is needed and cannot be inferred.
+    See Also
+    --------
+    WPPMCovarianceField : one parameter set, so one field and its square root.
+    covariance_to_arviz : per-draw Σ with the chain axis kept, for diagnostics.
 
     Examples
     --------
     >>> import jax.numpy as jnp
     >>> import jax.random as jr
-    >>> from psyphy.model import WPPM, OddityTask, Prior, WPPMCovarianceField
+    >>> from psyphy.model import WPPM, OddityTask, Prior, WPPMCovarianceFieldSamples
     >>> model = WPPM(Prior(input_dim=2, basis_degree=2), OddityTask(), input_dim=2)
-    >>> from psyphy.posterior import MCMCPosterior
-    >>> # stand-in for NUTSSampler().fit(model, data): 2 chains of 50 prior samples
-    >>> keys = jr.split(jr.PRNGKey(1), 100)
-    >>> W = jnp.stack([model.init_params(k)["W"] for k in keys])  # (100, 3, 3, 2, 3)
-    >>> nuts_posterior = MCMCPosterior({"W": W.reshape(2, 50, *W.shape[1:])}, model)
-    >>> ref_points = jnp.array([[-0.5, -0.5], [0.5, 0.5]])  # (n_points, 2)
-    >>> from psyphy.model import contour_band
-    >>> band = contour_band(nuts_posterior, ref_points)
-    >>> band.lower.shape  # (n_points, n_directions)
+    >>> ref_points = jnp.array([[-0.5, -0.5], [0.5, 0.5]])  # (n_points=2, d=2)
+    >>> fields = WPPMCovarianceFieldSamples.from_prior(model, n=50, key=jr.PRNGKey(0))
+    >>> fields(ref_points).shape  # (n_samples, n_points, d, d)
+    (50, 2, 2, 2)
+    >>> fields.mean(ref_points).shape  # (n_points, d, d)
+    (2, 2, 2)
+    >>> fields.band(ref_points).lower.shape  # (n_points, n_directions)
     (2, 181)
-    >>> nested = contour_band(nuts_posterior, ref_points, ci_prob=[0.5, 0.8, 0.95])
-    >>> nested.upper.shape  # (n_levels, n_points, n_directions)
-    (3, 2, 181)
     """
-    if ci_kind not in _CI_KINDS:
-        raise ValueError(
-            f"ci_kind must be one of {sorted(_CI_KINDS)}, got {ci_kind!r}."
+
+    def __init__(self, model, samples: dict):
+        self.model = model
+        self.samples = samples
+        leaves = jax.tree.leaves(samples)
+        if not leaves:
+            raise ValueError(
+                "samples holds no parameter arrays. Pass draws with a leading "
+                'axis, for example {"W": (n_samples, *W_shape)}.'
+            )
+        self.n_samples = int(leaves[0].shape[0])
+        # Pre-compile the batch paths, as in WPPMCovarianceField
+        self._eval_batch_jitted = jax.jit(self._eval_batch_impl)
+        self._mean_batch_jitted = jax.jit(self._mean_batch_impl)
+
+    @classmethod
+    def from_posterior(
+        cls, posterior, n_samples: int | None = None, *, key=None
+    ) -> WPPMCovarianceFieldSamples:
+        """
+        Draws from a fitted posterior.
+
+        Parameters
+        ----------
+        posterior : ParameterPosterior
+            A fitted posterior, typically an ``MCMCPosterior``.
+        n_samples : int, optional
+            Draws to take. Omit it for every stored draw, which needs the
+            posterior to expose ``samples``, ``n_chains`` and ``n_draws``. A
+            point-mass posterior such as ``MAPPosterior`` has to pass this.
+        key : jax.Array, optional
+            PRNG key for the subsample. Required when ``n_samples`` is given,
+            unread otherwise, since every stored draw is taken in order.
+
+        Returns
+        -------
+        WPPMCovarianceFieldSamples
+
+        Raises
+        ------
+        ValueError
+            If ``n_samples`` is None and the posterior stores no fixed set of
+            draws, or if ``n_samples`` is given without a key.
+
+        Examples
+        --------
+        >>> import jax.numpy as jnp
+        >>> import jax.random as jr
+        >>> from psyphy.model import WPPM, OddityTask, Prior, WPPMCovarianceFieldSamples
+        >>> from psyphy.posterior import MCMCPosterior
+        >>> model = WPPM(Prior(input_dim=2, basis_degree=2), OddityTask(), input_dim=2)
+        >>> keys = jr.split(jr.PRNGKey(1), 100)
+        >>> W = jnp.stack(
+        ...     [model.init_params(k)["W"] for k in keys]
+        ... )  # (100, 3, 3, 2, 3)
+        >>> posterior = MCMCPosterior({"W": W.reshape(2, 50, *W.shape[1:])}, model)
+        >>> WPPMCovarianceFieldSamples.from_posterior(posterior).n_samples
+        100
+        >>> fields = WPPMCovarianceFieldSamples.from_posterior(
+        ...     posterior, 20, key=jr.PRNGKey(0)
+        ... )
+        >>> fields.n_samples
+        20
+        """
+        draws, _ = _draws_from(posterior, n_samples, key)
+        return cls(posterior.model, draws)
+
+    @classmethod
+    def from_prior(cls, model, *, n: int, key) -> WPPMCovarianceFieldSamples:
+        """
+        Draws from the model's prior.
+
+        A prior stores no draws, so ``n`` and ``key`` are both required.
+
+        Parameters
+        ----------
+        model : WPPM
+            Model whose prior we draw from.
+        n : int
+            Draws to take.
+        key : jax.Array
+            PRNG key, split n ways.
+
+        Returns
+        -------
+        WPPMCovarianceFieldSamples
+
+        Examples
+        --------
+        >>> import jax.random as jr
+        >>> from psyphy.model import WPPM, OddityTask, Prior, WPPMCovarianceFieldSamples
+        >>> model = WPPM(Prior(input_dim=2, basis_degree=2), OddityTask(), input_dim=2)
+        >>> fields = WPPMCovarianceFieldSamples.from_prior(
+        ...     model, n=8, key=jr.PRNGKey(0)
+        ... )
+        >>> fields.samples["W"].shape  # (n_samples, degree+1, degree+1, d, m)
+        (8, 3, 3, 2, 3)
+        """
+        return cls(model, model.prior.sample(n, key=key))
+
+    def __call__(self, x: jnp.ndarray) -> jnp.ndarray:
+        """
+        Evaluate Σ(x) for every draw.
+
+        Parameters
+        ----------
+        x : jnp.ndarray, shape (d,) or (..., d)
+            One stimulus location, or any batch of them. The last axis must
+            have size ``input_dim``.
+
+        Returns
+        -------
+        Sigma : jnp.ndarray, shape (n_samples, d, d) or (n_samples, ..., d, d)
+            One covariance matrix per draw per location. The draws come first,
+            which is the stacking :func:`psyphy.viz.plot_ellipses` takes.
+
+        Notes
+        -----
+        The result holds ``n_samples * n_points * d * d`` floats, so a dense
+        grid with many draws is large: 4000 draws on a 50 x 50 grid of 2x2
+        matrices is 160 MB. Subsample at :meth:`from_posterior` for a grid.
+        """
+        self._check_input_dim(x)
+        if x.ndim == 1:
+            return self._eval_draws(self.samples, x[None, :])[:, 0, :, :]
+        return self._eval_batch_jitted(x)
+
+    def mean(self, x: jnp.ndarray) -> jnp.ndarray:
+        r"""
+        Posterior mean of the covariance field, :math:`\mathbb{E}[\Sigma(x)]`.
+
+        Evaluates :math:`\Sigma(x)` for every draw and averages the resulting
+        matrices. Averaging the parameters first instead gives contours several
+        times too small, because :math:`\Sigma` is nonlinear in :math:`W`.
+
+        Parameters
+        ----------
+        x : jnp.ndarray, shape (d,) or (..., d)
+            One stimulus location, or any batch of them.
+
+        Returns
+        -------
+        Sigma : jnp.ndarray, shape (d, d) or (..., d, d)
+            The mean matrix per location, with no draws axis.
+
+        Examples
+        --------
+        >>> import jax.numpy as jnp
+        >>> import jax.random as jr
+        >>> from psyphy.model import WPPM, OddityTask, Prior, WPPMCovarianceFieldSamples
+        >>> model = WPPM(Prior(input_dim=2, basis_degree=2), OddityTask(), input_dim=2)
+        >>> fields = WPPMCovarianceFieldSamples.from_prior(
+        ...     model, n=16, key=jr.PRNGKey(0)
+        ... )
+        >>> fields.mean(jnp.array([0.5, 0.3])).shape
+        (2, 2)
+        """
+        self._check_input_dim(x)
+        if x.ndim == 1:
+            return self._mean_single(x)
+        return self._mean_batch_jitted(x)
+
+    def band(
+        self,
+        points: jnp.ndarray,
+        *,
+        n_directions: int = 181,
+        ci_prob: float | Sequence[float] = 0.89,
+        ci_kind: str = "eti",
+    ) -> ContourBand:
+        r"""Pointwise credible band on the Mahalanobis-1 contour at each point.
+
+        The posterior-interval counterpart to :meth:`mean` (a posterior *mean*)
+        and :func:`covariance_to_arviz` (posterior *samples*, for diagnostics).
+
+        Every draw gives one covariance field, hence one contour per point.
+        Writing each contour as a radius per direction
+        (:func:`contour_radii`) makes it a scalar per draw, so an interval
+        follows from quantiles over draws. For a :math:`1-\alpha` interval, at
+        each direction separately, the band runs between
+        :math:`q_{\alpha/2}\{r_i\}` and :math:`q_{1-\alpha/2}\{r_i\}` over the
+        :math:`N` draws.
+
+        Parameters
+        ----------
+        points : jnp.ndarray, shape (n_points, 2)
+            Stimulus locations, usually the reference points we report.
+        n_directions : int, default=181
+            Directions per contour. The grid is closed, so the last direction
+            repeats the first, and 181 gives 180 distinct directions, one every
+            two degrees. The number is a magic default with nothing behind it:
+            large enough that a filled band looks smooth, small enough to stay
+            cheap. Nothing in the result depends on the choice.
+        ci_prob : float or sequence of float, default=0.89
+            How much posterior mass the interval holds. At 0.89, 89% of the
+            draws of the radius lie between ``lower`` and ``upper``, in each
+            direction separately. 0.89 is ArviZ's default too, so a band and
+            ``az.summary`` agree. Pass a sequence for nested bands, and each
+            level gets its own interval stacked on a leading axis.
+        ci_kind : {"eti", "hdi"}, default="eti"
+            Which interval of that mass to take, since many of them hold it.
+            ``"eti"`` is equal-tailed: it cuts the same probability off each
+            end, so ``lower`` and ``upper`` are quantiles. ``"hdi"`` is
+            highest-density: it takes the narrowest interval holding the mass.
+            The two differ when the draws are skewed. Radii usually are,
+            because a radius cannot go below zero.
+
+        Returns
+        -------
+        ContourBand
+
+        Raises
+        ------
+        NotImplementedError
+            If the model is not 2-D. The direction grid is a circle, and there
+            is no canonical equivalent in higher dimensions.
+        ValueError
+            If ``ci_kind`` is unknown, or if any ``ci_prob`` is outside (0, 1).
+
+        Examples
+        --------
+        >>> import jax.numpy as jnp
+        >>> import jax.random as jr
+        >>> from psyphy.model import WPPM, OddityTask, Prior, WPPMCovarianceFieldSamples
+        >>> model = WPPM(Prior(input_dim=2, basis_degree=2), OddityTask(), input_dim=2)
+        >>> ref_points = jnp.array([[-0.5, -0.5], [0.5, 0.5]])  # (n_points, 2)
+        >>> fields = WPPMCovarianceFieldSamples.from_prior(
+        ...     model, n=50, key=jr.PRNGKey(1)
+        ... )
+        >>> fields.band(ref_points).lower.shape  # (n_points, n_directions)
+        (2, 181)
+        >>> nested = fields.band(ref_points, ci_prob=[0.5, 0.8, 0.95])
+        >>> nested.upper.shape  # (n_levels, n_points, n_directions)
+        (3, 2, 181)
+        """
+        if ci_kind not in _CI_KINDS:
+            raise ValueError(
+                f"ci_kind must be one of {sorted(_CI_KINDS)}, got {ci_kind!r}."
+            )
+
+        if isinstance(ci_prob, (int, float)):
+            scalar_level = True
+            probs: tuple[float, ...] = (float(ci_prob),)
+        else:
+            scalar_level = False
+            probs = tuple(float(p) for p in ci_prob)
+        if not probs:
+            raise ValueError("ci_prob must hold at least one probability.")
+        for p in probs:
+            if not 0.0 < p < 1.0:
+                raise ValueError(f"ci_prob must lie in (0, 1), got {p}.")
+
+        if self.model.input_dim != 2:
+            raise NotImplementedError(
+                "band supports 2-D stimulus spaces only, got "
+                f"input_dim={self.model.input_dim}. contour_radii is "
+                "d-dimensional, so call it with explicit directions instead."
+            )
+
+        # Closed grid, so the last angle repeats the first. n_directions is a magic
+        # default (181 -> one direction every two degrees); nothing depends on it.
+        phi = jnp.linspace(0.0, 2 * jnp.pi, n_directions)  # radians
+        directions = jnp.stack([jnp.cos(phi), jnp.sin(phi)], axis=-1)  # (n_dir, 2)
+
+        def radii_one_draw(params):
+            covs = WPPMCovarianceField(self.model, params)(points)  # (n_points, 2, 2)
+            return contour_radii(covs, directions)  # (n_points, n_directions)
+
+        # (n_samples, n_points, n_directions)
+        radii = jax.vmap(radii_one_draw)(self.samples)
+
+        reduce = _CI_KINDS[ci_kind]
+        bounds = [reduce(radii, p) for p in probs]
+        lower = jnp.stack([lo for lo, _ in bounds])  # (n_levels, n_pts, n_dir)
+        upper = jnp.stack([hi for _, hi in bounds])
+        # One median whatever ci_prob holds, repeated per level so that lower,
+        # median and upper always share a shape. Indexing median[i] in a loop over
+        # levels would otherwise reach a reference point instead.
+        median = jnp.median(radii, axis=0)  # (n_points, n_directions)
+        median = jnp.broadcast_to(median, lower.shape)  # (n_levels, n_pts, n_dir)
+
+        return ContourBand(
+            points=points,
+            directions=directions,
+            lower=lower[0] if scalar_level else lower,
+            median=median[0] if scalar_level else median,
+            upper=upper[0] if scalar_level else upper,
+            ci_prob=probs[0] if scalar_level else probs,
+            ci_kind=ci_kind,
         )
 
-    if isinstance(ci_prob, (int, float)):
-        scalar_level = True
-        probs: tuple[float, ...] = (float(ci_prob),)
-    else:
-        scalar_level = False
-        probs = tuple(float(p) for p in ci_prob)
-    if not probs:
-        raise ValueError("ci_prob must hold at least one probability.")
-    for p in probs:
-        if not 0.0 < p < 1.0:
-            raise ValueError(f"ci_prob must lie in (0, 1), got {p}.")
+    # ----------------------------------------------------------------------
+    # internals
+    # ----------------------------------------------------------------------
+    def _check_input_dim(self, x: jnp.ndarray) -> None:
+        if x.shape[-1] != self.model.input_dim:
+            raise ValueError(
+                f"Last axis must be input_dim={self.model.input_dim}, got {x.shape[-1]}"
+            )
 
-    model = posterior.model
-    if model.input_dim != 2:
-        raise NotImplementedError(
-            "contour_band supports 2-D stimulus spaces only, got "
-            f"input_dim={model.input_dim}. contour_radii is d-dimensional, "
-            "so call it with explicit directions instead."
+    def _eval_draws(self, samples: dict, X_flat: jnp.ndarray) -> jnp.ndarray:
+        """Σ at every location for every draw: (n_samples, n_flat, d, d)."""
+
+        def one_draw(params):
+            return jax.vmap(lambda x: self.model.local_covariance(params, x))(X_flat)
+
+        return jax.vmap(one_draw)(samples)
+
+    def _eval_batch_impl(self, X: jnp.ndarray) -> jnp.ndarray:
+        """Flatten -> vmap -> reshape, keeping the draws on the leading axis."""
+        input_dim = self.model.input_dim
+        batch_shape = X.shape[:-1]
+        X_flat = X.reshape(-1, input_dim)
+        Sigmas = self._eval_draws(self.samples, X_flat)  # (n_samples, n_flat, d, d)
+        return Sigmas.reshape((self.n_samples,) + batch_shape + (input_dim, input_dim))
+
+    def _mean_single(self, x: jnp.ndarray) -> jnp.ndarray:
+        """E[Σ(x)] at one location: Σ for every draw, THEN the mean."""
+        # vmap over the leading draw axis of every leaf of self.samples:
+        # (n_samples, d, d) -- one covariance matrix per draw
+        per_draw = jax.vmap(lambda params: self.model.local_covariance(params, x))(
+            self.samples
         )
+        return jnp.mean(per_draw, axis=0)  # (d, d)
 
-    # Closed grid, so the last angle repeats the first. n_directions is a magic
-    # default (181 -> one direction every two degrees); nothing depends on it.
-    phi = jnp.linspace(0.0, 2 * jnp.pi, n_directions)  # radians
-    directions = jnp.stack([jnp.cos(phi), jnp.sin(phi)], axis=-1)  # (n_dir, 2)
-
-    draws, n_samples = _draws_from(posterior, n_samples, key)
-
-    def radii_one_draw(params):
-        covs = WPPMCovarianceField(model, params)(points)  # (n_points, 2, 2)
-        return contour_radii(covs, directions)  # (n_points, n_directions)
-
-    # (n_samples, n_points, n_directions)
-    radii = jax.vmap(radii_one_draw)({"W": draws["W"]})
-
-    reduce = _CI_KINDS[ci_kind]
-    bounds = [reduce(radii, p) for p in probs]
-    lower = jnp.stack([lo for lo, _ in bounds])  # (n_levels, n_pts, n_dir)
-    upper = jnp.stack([hi for _, hi in bounds])
-    # One median whatever ci_prob holds, repeated per level so that lower,
-    # median and upper always share a shape. Indexing median[i] in a loop over
-    # levels would otherwise reach a reference point instead.
-    median = jnp.median(radii, axis=0)  # (n_points, n_directions)
-    median = jnp.broadcast_to(median, lower.shape)  # (n_levels, n_pts, n_dir)
-
-    return ContourBand(
-        points=points,
-        directions=directions,
-        lower=lower[0] if scalar_level else lower,
-        median=median[0] if scalar_level else median,
-        upper=upper[0] if scalar_level else upper,
-        ci_prob=probs[0] if scalar_level else probs,
-        ci_kind=ci_kind,
-    )
+    def _mean_batch_impl(self, X: jnp.ndarray) -> jnp.ndarray:
+        """Flatten -> vmap -> reshape, as in ``WPPMCovarianceField``."""
+        input_dim = self.model.input_dim
+        batch_shape = X.shape[:-1]
+        X_flat = X.reshape(-1, input_dim)
+        Sigmas_flat = jax.vmap(self._mean_single)(X_flat)
+        return Sigmas_flat.reshape(batch_shape + (input_dim, input_dim))
