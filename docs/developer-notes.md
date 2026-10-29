@@ -105,13 +105,13 @@ Python loop and wrapped the result in an `MCMCPosterior` to get something sampla
 `ParameterPosterior` extends it with `params` and `model`, so the parameter source protocol is the
 narrower of the two. The asymmetry is intentional: a prior has no
 point estimate, and `WPPM` holds its `Prior`, so a prior carrying a model back would close a
-cycle. Drawing parameters is the overlap prior and posterios share.
+cycle. Drawing parameters is the overlap prior and posteriors share.
 
 Three things stayed off the protocol:
 
 - **Chain structure.** `sample` pools the chains, and R-hat needs to know which chain a
   draw came from, so chain-shaped draws remain an `MCMCPosterior` capability. See the
-  diagnostics note above. We're flagging this here, as this is important for downsteam ArviZ diagnostic tools.
+  diagnostics note above. We're flagging this here, as this is important for downstream ArviZ diagnostic tools.
 - **A density.** `MCMCPosterior` has no `log_prob`, so a `Distribution`-style base class
   requiring one would be failed by the main implementation.
 - **Weights.** No psyphy engine produces weighted draws (yet). An unweighted mean over

@@ -17,7 +17,6 @@ from __future__ import annotations
 
 import ast
 import csv
-import pickle
 from pathlib import Path
 from typing import Union
 
@@ -83,19 +82,3 @@ def load_responses_csv(path: PathLike) -> TrialData:
             resp = int(row["response"])
             data.add_trial((ref, probe), resp)
     return data.to_trial_data()
-
-
-def save_posterior(posterior: object, path: PathLike) -> None:
-    """
-    Save a Posterior object to disk using pickle.
-    """
-    with open(path, "wb") as f:
-        pickle.dump(posterior, f)
-
-
-def load_posterior(path: PathLike) -> object:
-    """
-    Load a Posterior object from pickle.
-    """
-    with open(path, "rb") as f:
-        return pickle.load(f)
