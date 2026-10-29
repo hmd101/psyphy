@@ -105,7 +105,7 @@ class TestModelPosterior:
         from psyphy.posterior.predictive_posterior import WPPMPredictivePosterior
 
         # It's not a method on posterior, but a wrapper class construction
-        pred = WPPMPredictivePosterior(posterior, X_test)
+        pred = WPPMPredictivePosterior(posterior, X_test, key=jr.PRNGKey(0))
 
         # Check duck typing
         assert hasattr(pred, "mean")
@@ -124,7 +124,7 @@ class TestModelPosterior:
 
         from psyphy.posterior.predictive_posterior import WPPMPredictivePosterior
 
-        pred = WPPMPredictivePosterior(posterior, X_test)
+        pred = WPPMPredictivePosterior(posterior, X_test, key=jr.PRNGKey(0))
 
         # Triggers lazy computation
         mean = pred.mean
@@ -206,7 +206,7 @@ class TestIntegrationWorkflow:
 
         from psyphy.posterior.predictive_posterior import WPPMPredictivePosterior
 
-        pred = WPPMPredictivePosterior(posterior, X_test)
+        pred = WPPMPredictivePosterior(posterior, X_test, key=jr.PRNGKey(0))
 
         # 5. Make predictions
         mean = pred.mean

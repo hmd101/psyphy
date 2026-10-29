@@ -100,8 +100,8 @@ class MCMCPosterior:
           orientations partly cancel in E[W], pulling Σ(E[W]) toward λI.
 
         For the posterior mean covariance field use
-        ``PosteriorMeanCovarianceField(posterior)``; for individual covariance
-        draws use ``sample(n)``. E[W] remains a valid parameter set, e.g. as
+        ``WPPMCovarianceFieldSamples.from_posterior(posterior).mean(x)``; for
+        individual covariance draws use ``sample(n)``. E[W] remains a valid parameter set, e.g. as
         ``init_params`` for another fit.
         """
         # _samples["W"]: (n_chains, n_draws, *param_shape)
@@ -110,7 +110,7 @@ class MCMCPosterior:
         # protocol requires params to be a parameter PyTree (NUTSSampler and
         # MAPOptimizer accept it as init_params), and E[Σ] cannot be expressed
         # as any single W. The fix for covariance summaries therefore lives in
-        # PosteriorMeanCovarianceField, not here.
+        # WPPMCovarianceFieldSamples, not here.
         return jax.tree.map(lambda x: jnp.mean(x, axis=(0, 1)), self._samples)
 
     @property
@@ -118,7 +118,7 @@ class MCMCPosterior:
         """The WPPM instance used during inference."""
         return self._model
 
-    def sample(self, n: int, *, key=None) -> dict:
+    def sample(self, n: int, *, key) -> dict:
         """Draw n parameter vectors from the pooled chain samples.
 
         Pools all chains and draws into a flat collection of
@@ -129,17 +129,20 @@ class MCMCPosterior:
         ----------
         n : int
             Number of samples to return.
-        key : jax.Array | None
-            PRNG key. Defaults to ``jax.random.PRNGKey(0)`` when None.
+        key : jax.Array
+            PRNG key for the subsample.
 
         Returns
         -------
         dict
             Parameter PyTree with leading dimension ``n``.
             For WPPM: ``{"W": ndarray of shape (n, *W_shape)}``.
+
+        Notes
+        -----
+        For every stored sample, read :attr:`samples` instead. It keeps the chain
+        axis and takes no key.
         """
-        if key is None:
-            key = jr.PRNGKey(0)
 
         def _subsample(x):
             # x     : (n_chains, n_draws, *param_shape)

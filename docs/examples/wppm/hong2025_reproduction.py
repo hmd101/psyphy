@@ -467,7 +467,8 @@ def stage2_thresholds(paths: dict[str, Path], thr: dict, subject: int) -> None:
         jnp.asarray(coords),  # reference points only; the search finds comparisons
         n_samples=1,  # a point estimate has only one draw
         threshold_pred=True,
-        threshold_config=config,  # search settings: how carefully to look
+        threshold_config=config,  # search settings: how carefully to look,
+        key=jax.random.PRNGKey(0),
     )
     thres_psyphy = np.asarray(predictive.mean)  # (49, 2, 2)
     # --8<-- [end:thresholds]
@@ -701,6 +702,7 @@ def stage4_end_to_end(
         n_samples=1,
         threshold_pred=True,
         threshold_config=thr["config"],
+        key=jax.random.PRNGKey(0),
     )
     thres_fit = np.asarray(predictive.mean)  # (49, 2, 2)
     # --8<-- [end:end_to_end]
@@ -825,6 +827,7 @@ def stage5_bootstrap_envelope(
             n_samples=1,
             threshold_pred=True,
             threshold_config=thr["config"],
+            key=jax.random.PRNGKey(0),
         ).mean
     )
 

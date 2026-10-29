@@ -2,8 +2,9 @@
 tests/test_contour_band.py
 ----------------------------
 
-Tests for contour_radii and contour_band: the radius-per-direction
-parameterization of a threshold contour, and pointwise credible bands over it.
+Tests for contour_radii and WPPMCovarianceFieldSamples.band: the
+radius-per-direction parameterization of a threshold contour, and pointwise
+credible bands over it.
 
 The first test is the pin for the extraction. The credible band used to be
 computed inline in docs/examples/wppm/nuts_inference_example.py, and the
@@ -27,9 +28,9 @@ import pytest
 from psyphy.model import WPPM, GaussianNoise, OddityTask, Prior
 from psyphy.model.covariance_field import (
     WPPMCovarianceField,
+    WPPMCovarianceFieldSamples,
     _eti,
     _hdi,
-    contour_band,
     contour_radii,
 )
 from psyphy.model.likelihood import OddityTaskConfig
@@ -73,6 +74,11 @@ def points():
     return jnp.array([[0.0, 0.0], [0.3, -0.2], [-0.4, 0.1], [0.2, 0.5]])
 
 
+def _fields(posterior, n_samples=None, key=None):
+    """The draws object, which is where band() lives."""
+    return WPPMCovarianceFieldSamples.from_posterior(posterior, n_samples, key=key)
+
+
 def _reference_band(posterior, model, points, n_samples, ci_prob, key):
     """The inline computation from nuts_inference_example.py, verbatim.
 
@@ -105,7 +111,7 @@ def _reference_band(posterior, model, points, n_samples, ci_prob, key):
 
 
 def test_band_matches_the_inline_tutorial_computation(tiny_model, posterior, points):
-    """contour_band reproduces the numbers the tutorial script produced.
+    """band reproduces the numbers the tutorial script produced.
 
     This is the extraction's pin. A failure means the published figures in
     nuts_inference_example.md no longer match what psyphy computes.
@@ -115,9 +121,9 @@ def test_band_matches_the_inline_tutorial_computation(tiny_model, posterior, poi
         posterior, tiny_model, points, n_samples=50, ci_prob=0.89, key=key
     )
 
-    band = contour_band(posterior, points, ci_prob=0.89, n_samples=50, key=key)
+    band = _fields(posterior, 50, key).band(points, ci_prob=0.89)
 
-    # The reference loops over samples in Python, contour_band vmaps, so float32
+    # The reference loops over samples in Python, band vmaps, so float32
     # accumulates in a different order. The gap that leaves is absolute, about
     # 1.5e-6 on a radius, and does not shrink with the radius: r_lo holds the
     # smallest radii here (~0.06), so an rtol alone would set a tolerance below
@@ -157,12 +163,12 @@ def test_radii_broadcast_over_leading_axes():
 
 
 # ---------------------------------------------------------------------------
-# contour_band: shapes, ordering, degenerate case
+# band: shapes, ordering, degenerate case
 # ---------------------------------------------------------------------------
 
 
 def test_band_shapes_for_a_single_level(posterior, points):
-    band = contour_band(posterior, points, n_directions=37, ci_prob=0.89)
+    band = _fields(posterior).band(points, n_directions=37, ci_prob=0.89)
 
     assert band.points.shape == (4, 2)
     assert band.directions.shape == (37, 2)
@@ -174,7 +180,7 @@ def test_band_shapes_for_a_single_level(posterior, points):
 
 def test_band_shapes_for_several_levels(posterior, points):
     """A sequence of probabilities adds a leading level axis."""
-    band = contour_band(posterior, points, n_directions=37, ci_prob=[0.5, 0.8, 0.95])
+    band = _fields(posterior).band(points, n_directions=37, ci_prob=[0.5, 0.8, 0.95])
 
     for arr in (band.lower, band.median, band.upper):
         assert arr.shape == (3, 4, 37)  # (n_levels, n_points, n_directions)
@@ -187,7 +193,7 @@ def test_median_is_the_same_at_every_level(posterior, points):
     It is stacked anyway so that lower, median and upper share a shape and a
     loop over levels can index all three.
     """
-    band = contour_band(posterior, points, n_directions=19, ci_prob=[0.5, 0.95])
+    band = _fields(posterior).band(points, n_directions=19, ci_prob=[0.5, 0.95])
 
     assert jnp.allclose(band.median[0], band.median[1], atol=1e-7)
 
@@ -195,23 +201,24 @@ def test_median_is_the_same_at_every_level(posterior, points):
 def test_each_level_matches_a_single_level_call(posterior, points):
     """Asking for three levels at once equals asking three times."""
     key = jr.PRNGKey(3)
-    many = contour_band(posterior, points, ci_prob=[0.5, 0.95], n_samples=40, key=key)
+    fields = _fields(posterior, 40, key)
+    many = fields.band(points, ci_prob=[0.5, 0.95])
     for i, p in enumerate((0.5, 0.95)):
-        one = contour_band(posterior, points, ci_prob=p, n_samples=40, key=key)
+        one = fields.band(points, ci_prob=p)
         assert jnp.allclose(many.lower[i], one.lower, atol=1e-6)
         assert jnp.allclose(many.upper[i], one.upper, atol=1e-6)
 
 
 def test_levels_nest(posterior, points):
     """A wider probability gives a wider interval, everywhere."""
-    band = contour_band(posterior, points, ci_prob=[0.5, 0.95])
+    band = _fields(posterior).band(points, ci_prob=[0.5, 0.95])
 
     assert jnp.all(band.lower[1] <= band.lower[0] + 1e-6)
     assert jnp.all(band.upper[1] >= band.upper[0] - 1e-6)
 
 
 def test_band_is_ordered(posterior, points):
-    band = contour_band(posterior, points)
+    band = _fields(posterior).band(points)
 
     assert jnp.all(band.lower <= band.median + 1e-6)
     assert jnp.all(band.median <= band.upper + 1e-6)
@@ -219,7 +226,7 @@ def test_band_is_ordered(posterior, points):
 
 def test_directions_are_closed_and_unit(posterior, points):
     """The last direction repeats the first, so a filled polygon has no seam."""
-    band = contour_band(posterior, points, n_directions=37)
+    band = _fields(posterior).band(points, n_directions=37)
 
     assert jnp.allclose(band.directions[0], band.directions[-1], atol=1e-6)
     assert jnp.allclose(jnp.linalg.norm(band.directions, axis=-1), 1.0, atol=1e-6)
@@ -231,7 +238,7 @@ def test_map_posterior_band_has_zero_width(tiny_model):
     post = MAPPosterior(params, tiny_model)
     pts = jnp.array([[0.0, 0.0], [0.2, 0.2]])
 
-    band = contour_band(post, pts, n_samples=8, n_directions=19)
+    band = _fields(post, 8, jr.PRNGKey(0)).band(pts, n_directions=19)
 
     assert jnp.allclose(band.upper - band.lower, 0.0, atol=1e-6)
     assert jnp.allclose(band.median, band.lower, atol=1e-6)
@@ -288,11 +295,11 @@ def test_hdi_is_the_narrowest_window_of_that_size():
     assert float(hi[0] - lo[0]) == pytest.approx(min(widths), abs=1e-6)
 
 
-def test_hdi_flows_through_contour_band(posterior, points):
+def test_hdi_flows_through_the_band(posterior, points):
     """ci_kind="hdi" reaches the reduction and is recorded on the result."""
-    key = jr.PRNGKey(5)
-    eti = contour_band(posterior, points, ci_kind="eti", n_samples=50, key=key)
-    hdi = contour_band(posterior, points, ci_kind="hdi", n_samples=50, key=key)
+    fields = _fields(posterior, 50, jr.PRNGKey(5))
+    eti = fields.band(points, ci_kind="eti")
+    hdi = fields.band(points, ci_kind="hdi")
 
     assert hdi.ci_kind == "hdi"
     assert jnp.all(hdi.lower <= hdi.median + 1e-6)
@@ -302,12 +309,12 @@ def test_hdi_flows_through_contour_band(posterior, points):
 
 def test_unknown_ci_kind_is_rejected(posterior, points):
     with pytest.raises(ValueError, match="ci_kind"):
-        contour_band(posterior, points, ci_kind="quantile")
+        _fields(posterior).band(points, ci_kind="quantile")
 
 
 def test_ci_prob_out_of_range_is_rejected(posterior, points):
     with pytest.raises(ValueError, match="ci_prob"):
-        contour_band(posterior, points, ci_prob=1.5)
+        _fields(posterior).band(points, ci_prob=1.5)
 
 
 # ---------------------------------------------------------------------------
@@ -327,12 +334,15 @@ def test_non_2d_models_are_rejected():
     post = MAPPosterior(model.init_params(jr.PRNGKey(0)), model)
 
     with pytest.raises(NotImplementedError, match="2-D"):
-        contour_band(post, jnp.array([[0.0]]), n_samples=4)
+        _fields(post, 4, jr.PRNGKey(0)).band(jnp.array([[0.0]]))
 
 
 def test_map_posterior_needs_explicit_n_samples(tiny_model):
-    """MAPPosterior exposes no n_chains/n_draws, so the default cannot be inferred."""
+    """MAPPosterior exposes no n_chains/n_draws, so the default cannot be inferred.
+
+    The draws are taken at construction, so this is where the count is needed.
+    """
     post = MAPPosterior(tiny_model.init_params(jr.PRNGKey(0)), tiny_model)
 
     with pytest.raises(ValueError, match="n_samples"):
-        contour_band(post, jnp.array([[0.0, 0.0]]))
+        _fields(post)

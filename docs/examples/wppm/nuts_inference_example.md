@@ -189,7 +189,7 @@ What comes back is an `MCMCPosterior`. We use 3 things on it:
 | call | returns | used in |
 |---|---|---|
 | `nuts_posterior.sample(n, key=...)` | `n` samples, `{"W": (n, *W_shape)}` | Step 5, the contour ensemble |
-| `PosteriorMeanCovarianceField(nuts_posterior)` | the posterior mean field $\mathbb{E}[\Sigma(x)]$ | Step 5, the red contours |
+| `WPPMCovarianceFieldSamples.from_posterior(nuts_posterior)` | the draws of the field, with `.mean(x)` for $\mathbb{E}[\Sigma(x)]$ | Step 5, the red contours and the band |
 | `covariance_to_arviz(nuts_posterior, points)` | $\Sigma$ at chosen points for every sample, in ArviZ's format | [the diagnostics page](mcmc_diagnostics.md) |
 
 One sample is one complete covariance field, so one threshold contour at every reference
@@ -202,7 +202,7 @@ fit, [`WPPMPredictivePosterior`](../../reference/posterior.md#psyphy.posterior.W
     building a field from the mean parameter is not the same as averaging the fields.
     [`WPPMCovarianceField`](../../reference/model.md#psyphy.model.WPPMCovarianceField)`(model, nuts_posterior.params)`
     gives contours several times too small on a typical fit. Use
-    [`PosteriorMeanCovarianceField`](../../reference/model.md#psyphy.model.PosteriorMeanCovarianceField)
+    [`WPPMCovarianceFieldSamples`](../../reference/model.md#psyphy.model.WPPMCovarianceFieldSamples)`.mean`
     ([Step 5](#step-5-plotting-posterior-samples-and-credible-intervals)), which averages
     $\Sigma$ rather than $W$. Its docstring has the detail.
     `WPPMCovarianceField.from_posterior` warns when handed an MCMC posterior.
@@ -217,7 +217,7 @@ threshold contours.
 ```
 
 For one summary field,
-[`PosteriorMeanCovarianceField`](../../reference/model.md#psyphy.model.PosteriorMeanCovarianceField)
+[`WPPMCovarianceFieldSamples`](../../reference/model.md#psyphy.model.WPPMCovarianceFieldSamples)`.mean`
 builds $\Sigma$ from each sample and averages the matrices. The other route,
 `WPPMCovarianceField(model, posterior.params)`, averages the samples of $W$ first and builds a
 single field from that mean parameter. The model is nonlinear in its parameters, so the two
@@ -245,8 +245,9 @@ data constrain the threshold, wide spread means they do not. This is the figure 
 of the page, repeated here because it is what the snippet above produces.
 
 A cloud of contours is the full answer, but a paper reports an interval. psyphy computes
-one with [`contour_band`](../../reference/model.md#psyphy.model.contour_band), which
-takes the posterior and the points to evaluate at.
+one with `.band` on the same object, which takes the points to evaluate at. The draws are
+the ones the object was built with, so the band and the mean above describe one sample of
+the posterior.
 
 ??? note "What to pass, and what we get back"
 
@@ -322,7 +323,7 @@ fit reports the same contours with no way to tell those two cases apart.
 - **Other samplers.** Nothing downstream of the sampler is NUTS-specific: any psyphy
   [`InferenceEngine`](../../reference/inference.md#psyphy.inference.InferenceEngine)
   returning an `MCMCPosterior` with samples shaped `(n_chains, n_draws, *W_shape)` works with
-  `covariance_to_arviz`, `PosteriorMeanCovarianceField` and `WPPMPredictivePosterior`
+  `covariance_to_arviz`, `WPPMCovarianceFieldSamples` and `WPPMPredictivePosterior`
   unchanged. Note that note all the diagnostics will carry over, since a sampler without trajectories has for example
   no divergences.
 
@@ -332,8 +333,7 @@ fit reports the same contours with no way to tell those two cases apart.
   [`InferenceEngine`](../../reference/inference.md#psyphy.inference.InferenceEngine),
   [`MCMCPosterior`](../../reference/posterior.md#psyphy.posterior.MCMCPosterior),
   [`covariance_to_arviz`](../../reference/model.md#psyphy.model.covariance_to_arviz),
-  [`PosteriorMeanCovarianceField`](../../reference/model.md#psyphy.model.PosteriorMeanCovarianceField),
-  [`contour_band`](../../reference/model.md#psyphy.model.contour_band),
+  [`WPPMCovarianceFieldSamples`](../../reference/model.md#psyphy.model.WPPMCovarianceFieldSamples),
   [`contour_radii`](../../reference/model.md#psyphy.model.contour_radii)
 - MAP fitting and the model in more depth:
   [full WPPM fit](full_wppm_fit_example.md).

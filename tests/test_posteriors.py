@@ -122,7 +122,9 @@ class TestPredictivePosterior:
         refs_test = jnp.array([[0.0, 0.0], [1.0, 1.0], [2.0, 2.0]])
         comparisons = jnp.array([[0.5, 0.0], [1.5, 1.0], [2.5, 2.0]])
         X_test = jnp.stack([refs_test, comparisons], axis=1)
-        return WPPMPredictivePosterior(param_posterior, X_test, n_samples=10)
+        return WPPMPredictivePosterior(
+            param_posterior, X_test, n_samples=10, key=jr.PRNGKey(0)
+        )
 
     def test_is_predictive_posterior(self, predictive_posterior):
         """WPPMPredictivePosterior implements PredictivePosterior protocol."""
@@ -167,26 +169,11 @@ class TestPredictivePosterior:
         assert jnp.allclose(sample_mean, predictive_posterior.mean, atol=0.1)
         assert jnp.allclose(sample_var, predictive_posterior.variance, atol=0.1)
 
-    def test_cov_field_shape(self, predictive_posterior):
-        """cov_field returns covariance matrices."""
-        refs_test = jnp.array([[0.0, 0.0], [1.0, 1.0]])
-        Sigma = predictive_posterior.cov_field(refs_test)
-        assert Sigma.shape == (2, 2, 2)  # (n_test, input_dim, input_dim)
-
-    def test_cov_field_psd(self, predictive_posterior):
-        """Covariance matrices are positive semi-definite."""
-        X_test = jnp.array([[0.0, 0.0], [1.0, 1.0]])
-        Sigma = predictive_posterior.cov_field(X_test)
-
-        for i in range(len(X_test)):
-            eigvals = jnp.linalg.eigvalsh(Sigma[i])
-            assert jnp.all(eigvals >= -1e-6)  # Numerically PSD
-
     def test_threshold_pred_rejects_paired_stimuli_shape(self, param_posterior):
         """threshold_pred=True expects bare reference points, not (ref, comp) pairs."""
         X_test = jnp.zeros((2, 2, 2))  # (n_test, k_stimuli, input_dim) -- wrong shape
         pred_post = WPPMPredictivePosterior(
-            param_posterior, X_test, threshold_pred=True
+            param_posterior, X_test, threshold_pred=True, key=jr.PRNGKey(0)
         )
         with pytest.raises(ValueError, match="bare reference points"):
             _ = pred_post.mean
@@ -219,6 +206,7 @@ class TestPredictivePosterior:
             n_samples=2,
             threshold_pred=True,
             threshold_config=cfg,
+            key=jr.PRNGKey(0),
         )
 
     def test_threshold_mean_shape(self, threshold_predictive_posterior):
@@ -258,6 +246,7 @@ class TestPredictivePosterior:
             n_samples=1,
             threshold_pred=True,
             threshold_config=ThresholdConfig(n_theta=16, n_length=200, chunk=2000),
+            key=jr.PRNGKey(0),
         )
         mean = predictive.mean
         for i in range(mean.shape[0]):
@@ -285,6 +274,7 @@ class TestPredictivePosterior:
             X_test,
             threshold_pred=True,
             threshold_config=cfg,
+            key=jr.PRNGKey(0),
         )
         with pytest.raises(ValueError, match="too small"):
             _ = pred_post.mean
@@ -337,6 +327,7 @@ class TestThresholdPredictionExternalValidity:
             n_samples=1,
             threshold_pred=True,
             threshold_config=ThresholdConfig(n_theta=16, n_length=300),
+            key=jr.PRNGKey(0),
         )
         recovered = pred_post.mean  # (4, 2, 2)
 
@@ -383,7 +374,9 @@ class TestIntegration:
         refs_test = jnp.array([[0.0, 0.0], [1.0, 1.0]])
         comparisons = jnp.array([[0.3, 0.0], [1.3, 1.0]])
         X_test = jnp.stack([refs_test, comparisons], axis=1)
-        pred_post = WPPMPredictivePosterior(param_post, X_test, n_samples=20)
+        pred_post = WPPMPredictivePosterior(
+            param_post, X_test, n_samples=20, key=jr.PRNGKey(0)
+        )
 
         # 6. Get predictions
         mean = pred_post.mean
@@ -395,11 +388,3 @@ class TestIntegration:
         key, subkey = jr.split(key)
         pred_samples = pred_post.rsample((5,), key=subkey)
         assert pred_samples.shape == (5, 2)
-
-        # 8. Get covariance field (just refs)
-        Sigma = pred_post.cov_field(refs_test)
-        assert Sigma.shape == (2, 2, 2)
-
-        # 9. Get covariance field (all stimuli)
-        Sigma = pred_post.cov_field(X_test)
-        assert Sigma.shape == (2, 2, 2, 2)

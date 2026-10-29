@@ -5,7 +5,9 @@ posterior
 Posterior representations.
 
 This subpackage provides:
-- ParameterPosterior: protocol for posteriors over model parameters p(θ | data)
+- ParameterSource: protocol for anything we can draw parameters from, including
+  a Prior
+- ParameterPosterior: a source that also carries p(θ | data) and its model
 - MAPPosterior: delta distribution at θ_MAP (point estimate)
 
 Two-tier design
@@ -19,7 +21,7 @@ Future extensions
 """
 
 from .mcmc_posterior import MCMCPosterior
-from .parameter_posterior import ParameterPosterior
+from .parameter_posterior import ParameterPosterior, ParameterSource
 from .posterior import MAPPosterior
 from .predictive_posterior import (
     PredictivePosterior,
@@ -29,6 +31,7 @@ from .predictive_posterior import (
 
 __all__ = [
     # Core protocols
+    "ParameterSource",
     "ParameterPosterior",
     "PredictivePosterior",
     # Parameter posterior implementations
