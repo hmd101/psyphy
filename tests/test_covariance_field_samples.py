@@ -31,45 +31,37 @@ from psyphy.model.likelihood import OddityTaskConfig
 from psyphy.posterior.mcmc_posterior import MCMCPosterior
 from psyphy.posterior.posterior import MAPPosterior
 
-# Σ entries here run to 0.34 and contour radii from 0.072 to 0.82. Two summation
-# orders over the same draws sit about 1e-7 apart, so atol=1e-4 leaves 3 orders of
-# headroom. A real regression is far above it: averaging W before Σ moves the mean
-# by 0.1, and ci_prob=0.90 instead of 0.89 moves the radii by 1e-2.
+# Σ entries here run to 0.12 and contour radii from 0.0072 to 0.57. Two summation
+# orders over the same draws sit about 1e-6 apart at worst, so atol=1e-4 is 100 times
+# the noise floor. Every real regression clears it, measured: averaging W before Σ
+# moves the mean by 0.12, which is 1200x the tolerance; halving the draw count 40x;
+# ci_kind="hdi" instead of "eti" 309x; and the tightest, ci_prob=0.90 instead of
+# 0.89, still 20x.
 ATOL = 1e-4
 
 MEAN_ALL = [
     [
-        [0.31751978397369385, 0.008093059062957764],
-        [0.008093059062957764, 0.31331130862236023],
+        [0.12208183109760284, 0.031568314880132675],
+        [0.031568314880132675, 0.12228402495384216],
     ],
     [
-        [0.32926154136657715, 0.004878937266767025],
-        [0.004878937266767025, 0.33791273832321167],
-    ],
-]
-MEAN_SUB = [
-    [
-        [0.39822134375572205, 0.027835434302687645],
-        [0.027835434302687645, 0.2904694974422455],
-    ],
-    [
-        [0.2802012860774994, 0.014537346549332142],
-        [0.014537346549332142, 0.27273687720298767],
+        [0.09403368830680847, 0.0050445133820176125],
+        [0.0050445133820176125, 0.0926375687122345],
     ],
 ]
 # lower, median and upper at direction indices 0, 45 and 90 of the 181 the band returns
 BAND_IDX = [0, 45, 90]
 BAND_LOWER = [
-    [0.08094172179698944, 0.08485444635152817, 0.08094168454408646],
-    [0.11526145786046982, 0.12881286442279816, 0.11526148021221161],
+    [0.011567057110369205, 0.008865531533956528, 0.011567061766982079],
+    [0.04944310709834099, 0.025759821757674217, 0.04944310709834099],
 ]
 BAND_MEDIAN = [
-    [0.38261231780052185, 0.3890184462070465, 0.38261231780052185],
-    [0.43024060130119324, 0.39069557189941406, 0.43024057149887085],
+    [0.0995648205280304, 0.10730376839637756, 0.09956485778093338],
+    [0.18460702896118164, 0.19025801122188568, 0.1846071481704712],
 ]
 BAND_UPPER = [
-    [0.7297009229660034, 0.7535349726676941, 0.7297009229660034],
-    [0.7471988201141357, 0.7517098784446716, 0.7471987009048462],
+    [0.459035187959671, 0.4504614770412445, 0.45903515815734863],
+    [0.4132041335105896, 0.4352034330368042, 0.41320401430130005],
 ]
 
 
@@ -94,8 +86,18 @@ def model():
 
 @pytest.fixture
 def posterior(model):
-    """MCMCPosterior with hand-made draws: 2 chains x 25 draws = 50 stored."""
-    W = jr.normal(jr.PRNGKey(0), (2, 25, 2, 2, 2, 3)) * 0.3  # (2, 25, 2, 2, 2, 3)
+    """MCMCPosterior with hand-made draws: 2 chains x 25 draws = 50 stored.
+
+    The draws come from arithmetic rather than jax.random, because the golden
+    arrays above are literal values. ``jax.random.normal`` returns different
+    numbers depending on ``jax_threefry_partitionable``, which is True in current
+    JAX and False in the older JAX that CI resolves on Python 3.10, so a
+    PRNG-built fixture pins the literals to one JAX version. This sawtooth is
+    exact in float32 and identical everywhere.
+    """
+    n = 2 * 25 * 2 * 2 * 2 * 3
+    idx = jnp.arange(n, dtype=jnp.float32)
+    W = (((idx * 37.0) % 19.0) / 19.0 - 0.5).reshape(2, 25, 2, 2, 2, 3) * 0.6
     return MCMCPosterior({"W": W}, model)
 
 
@@ -113,11 +115,23 @@ def test_mean_over_every_stored_draw(posterior, X):
     assert jnp.allclose(got, jnp.array(MEAN_ALL), rtol=0.0, atol=ATOL)
 
 
-def test_mean_over_a_subsample(posterior, X):
-    """E[Σ(x)] over 10 draws picked by an explicit key."""
+def test_mean_over_a_subsample(posterior, X, model):
+    """E[Σ(x)] over 10 draws averages exactly the 10 draws the object holds.
+
+    No golden array here: which 10 of the 50 a key picks is ``jr.choice``'s
+    business and moves with the JAX version. What has to hold is that the mean
+    uses the draws the object kept, whichever they are.
+    """
     fields = WPPMCovarianceFieldSamples.from_posterior(posterior, 10, key=jr.PRNGKey(3))
-    got = fields.mean(X)
-    assert jnp.allclose(got, jnp.array(MEAN_SUB), rtol=0.0, atol=ATOL)
+    assert fields.n_samples == 10
+
+    by_hand = jnp.mean(
+        jnp.stack(
+            [WPPMCovarianceField(model, {"W": W})(X) for W in fields.samples["W"]]
+        ),
+        axis=0,
+    )
+    assert jnp.allclose(fields.mean(X), by_hand, rtol=0.0, atol=ATOL)
 
 
 def test_band_over_every_stored_draw(posterior, X):
