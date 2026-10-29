@@ -7,13 +7,13 @@ Protocols for things we can draw model parameters from.
 2 of them, one nested in the other:
 - ParameterSource: anything that hands back n parameter draws. A Prior is one,
   and so is every posterior
-- ParameterPosterior: a source that also carries a point estimate and the model
+- ParameterPosterior: a source that ALSO carries a point estimate and the model
   it was fitted to, representing p(θ | data)
 
 Design
 ------
 Different inference engines produce different posterior representations:
-- MAP: delta distribution at θ_MAP
+- MAP: a point estimate
 - MCMC: collection of samples
 
 All implement a common protocol for polymorphic use.
@@ -99,7 +99,7 @@ class ParameterPosterior(ParameterSource, Protocol):
         - MAP: θ_MAP
         - MCMC: posterior mean of the parameter samples. This is a parameter
           average, not an average of model outputs: for WPPM, Σ(params) is not
-          the posterior mean covariance (use PosteriorMeanCovarianceField).
+          the posterior mean covariance (use WPPMCovarianceFieldSamples).
         """
         ...
 

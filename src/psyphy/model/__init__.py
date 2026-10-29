@@ -23,9 +23,8 @@ from .base import Model
 from .covariance_field import (
     ContourBand,
     CovarianceField,
-    PosteriorMeanCovarianceField,
     WPPMCovarianceField,
-    contour_band,
+    WPPMCovarianceFieldSamples,
     contour_radii,
     covariance_to_arviz,
 )
@@ -40,11 +39,10 @@ __all__ = [
     # Covariance fields
     "CovarianceField",
     "WPPMCovarianceField",
-    "PosteriorMeanCovarianceField",
+    "WPPMCovarianceFieldSamples",
     "covariance_to_arviz",
     "ContourBand",
     "contour_radii",
-    "contour_band",
     # Models
     "WPPM",
     # Priors

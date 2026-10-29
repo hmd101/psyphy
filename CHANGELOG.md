@@ -10,6 +10,37 @@ breaking changes are called out below but do not force a minor-version bump.
 
 ### Breaking
 
+- **`PosteriorMeanCovarianceField` and `contour_band` are gone, and their reductions are
+  methods on the new `WPPMCovarianceFieldSamples`.** The draws are taken once, when the
+  object is built, so the ensemble, the mean and the band describe one sample of the
+  posterior:
+
+  ```python
+  # before
+  mean_field = PosteriorMeanCovarianceField(posterior)
+  covs = mean_field(ref_points)
+  band = contour_band(posterior, ref_points, ci_prob=0.89, n_samples=400, key=key)
+
+  # now
+  fields = WPPMCovarianceFieldSamples.from_posterior(posterior)
+  covs = fields.mean(ref_points)
+  band = WPPMCovarianceFieldSamples.from_posterior(
+      posterior, 400, key=key
+  ).band(ref_points, ci_prob=0.89)
+  ```
+
+  `fields(ref_points)` gives Σ for every draw, `(n_samples, n_points, d, d)`, which
+  replaces a Python loop over `posterior.sample`. `fields.samples` is the draws pytree, for
+  a per-draw quantity psyphy does not ship. `WPPMCovarianceFieldSamples.from_prior(model,
+  n=..., key=...)` is the same object from a prior.
+
+  `n_samples` and `key` move from the call to the construction, so one check covers every
+  reduction. There is no `sqrt_cov`: an average of U Uᵀ is not U Uᵀ for any single U. Use
+  `jnp.linalg.cholesky(fields.mean(x))` for a factor of the mean matrix, or
+  `WPPMCovarianceField` for one parameter set. The numbers are unchanged: the mean and the
+  band reproduce what the removed entry points returned, bit for bit.
+
+
 - **`WPPMPredictivePosterior` takes a required `key`, and `cov_field` is gone.**
   `mean` and `variance` are properties, so the constructor is the only place their
   randomness can enter. The key is split once into a key for drawing parameters and a key
@@ -31,8 +62,8 @@ breaking changes are called out below but do not force a minor-version bump.
   `PredictivePosterior` protocol. It computed `PosteriorMeanCovarianceField`'s quantity at
   a different default under its own key, so there were 2 public paths to
   E[Σ(X) | data] returning numbers up to a few percent apart. Use
-  `PosteriorMeanCovarianceField(posterior)`. A model with no covariance field can now
-  satisfy `PredictivePosterior`.
+  `WPPMCovarianceFieldSamples.from_posterior(posterior).mean(x)`. A model with no
+  covariance field can now satisfy `PredictivePosterior`.
 
   **Threshold predictions shift.** The sweep key was `jax.random.PRNGKey(1)` and is now
   derived from the key you pass, so `threshold_pred=True` results move. At the settings

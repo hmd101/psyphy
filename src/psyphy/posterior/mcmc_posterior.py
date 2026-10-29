@@ -100,8 +100,8 @@ class MCMCPosterior:
           orientations partly cancel in E[W], pulling Σ(E[W]) toward λI.
 
         For the posterior mean covariance field use
-        ``PosteriorMeanCovarianceField(posterior)``; for individual covariance
-        draws use ``sample(n)``. E[W] remains a valid parameter set, e.g. as
+        ``WPPMCovarianceFieldSamples.from_posterior(posterior).mean(x)``; for
+        individual covariance draws use ``sample(n)``. E[W] remains a valid parameter set, e.g. as
         ``init_params`` for another fit.
         """
         # _samples["W"]: (n_chains, n_draws, *param_shape)
@@ -110,7 +110,7 @@ class MCMCPosterior:
         # protocol requires params to be a parameter PyTree (NUTSSampler and
         # MAPOptimizer accept it as init_params), and E[Σ] cannot be expressed
         # as any single W. The fix for covariance summaries therefore lives in
-        # PosteriorMeanCovarianceField, not here.
+        # WPPMCovarianceFieldSamples, not here.
         return jax.tree.map(lambda x: jnp.mean(x, axis=(0, 1)), self._samples)
 
     @property

@@ -77,10 +77,9 @@ from psyphy.model import (
     GaussianNoise,
     OddityTask,
     OddityTaskConfig,
-    PosteriorMeanCovarianceField,
     Prior,
     WPPMCovarianceField,
-    contour_band,
+    WPPMCovarianceFieldSamples,
     contour_radii,
     covariance_to_arviz,
 )
@@ -610,14 +609,14 @@ param_samples = nuts_posterior.sample(n_ensemble, key=jr.PRNGKey(0))
 # param_samples["W"].shape == (n_ensemble, *W_shape)
 # --8<-- [end:posterior_samples]
 
-# Posterior mean covariance field, E[Σ(x)]: Σ is computed for EVERY stored
-# sample and the matrices are averaged. Deliberately NOT
+# Posterior mean covariance field, E[Σ(x)]: Σ is computed for every stored
+# sample and the matrices are averaged. Not
 # WPPMCovarianceField(model, nuts_posterior.params): params is the mean
 # parameter E[W], and Σ is nonlinear in W, so Σ(E[W]) comes out far too
-# small. See PosteriorMeanCovarianceField's docstring.
+# small. See the WPPMCovarianceFieldSamples docstring.
 # --8<-- [start:posterior_mean]
-mean_field = PosteriorMeanCovarianceField(nuts_posterior)  # all samples by default
-covs_mean = mean_field(ref_points)  # (n_ref, 2, 2)
+fields = WPPMCovarianceFieldSamples.from_posterior(nuts_posterior)  # all samples
+covs_mean = fields.mean(ref_points)  # (n_ref, 2, 2)
 # --8<-- [end:posterior_mean]
 covs_truth = truth_field(ref_points)
 
@@ -687,13 +686,10 @@ print("[5b/7] Pointwise credible band on the threshold contours...")
 N_BAND = min(400, NUM_CHAINS * NUM_SAMPLES)  # posterior samples to use for the band
 CI_PROB = 0.89  # ArviZ's default, so the band and az.summary match
 
-band = contour_band(
-    nuts_posterior,
-    ref_points,
-    ci_prob=CI_PROB,
-    n_samples=N_BAND,
-    key=jr.PRNGKey(1),
+band_fields = WPPMCovarianceFieldSamples.from_posterior(
+    nuts_posterior, N_BAND, key=jr.PRNGKey(1)
 )
+band = band_fields.band(ref_points, ci_prob=CI_PROB)
 # band.lower / .median / .upper  (n_ref, n_directions): contour radius per direction
 # band.directions  (n_directions, 2): closed, so a filled polygon has no seam
 # --8<-- [end:credible_band]
@@ -751,14 +747,9 @@ save_ellipse_figure(fig, "nuts_threshold_band")
 print("[5c/7] Nested credible bands at one reference point...")
 
 # --8<-- [start:nested_bands]
-# A sequence of probabilities gives one interval per level in a single call:
-nested = contour_band(
-    nuts_posterior,
-    ref_points,
-    ci_prob=[0.5, 0.8, 0.95],
-    n_samples=N_BAND,
-    key=jr.PRNGKey(1),
-)
+# A sequence of probabilities gives one interval per level in a single call,
+# over the same draws the band above used:
+nested = band_fields.band(ref_points, ci_prob=[0.5, 0.8, 0.95])
 # nested.lower / .median / .upper  (n_levels, n_ref, n_directions)
 # nested.ci_prob                    (0.5, 0.8, 0.95), the order of that axis
 # One shape for all three, so nested.lower[i] and nested.median[i] line up and
@@ -883,7 +874,7 @@ configs = [
         False,
     ),
     (
-        mean_field,
+        fields.mean,
         "#cc2222",
         f"NUTS mean ({NUM_CHAINS}×{NUM_SAMPLES} samples) + {n_ensemble} of them shown",
         True,
