@@ -139,7 +139,7 @@ ground-truth WPPM, so there is something to compare the fit against.
 ```
 
 The model's output is a covariance *field* $\Sigma(x)$: a $2\times2$ covariance matrix at
-every point $x$ of the stimulus space, whose contour is the threshold contour we plot. Every
+every point $x$ of the stimulus space, whose contour is the ellipse  contour we plot. Every
 $\Sigma$ below means this, evaluated at one reference point and one posterior sample unless
 said otherwise.
 
@@ -191,7 +191,7 @@ What comes back is an `MCMCPosterior`. We use 2 things on it:
 | [`WPPMCovarianceFieldSamples`](../../reference/model.md#psyphy.model.WPPMCovarianceFieldSamples)`.from_posterior(nuts_posterior)` | every stored sample as a covariance field, with `.mean(x)` for $\mathbb{E}[\Sigma(x)]$ and `.band(x)` for a credible band. Pass `n` and `key` for a random subset | Step 5, the contour ensemble, the red contours and the band |
 | `covariance_to_arviz(nuts_posterior, points)` | $\Sigma$ at chosen points for every sample, in ArviZ's format | [the diagnostics page](mcmc_diagnostics.md) |
 
-One sample is one complete covariance field, so one threshold contour at every reference
+One sample is one complete covariance field, so one ellipse  contour at every reference
 point. `MCMCPosterior` and [`MAPPosterior`](../../reference/posterior.md#psyphy.posterior.MAPPosterior) share this interface, so code written for a MAP
 fit, [`WPPMPredictivePosterior`](../../reference/posterior.md#psyphy.posterior.WPPMPredictivePosterior) for instance, takes a NUTS fit unchanged.
 
@@ -209,7 +209,7 @@ fit, [`WPPMPredictivePosterior`](../../reference/posterior.md#psyphy.posterior.W
 ### Step 5: Plotting posterior samples and credible intervals
 
 Every sample is a complete covariance field, so the ensemble of samples is an ensemble of
-threshold contours. `from_posterior` holds every stored sample. Called at the reference
+ellipse contours. `from_posterior` holds every stored sample. Called at the reference
 points, it gives one $\Sigma$ per sample and point. We draw every k-th of them, so the
 plot shows `n_ensemble` contours from all chains.
 
@@ -220,11 +220,8 @@ plot shows `n_ensemble` contours from all chains.
 For one summary field, `.mean` builds $\Sigma$ from each sample and averages the matrices.
 The other route,
 `WPPMCovarianceField(model, posterior.params)`, averages the samples of $W$ first and builds a
-single field from that mean parameter. The model is nonlinear in its parameters, so the two
-orders do not agree: averaging first drops the spread between samples. It reports contours
-several times too small at every reference point, and gives no sign that it has. The class
-docstring has the identity behind it.
-
+single field from that mean parameter. The model is nonlinear in its parameters, so the order matters! Averaging first drops the spread between samples and the resulting ellipses  are
+several times too small at every reference point.
 ```python title="Posterior mean covariance field"
 --8<-- "docs/examples/wppm/nuts_inference_example.py:posterior_mean"
 ```
@@ -235,13 +232,13 @@ docstring has the identity behind it.
 
 <div align="center">
   <img src="../plots/nuts_ellipses_uncertainty_full.jpg" width="560"/>
-  <p><em>Faint blue: one threshold contour per posterior sample, 200 of them. Red: the
+  <p><em>Faint blue: one ellipse contour per posterior sample, 200 of them. Red: the
   posterior mean $\mathbb{E}[\Sigma(x)]$. Black: ground truth. Green: the 25 reference
   points.</em></p>
 </div>
 
-One threshold contour per posterior sample, at every reference point. Tight clusters mean the
-data constrain the threshold, wide spread means they do not. This is the figure at the top
+One ellipse contour per posterior sample, at every reference point. Tight clusters mean the
+data constrain the ellipse, wide spread means they do not. This is the figure at the top
 of the page, repeated here because it is what the snippet above produces.
 
 A cloud of contours is the full answer, but a paper reports an interval. psyphy computes
@@ -280,11 +277,11 @@ docstring has the formula and the derivation.
 
 <div align="center">
   <img src="../plots/nuts_threshold_band_full.jpg" width="620"/>
-  <p><em>Pointwise 89% credible band on each threshold contour (blue fill), the posterior
+  <p><em>Pointwise 89% credible band on each ellipse contour (blue fill), the posterior
   median contour (blue line) and ground truth (black).</em></p>
 </div>
 
-The band is narrow where the data constrain the threshold and wide where they do not. A MAP
+The band is narrow where the data constrain the ellipse and wide where they do not. A MAP
 fit reports the same contours with no way to tell those two cases apart.
 
 ??? note "Nested bands: several levels in one call"
