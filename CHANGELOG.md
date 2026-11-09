@@ -8,42 +8,6 @@ breaking changes are called out below but do not force a minor-version bump.
 
 ## [Unreleased]
 
-### Added
-
-- **`psyphy.model.likelihood` is now a package** rather than a single module, with
-  `base.py` (the `TaskLikelihood` hierarchy), `oddity.py` (`OddityTask`), `features.py`
-  and `neural.py`. Every public name is re-exported, so imports are unchanged.
-- **`NeuralOddityTask`**, a neural-network surrogate for the 3-AFC oddity likelihood. It
-  describes the same observer and the same decision rule as `OddityTask`, but evaluates a
-  small network fitted to that simulation instead of simulating trials. Two-dimensional
-  models with Gaussian noise only; both limits raise rather than mispredicting.
-
-  Besides being much cheaper per evaluation, it is **deterministic**, which the Monte
-  Carlo likelihood is not. That matters for gradient-based samplers, which assume the log
-  density is a fixed function of the parameters, and it is a prerequisite for any method
-  built on second derivatives. Accuracy is not traded away: at the sample counts normally
-  used, the surrogate is closer to a high-accuracy simulation than the simulation is at
-  its own defaults.
-
-      from psyphy.model.likelihood import NeuralOddityTask
-      model = WPPM(input_dim=2, prior=..., likelihood=NeuralOddityTask(), noise=GaussianNoise())
-
-  Weights come with psyphy, so no download or configuration is needed.
-- **`psyphy.model.likelihood.features`**, the input transform a surrogate consumes:
-  `whiten`, `reduce_2d` and `whitened_oddity_features`. Public because deriving a feature
-  map for a new task is something users should be able to do. The pooling weight `w_ref`
-  is an argument rather than a constant, so the same whitening serves other tasks.
-- **`NeuralSurrogate` and a self-describing weight-file format.** A surrogate file records
-  which task, stimulus dimension and feature map it was trained for, and the loader
-  refuses a file that does not match what the task requires.
-
-  This exists because the failure it prevents is silent. Networks for different tasks can
-  have identical shapes, so loading the wrong weights produces a plausible probability
-  rather than an error. Files written before this format cannot be verified and are
-  refused; `scripts/convert_reference_surrogate.py` re-saves them with the metadata
-  attached.
-- `TaskLikelihood.is_stochastic`, declaring whether a likelihood consumes randomness.
-  `False` for `NeuralOddityTask`, so callers can stop inferring it.
 ### Breaking
 
 - **`WPPM` no longer takes `input_dim`, `extra_dims`, `variance_scale` or `decay_rate`.**
@@ -174,7 +138,47 @@ breaking changes are called out below but do not force a minor-version bump.
   This also drops a `jax.random.choice` and a gather over every stored sample, run before
   only to shuffle something about to be averaged.
 
+- **`psyphy.model.likelihood` is a package**: `base.py` holds `TaskLikelihood`,
+  `BernoulliTaskLikelihood` and `GaussianTaskLikelihood`, and `oddity.py` holds
+  `OddityTask` and `OddityTaskConfig`. Every public name is re-exported from
+  `psyphy.model.likelihood`, so imports are unchanged.
+
 ### Added
+
+- **`NeuralOddityTask`**, the 3-AFC oddity likelihood evaluated by a trained network
+  instead of a Monte Carlo simulation. It models the same observer and decision rule as
+  `OddityTask`, and `loglik` returns the same value for every PRNG key. 2-D stimuli and
+  `GaussianNoise` only, and `predict` raises `NotImplementedError` for any other model.
+  The weights ship with psyphy.
+
+  ```python
+  from psyphy.model import WPPM, Prior, GaussianNoise
+  from psyphy.model.likelihood import NeuralOddityTask
+
+  model = WPPM(
+      prior=Prior(input_dim=2, basis_degree=3),
+      likelihood=NeuralOddityTask(),
+      noise=GaussianNoise(),
+  )
+  ```
+
+  `NeuralOddityTask.is_stochastic` is `False`.
+
+- **`NeuralSurrogate`**, a trained network with its input standardization and metadata.
+  `NeuralSurrogate.from_npz(path, require=...)` loads one and raises `ValueError` when the
+  file's `task`, `input_dim` or feature map differ from `require`, or when the file has no
+  metadata. `save_surrogate_npz` writes the format, and `mlp_forward` is the forward pass
+  on its own.
+
+  ```python
+  surrogate = NeuralSurrogate.from_npz("my_weights.npz", require=NeuralOddityTask.REQUIRED)
+  task = NeuralOddityTask(surrogate=surrogate)
+  ```
+
+- **`whiten`, `reduce_2d` and `whitened_oddity_features`** in
+  `psyphy.model.likelihood.features`: the 4 numbers per trial that `NeuralOddityTask`
+  passes to its network. `whiten` works in any dimension and takes the task's pooling
+  weight as `w_ref` (2/3 for oddity, 1/2 for a two-interval task).
 
 - **`ParameterSource` in `psyphy.posterior`**, a one-method protocol for anything we can
   draw parameters from: `sample(n, *, key)` returning a PyTree with a leading axis of `n`.
