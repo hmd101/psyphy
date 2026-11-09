@@ -108,10 +108,11 @@ nav:
     - Recovering Weber's Law: examples/wppm/weber_law.md
     - Fitting with the Wishart Psychophysical Process Model (WPPM): examples/wppm/full_wppm_fit_example.md
     - Reproducing Hong et al. (2025): examples/wppm/hong2025_reproduction.md
-    - Posterior Inference with NUTS: examples/wppm/nuts_inference_example.md
+    - Sampling the Posterior with NUTS: examples/wppm/nuts_inference_example.md
+    - Checking MCMC Samples with ArviZ: examples/wppm/mcmc_diagnostics.md
     - Covariance Field Visualization: examples/covariance_field/covariance_field.md
     - Plotting Ellipse Fields: examples/viz/ellipse_plots.md
-  - Design Doc: API_DESIGN_DOCUMENT.md
+  - Developer Notes: developer-notes.md
   - Contributing: CONTRIBUTING.md
   - Changelog: changelog.md
 

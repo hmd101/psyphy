@@ -12,6 +12,7 @@ Hyperparameters:
 Connections
 -----------
 - WPPM calls Prior.sample_params() to initialize model parameters
+- Prior.sample(n, key=...) draws n of them at once
 - WPPM adds Prior.log_prob(params) to task log-likelihoods to form the log posterior
 - Prior will generate structured parameters for basis expansions
   and decay_rate-controlled smooth covariance fields
@@ -22,6 +23,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Any
 
+import jax
 import jax.numpy as jnp
 import jax.random as jr
 
@@ -35,21 +37,21 @@ class Prior:
 
     Parameters
     ----------
-    input_dim : int
-        Dimensionality of the model space (same as WPPM.input_dim)
-    basis_degree : int | None, default=None
+    input_dim : int, default=2
+        Dimensionality of the model space. WPPM.input_dim reads this.
+    basis_degree : int | None, default=4
         Degree of Chebyshev basis for Wishart process.
         If set, uses Wishart mode with W coefficients.
-    variance_scale : float, default=1.0
+    variance_scale : float, default=4e-3
         Prior variance for degree-0 (constant) coefficient in Wishart mode.
-        Controls overall scale of covariances.
-    decay_rate : float, default=0.5
+        Controls overall scale of covariances. WPPM.variance_scale reads this.
+    decay_rate : float, default=0.4
         Geometric decay rate for prior variance over higher-degree coefficients.
         Prior variance for degree-d coefficient = variance_scale * (decay_rate^d).
-        Smaller decay_rate -> stronger smoothness prior.
-    extra_embedding_dims : int, default=0
+        Smaller decay_rate -> stronger smoothness prior. WPPM.decay_rate reads this.
+    extra_embedding_dims : int, default=1
         Additional latent dimensions in U matrices beyond input dimensions.
-        Allows richer ellipsoid shapes in Wishart mode.
+        Allows richer ellipsoid shapes in Wishart mode. WPPM.embedding_dim reads this.
     """
 
     input_dim: int = 2
@@ -75,8 +77,8 @@ class Prior:
 
         Returns
         -------
-        basis_degrees : jnp.ndarray
-            Array of total degrees, shape (degree+1, degree+1) for 2D
+        basis_degrees : jnp.ndarray, shape (degree+1,) * input_dim
+            Array of total degrees.
         """
         if self.basis_degree is None:
             return jnp.array([])
@@ -113,8 +115,8 @@ class Prior:
 
         Returns
         -------
-        variances : jnp.ndarray
-            Prior variances, shape matches basis degree grid
+        variances : jnp.ndarray, shape (degree+1,) * input_dim
+            Prior variances, same shape as ``_compute_basis_degree_grid``'s output.
         """
         basis_degrees = self._compute_basis_degree_grid()
         return self.variance_scale * (self.decay_rate**basis_degrees)
@@ -212,6 +214,40 @@ class Prior:
             )
 
         return {"W": W}
+
+    def sample(self, n: int, *, key: Any) -> Params:
+        """
+        Sample n independent parameter draws from the prior.
+
+        The vectorized form of :meth:`sample_params`: draw ``i`` equals
+        ``sample_params(jax.random.split(key, n)[i])``.
+
+        Parameters
+        ----------
+        n : int
+            Number of draws.
+        key : jax.Array
+            PRNG key, split n ways.
+
+        Returns
+        -------
+        params : dict
+            Parameter dictionary with a leading axis of n, so for 2D
+            {"W": (n, degree+1, degree+1, input_dim, embedding_dim)}
+
+        Notes
+        -----
+        Satisfies :class:`psyphy.posterior.ParameterSource`.
+
+        Examples
+        --------
+        >>> import jax.random as jr
+        >>> from psyphy.model import Prior
+        >>> prior = Prior(input_dim=2, basis_degree=2)
+        >>> prior.sample(5, key=jr.PRNGKey(0))["W"].shape
+        (5, 3, 3, 2, 3)
+        """
+        return jax.vmap(self.sample_params)(jr.split(key, n))
 
     def log_prob(self, params: Params) -> jnp.ndarray:
         """

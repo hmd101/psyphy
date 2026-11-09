@@ -20,7 +20,14 @@ Typical usage
 """
 
 from .base import Model
-from .covariance_field import CovarianceField, WPPMCovarianceField
+from .covariance_field import (
+    ContourBand,
+    CovarianceField,
+    WPPMCovarianceField,
+    WPPMCovarianceFieldSamples,
+    contour_radii,
+    covariance_to_arviz,
+)
 from .likelihood import (
     NeuralOddityTask,
     NeuralSurrogate,
@@ -38,6 +45,10 @@ __all__ = [
     # Covariance fields
     "CovarianceField",
     "WPPMCovarianceField",
+    "WPPMCovarianceFieldSamples",
+    "covariance_to_arviz",
+    "ContourBand",
+    "contour_radii",
     # Models
     "WPPM",
     # Priors

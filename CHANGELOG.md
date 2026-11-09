@@ -28,7 +28,7 @@ breaking changes are called out below but do not force a minor-version bump.
       from psyphy.model.likelihood import NeuralOddityTask
       model = WPPM(input_dim=2, prior=..., likelihood=NeuralOddityTask(), noise=GaussianNoise())
 
-  Weights ship with psyphy, so no download or configuration is needed.
+  Weights come with psyphy, so no download or configuration is needed.
 - **`psyphy.model.likelihood.features`**, the input transform a surrogate consumes:
   `whiten`, `reduce_2d` and `whitened_oddity_features`. Public because deriving a feature
   map for a new task is something users should be able to do. The pooling weight `w_ref`
@@ -44,22 +44,217 @@ breaking changes are called out below but do not force a minor-version bump.
   attached.
 - `TaskLikelihood.is_stochastic`, declaring whether a likelihood consumes randomness.
   `False` for `NeuralOddityTask`, so callers can stop inferring it.
+### Breaking
+
+- **`WPPM` no longer takes `input_dim`, `extra_dims`, `variance_scale` or `decay_rate`.**
+  They were duplicated on `Prior`, and nothing read 2 of the 4 copies on `WPPM`:
+  `variance_scale` and `decay_rate` were stored and never used, and `extra_dims` fed only
+  `embedding_dim`, silently disagreeing with the parameter shape when it differed from
+  `Prior.extra_embedding_dims`. `WPPM.input_dim`, `.embedding_dim`, `.variance_scale` and
+  `.decay_rate` are now read-only properties that read `self.prior`:
+
+  ```python
+  # before
+  WPPM(prior, likelihood, input_dim=2, extra_dims=1, variance_scale=4e-3, decay_rate=0.4)
+
+  # now
+  Prior(input_dim=2, extra_embedding_dims=1, variance_scale=4e-3, decay_rate=0.4)
+  WPPM(prior, likelihood)
+  ```
+
+  Passing any of the 4 names to `WPPM` now raises `TypeError` and says to pass them to
+  `Prior` instead. `diag_term` is unchanged: it is a numerical-stability term in
+  Sigma(x) = U(x) U(x)^T + diag_term * I, not a property of the prior distribution.
+
+- **`ThresholdConfig.target_pc` is now `target_prob_correct` (cleanup only, no behavior change).**
+
+  ```python
+  # before
+  ThresholdConfig(n_theta=16, n_length=1000, target_pc=2 / 3)
+
+  # now
+  ThresholdConfig(n_theta=16, n_length=1000, target_prob_correct=2 / 3)
+  ```
+
+  The default is unchanged at 2/3, the oddity task's criterion, so a
+  caller relying on the default needs no edit.
+
+- **`PosteriorMeanCovarianceField` and `contour_band` are gone, and their reductions are
+  methods on the new `WPPMCovarianceFieldSamples`.** The draws are taken once, when the
+  object is built, so the ensemble, the mean and the band describe one sample of the
+  posterior:
+
+  ```python
+  # before
+  mean_field = PosteriorMeanCovarianceField(posterior)
+  covs = mean_field(ref_points)
+  band = contour_band(posterior, ref_points, ci_prob=0.89, n_samples=400, key=key)
+
+  # now
+  fields = WPPMCovarianceFieldSamples.from_posterior(posterior)
+  covs = fields.mean(ref_points)
+  band = WPPMCovarianceFieldSamples.from_posterior(
+      posterior, n_samples=400, key=key
+  ).band(ref_points, ci_prob=0.89)
+  ```
+
+  `fields(ref_points)` gives Σ for every draw, `(n_samples, n_points, d, d)`, which
+  replaces a Python loop over `posterior.sample`. `fields.samples` is the draws pytree, for
+  a per-draw quantity psyphy does not ship. `WPPMCovarianceFieldSamples.from_prior(model,
+  n_samples=..., key=...)` is the same object from a prior. Both constructors take
+  `n_samples` and `key` as keywords.
+
+  `n_samples` and `key` move from the call to the construction, so one check covers every
+  reduction. There is no `sqrt_cov`: an average of U Uᵀ is not U Uᵀ for any single U. Instad, use
+  `jnp.linalg.cholesky(fields.mean(x))` to get the 'square root' of the mean matrix, or
+  `WPPMCovarianceField` for one parameter set. The numbers are unchanged: the mean and the
+  band reproduce what the removed entry points returned.
+
+- **`WPPMPredictivePosterior` takes a required `key`, and `cov_field` is gone.**
+  `mean` and `variance` are properties, so the constructor is the only place their
+  randomness can enter. The key is split once into a key for drawing parameters and a key
+  for the threshold sweep:
+
+  ```python
+  # before
+  WPPMPredictivePosterior(posterior, X, n_samples=100)
+
+  # now
+  WPPMPredictivePosterior(posterior, X, n_samples=100, key=key)
+  ```
+
+  This removed 2 hardcoded keys, at `predictive_posterior.py:414` (which carried a
+  `# TODO: Make configurable via init`) and `:397`. A third, the direction grid for
+  `input_dim > 2`, stays fixed and says so in a comment.
+
+  `cov_field` is removed from `WPPMPredictivePosterior` and from the
+  `PredictivePosterior` protocol. It computed `PosteriorMeanCovarianceField`'s quantity at
+  a different default under its own key, so there were 2 public paths to
+  E[Σ(X) | data] returning numbers up to a few percent apart. Use
+  `WPPMCovarianceFieldSamples.from_posterior(posterior).mean(x)`. A model with no
+  covariance field can now satisfy `PredictivePosterior`.
+
+  **Threshold predictions shift.** The sweep key was `jax.random.PRNGKey(1)` and is now
+  derived from the key you pass, so `threshold_pred=True` results move. At the settings
+  the Hong et al. reproduction uses (`n_theta=16`, `n_length=1000`, `mc=2000`), 4 keys
+  spread the recovered threshold trace by 4.3%, so this is the inversion's own Monte Carlo
+  noise rather than a change of method. Record the key alongside any figure built from the
+  sweep.
+
+- **Drawing parameters now names its key** `MCMCPosterior.sample` and `MAPPosterior.sample`
+  require both `n` and `key`! `MCMCPosterior.sample` used to fall back to
+  `jax.random.PRNGKey(0)` and `MAPPosterior.sample` used to default `n=1`, so, the 3
+  implementations now match the `ParameterSource` protocol they claim:
+
+  ```python
+  # before
+  posterior.sample(100)             # seeded PRNGKey(0) somewhere you could not see
+  map_posterior.sample()            # one draw
+
+  # now
+  posterior.sample(100, key=key)
+  map_posterior.sample(1, key=key)  # the key goes unread for a point mass
+  ```
+
+### Changed
+
+- **The every-stored-sample path no longer subsamples.** `PosteriorMeanCovarianceField(posterior)`
+  and `contour_band(posterior, points)` pool the stored samples in order instead of asking
+  `posterior.sample` for a full-size draw. Both keep their current call shape and need no
+  key, and the numbers are unchanged, because a full-size draw without replacement is a
+  permutation (neither a mean nor a quantile depends on order).
+
+  A key is now required when `n_samples` is given, since that genuinely subsamples:
+
+  ```python
+  PosteriorMeanCovarianceField(posterior)                             # unchanged
+  PosteriorMeanCovarianceField(posterior, n_samples=100, key=key)     # key now required
+  ```
+
+  This also drops a `jax.random.choice` and a gather over every stored sample, run before
+  only to shuffle something about to be averaged.
+
+### Added
+
+- **`ParameterSource` in `psyphy.posterior`**, a one-method protocol for anything we can
+  draw parameters from: `sample(n, *, key)` returning a PyTree with a leading axis of `n`.
+  `Prior`, `MAPPosterior` and `MCMCPosterior` all satisfy it, and `ParameterPosterior` now
+  extends it with `params` and `model`.
+
+  A function that only calls `sample` on a `ParameterSource` works on a prior and on a
+  fitted posterior. Chain structure and a density stay off it: `sample` pools the chains, and `MCMCPosterior`
+  has no `log_prob`.
+
+- **`Prior.sample(n, *, key)`**, the vectorized form of `sample_params`. Draw `i` equals
+  `sample_params(jax.random.split(key, n)[i])`, so a prior ensemble matches the Python loop
+  it replaces:
+
+  ```python
+  # before
+  W = jnp.stack([prior.sample_params(k)["W"] for k in jr.split(key, 100)])
+
+  # now
+  prior.sample(100, key=key)["W"]     # (100, 3, 3, 2, 3)
+  ```
+
+  `sample_params(key)` keeps its single-draw signature, because `model.init_params` is on
+  the inference path and wants one unbatched draw rather than a batch of 1 to index.
+
+### Breaking
+
+- **`cov()` and `cov_batch()` are gone from the covariance fields.** Both methods have
+  raised `DeprecationWarning` since the single entry point was introduced, and `field(x)` replaces
+  both.
+
+  ```python
+  # before
+  field.cov(jnp.array([0.5, 0.3]))        # (2, 2), single point only
+  field.cov_batch(jnp.zeros((10, 2)))     # (10, 2, 2), batch only
+
+  # now
+  field(jnp.array([0.5, 0.3]))            # (2, 2)
+  field(jnp.zeros((10, 2)))               # (10, 2, 2)
+  ```
+
+  The removal covers `WPPMCovarianceField`, `PosteriorMeanCovarianceField` and the
+  `CovarianceField` `Protocol`, which now states `__call__` and `sqrt_cov`. The numbers are
+  unchanged: `cov()` forwarded to the same evaluation `field(x)` uses. `sqrt_cov` and
+  `sqrt_cov_batch` are untouched.
+
+### Added
+
+- **Credible bands on the contour radii**: `contour_radii`, `contour_band` and
+  `ContourBand` in `psyphy.model`. `contour_radii` gives the radius of a covariance's
+  one-standard-deviation ellipse (Mahalanobis-1 contour) per direction; for the oddity
+  task that radius is the discrimination threshold. `contour_band` reduces those radii
+  over posterior draws to a pointwise credible interval.
+
+  These names replace `threshold_radii`, `threshold_band` and `ThresholdBand`, which were
+  never released: they compute a property of any covariance matrix, so the names no longer
+  say "threshold". Nothing in `0.0.5` or earlier exposed them, so no installed version
+  breaks. `threshold_pred` and `ThresholdConfig` in `psyphy.posterior` keep their names,
+  because the contour they recover is defined by a target probability correct.
+
 ### Fixed
 
+- **`WPPMCovarianceField.from_posterior` accepts any `ParameterPosterior`.** It read the
+  private `posterior._model`, so a posterior class with `params`, `model` and `sample`
+  passed `isinstance(posterior, ParameterPosterior)` and then raised `AttributeError`. It
+  now reads `posterior.model`. Nothing changes for `MAPPosterior` or `MCMCPosterior`.
 - **`OddityTask.predict` declared the wrong return type.** It was annotated
   `-> jnp.ndarray` while `TaskLikelihood.predict` specifies `-> tuple[jnp.ndarray, ...]`,
   and its helper `_simulate_trial_mc` was annotated the same way. Both already returned
-  the one-tuple `(p_correct,)` that the base class documents, so **behaviour is
+  the one-tuple `(p_correct,)` that the base class documents, so **behavior is
   unchanged**; only the declarations were wrong.
 - **`PredictivePosterior.mean` and `.variance` looked like they could return `None`.**
   The lazy cache they read is initialized to `None` and populated by
-  `_ensure_computed()`; it is now annotated and the invariant is asserted.
-- Three `list[np.array]` annotations in `psyphy.data.dataset` used the `np.array`
-  *function* in type position instead of `np.ndarray`.
+  `_ensure_computed()`; it is now annotated and the invariant is asserted
+- 3 `list[np.array]` annotations in `psyphy.data.dataset` used the `np.array`
+  *function* in type position instead of `np.ndarray`
 
 ### Internal
 
-- **mypy now means one thing.** The commit hook, CI and local runs previously used three
+- **mypy now means 1 thing.** The commit hook, CI and local runs previously used three
   different mypy configurations that disagreed with each other. CI now runs the same
   pre-commit hook a developer runs, mypy is pinned to one version in both
   `.pre-commit-config.yaml` and the `dev` extra, and the hook checks the whole project
@@ -70,7 +265,7 @@ breaking changes are called out below but do not force a minor-version bump.
 - **The mypy CI job no longer carries `continue-on-error: true`.** It reported 19 errors
   on every run and failed nothing. Those are fixed and the gate is live.
 
-## [0.0.5] — 2026-10-09
+## [0.0.5] - 2026-10-09
 
  Two new subpackages
 (`psyphy.viz`, `psyphy.data.published`), a reproduction of a published figure, and two
@@ -157,7 +352,7 @@ breaking API changes in the model layer.
   `responses` of shape `(N, 1)` and probabilities of shape `(N,)`, `jnp.where` broadcast
   to `(N, N)`, so the summed objective mixed every trial's response with every trial's
   probability and the gradient was wrong. Responses are now reduced to `(N,)` first.
-- **Deprecated `jax.tree_map` replaced** with `jax.tree.map` (#71 — thanks
+- **Deprecated `jax.tree_map` replaced** with `jax.tree.map` (#71, thanks
   @rohansood10).
 
 ### Changed
@@ -167,14 +362,14 @@ breaking API changes in the model layer.
 - Documentation pages now quote code from the runnable scripts beside them via snippet
   includes, so a page and its script cannot drift apart.
 
-## [0.0.4] — 2026-03-31
+## [0.0.4] - 2026-03-31
 
 Likelihood refactor. `loglik` and `simulate` became concrete methods on
 `TaskLikelihood`, so a concrete task implements only `predict`; `OddityTask` lost its own
 `loglik` and the duplicated vectorised Monte Carlo path (`likelihood.py` net −200 lines).
 Documentation restructuring.
 
-## [0.0.2] — 2026-03-27
+## [0.0.2] - 2026-03-27
 
 First release published to PyPI. Full initial module set: `psyphy.model` (WPPM, priors,
 noise models, the oddity task), `psyphy.inference` (MAP optimizer), `psyphy.posterior`,

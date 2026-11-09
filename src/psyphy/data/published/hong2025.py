@@ -2,7 +2,7 @@
 hong2025.py
 -----------
 
-Loaders for the published human colour-discrimination dataset of Hong et al.
+Loaders for the published human color-discrimination dataset of Hong et al.
 
     Hong, F., Bouhassira, R., Chow, J., Sanders, C., Shvartsman, M., Guan, P.,
     Williams, A. H., & Brainard, D. H. (2026). Comprehensive characterization of
@@ -27,7 +27,7 @@ Typical use
 Coordinate convention
 ---------------------
 All stimulus coordinates are in the paper's 2-D "W space" and already lie in the
-Chebyshev domain [-1, 1]. No normalisation is applied or needed.
+Chebyshev domain [-1, 1]. No normalization is applied or needed.
 
 See also
 --------
@@ -83,8 +83,8 @@ _TRANSFORM_MATRICES = "Transformation matrices"
 #:
 #: The transformation-matrix CSVs on OSF are named
 #: ``M_<From>To<To>_DELL_<date>_copy.csv``. Only one calibration is published,
-#: so this is effectively a constant; it is exposed as a parameter because the
-#: filenames carry it and a future recalibration would change it.
+#: so this is effectively a constant. :func:`fetch_calibration_matrix` takes it
+#: as ``file_date``.
 CALIBRATION_DATE = "02242025"
 
 #: Subject number -> observer initials, as used in the paper and the OSF tree.
@@ -149,8 +149,8 @@ PAPER_HYPERPARAMS: Mapping[str, Any] = {
     "learning_rate": 1e-4,  # gradient step size
     "momentum": 0.2,  # 'heavy-ball' momentum
     "total_steps": 1500,  # gradient steps per restart
-    "n_restarts": 1,  # independent prior draws; the lowest final loss wins
-    # Hong et al tried 3, but 1 is enough to reproduce the published fit.
+    "n_restarts": 3,  # independent prior draws; the lowest final loss wins
+    # Hong et al tried 3.
     # -- Reporting ---------------------------------------------------------
     # The criterion the paper's thresholds are defined at: midway between
     # chance (1/3) and perfect, for a 3-alternative task
@@ -163,7 +163,7 @@ def default_data_dir() -> Path:
     """Return the directory :func:`fetch` downloads into.
 
     ``$PSYPHY_DATA_HOME`` if set, otherwise ``~/.cache/psyphy/hong2025``.
-    Deliberately outside the repository so downloaded data is never staged for
+    Outside the repository, so downloaded data is never staged for
     commit.
     """
     root = os.environ.get("PSYPHY_DATA_HOME")
@@ -317,8 +317,8 @@ def fetch(
     Returns
     -------
     dict[str, Path]
-        Keys ``"trials"``, ``"weights"``, ``"thres_ellipses"``, and — when
-        requested — ``"noise_ellipses"``.
+        Keys ``"trials"``, ``"weights"``, ``"thres_ellipses"``, and, when
+        requested, ``"noise_ellipses"``.
 
     Notes
     -----
@@ -378,10 +378,10 @@ def fetch_calibration_matrix(
 ) -> Path:
     """Download the 2-D W space -> RGB transformation matrix from OSF.
 
-    Separate from :func:`fetch` because this file is not per-subject and does
-    not live under the same OSF folder: it sits in
+    Unlike :func:`fetch`, this file is not per-subject: one copy serves every
+    observer. It sits in
     ``Calibration and transformation/Transformation matrices/``, alongside the
-    monitor colorimetry matrices, and one copy serves every observer.
+    monitor colorimetry matrices, outside the per-subject OSF folder.
 
     Parameters
     ----------
@@ -500,7 +500,7 @@ def w2d_to_rgb(coords: np.ndarray, M: np.ndarray) -> np.ndarray:
     -----
     **These are linear, non-gamma-corrected RGB values**, which is what the
     paper's own plotting code produces and passes to matplotlib. Applying an
-    sRGB gamma would give more perceptually even colours but would no longer
+    sRGB gamma would give more perceptually even colors but would no longer
     match the published figures.
 
     **The matrix is monitor-specific** -- one Dell display, calibrated on the
@@ -508,7 +508,7 @@ def w2d_to_rgb(coords: np.ndarray, M: np.ndarray) -> np.ndarray:
     is not a general W-space-to-RGB conversion, and a different display needs
     its own calibration.
 
-    Values outside the monitor gamut are clipped, so a returned colour on a
+    Values outside the monitor gamut are clipped, so a returned color on a
     channel boundary may not be the exact requested chromaticity. Over the
     paper's own [-0.7, 0.7] reference grid no clipping occurs.
 
@@ -638,8 +638,8 @@ def load_reference_W(path: str | Path, column: str = "W_org") -> jnp.ndarray:
 
     Returns
     -------
-    jnp.ndarray
-        Shape (5, 5, 2, 3) — exactly psyphy's ``params["W"]`` layout for
+    jnp.ndarray, shape (5, 5, 2, 3)
+        Exactly psyphy's ``params["W"]`` layout for
         ``basis_degree=4, input_dim=2, extra_embedding_dims=1``, so it can be
         used directly as ``{"W": load_reference_W(...)}`` with no reshaping.
 
@@ -719,7 +719,7 @@ def load_sigma_table(
     path : str or Path
         Path to either ellipse CSV.
     value_column : str, optional
-        Which fit to read. Defaults to the file's main fit — whichever
+        Which fit to read. Defaults to the file's main fit, whichever
         ``*_org`` column is present.
 
     Returns
@@ -732,8 +732,8 @@ def load_sigma_table(
     Notes
     -----
     Because every row carries its own coordinate, the row/column ordering
-    ambiguity that affects the published ``.pkl`` files — which store bare
-    (7, 7, 2, 2) arrays with no coordinates attached — does not arise here.
+    ambiguity that affects the published ``.pkl`` files, which store bare
+    (7, 7, 2, 2) arrays with no coordinates attached, does not arise here.
     """
     with open(path, newline="") as fh:
         reader = csv.DictReader(fh)
@@ -792,8 +792,8 @@ def build_paper_model(
 
     Notes
     -----
-    Imported lazily so that ``psyphy.data`` does not depend on ``psyphy.model``
-    at import time.
+    Imported lazily: ``psyphy.data`` does not import ``psyphy.model`` at import
+    time.
     """
     from psyphy.model.likelihood import OddityTask, OddityTaskConfig
     from psyphy.model.noise import GaussianNoise
@@ -820,8 +820,6 @@ def build_paper_model(
         )
     )
     return WPPM(
-        input_dim=PAPER_HYPERPARAMS["input_dim"],
-        extra_dims=PAPER_HYPERPARAMS["extra_dims"],
         prior=prior,
         likelihood=task,
         noise=GaussianNoise(),

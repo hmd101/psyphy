@@ -30,11 +30,11 @@ class TaskLikelihood(ABC):
     Abstract base class for task likelihoods.
 
     Subclasses must implement:
-    - ``predict(params, stimuli, model, *, key)`` → probability parameters for one trial
+    - ``predict(params, stimuli, model, *, key)`` -> probability parameters for one trial
 
     The base class provides concrete implementations of:
-    - ``loglik(params, data, model, *, key)`` → Bernoulli log-likelihood over a batch
-    - ``simulate(params, stimuli, model, *, key)`` → simulated responses & probability parameters
+    - ``loglik(params, data, model, *, key)`` -> Bernoulli log-likelihood over a batch
+    - ``simulate(params, stimuli, model, *, key)`` -> simulated responses & probability parameters
 
     The Bernoulli log-likelihood step is identical for all binary-response tasks,
     so it lives here rather than being re-implemented in every subclass.
@@ -106,8 +106,8 @@ class TaskLikelihood(ABC):
 
         Returns
         -------
-        jnp.ndarray
-            scalar sum of log-likelihoods over all trials
+        jnp.ndarray, shape ()
+            Scalar sum of log-likelihoods over all trials.
         """
         ...
 
@@ -151,11 +151,11 @@ class BernoulliTaskLikelihood(TaskLikelihood):
     Intermediate abstract subclass for task likelihoods.
 
     Subclasses must implement:
-    - ``predict(params, stimuli, model, *, key)`` → p(correct) for one trial
+    - ``predict(params, stimuli, model, *, key)`` -> p(correct) for one trial
 
     This abstract subclass provides concrete implementations of:
-    - ``loglik(params, data, model, *, key)`` → Bernoulli log-likelihood over a batch
-    - ``simulate(params, inputs, model, *, key)`` → simulated responses
+    - ``loglik(params, data, model, *, key)`` -> Bernoulli log-likelihood over a batch
+    - ``simulate(params, inputs, model, *, key)`` -> simulated responses
 
     The Bernoulli log-likelihood step is identical for all binary-response tasks,
     so it lives here rather than being re-implemented in every subclass.
@@ -189,11 +189,11 @@ class BernoulliTaskLikelihood(TaskLikelihood):
 
         Returns
         -------
-        jnp.ndarray
+        jnp.ndarray, shape ()
             Scalar sum of Bernoulli log-likelihoods over all trials.
         """
         stimuli = jnp.asarray(data.stimuli)
-        # TrialData stores responses as (N, R) — R=1 for binary tasks.
+        # TrialData stores responses as (N, R): R=1 for binary tasks.
         # Extract the single binary channel to get shape (N,).
         # Without this, jnp.where broadcasts (N, 1) against probs (N,),
         # treating (N,) as (1, N) and producing an (N, N) result whose
@@ -248,8 +248,9 @@ class BernoulliTaskLikelihood(TaskLikelihood):
         -------
         responses : jnp.ndarray, shape (n_trials,), dtype int32
             Simulated binary responses (1 = correct, 0 = incorrect).
-        p_correct : jnp.ndarray, shape (n_trials,)
-            Estimated (P(correct)) per trial used to draw the responses.
+        probability parameters : tuple[jnp.ndarray]
+            1-tuple ``(p_correct,)``. ``p_correct`` has shape (n_trials,) and holds
+            the estimated P(correct) per trial used to draw the responses.
         """
         stimuli = jnp.asarray(stimuli)
         n_trials = int(stimuli.shape[0])
@@ -270,11 +271,11 @@ class GaussianTaskLikelihood(TaskLikelihood):
     Intermediate abstract subclass for task likelihoods.
 
     Subclasses must implement:
-    - ``predict(params, stimuli, model, *, key)`` → (mu, sigma) of distribution for one trial
+    - ``predict(params, stimuli, model, *, key)`` -> (mu, sigma) of distribution for one trial
 
     This abstract subclass provides concrete implementations of:
-    - ``loglik(params, data, model, *, key)`` → Gaussian log-likelihood over a batch
-    - ``simulate(params, inputs, model, *, key)`` → simulated responses
+    - ``loglik(params, data, model, *, key)`` -> Gaussian log-likelihood over a batch
+    - ``simulate(params, inputs, model, *, key)`` -> simulated responses
 
     The Gaussian log-likelihood step is identical for all tasks with the assumption
     of Gaussian response distributions, so it lives here rather than being
@@ -309,7 +310,7 @@ class GaussianTaskLikelihood(TaskLikelihood):
 
         Returns
         -------
-        jnp.ndarray
+        jnp.ndarray, shape ()
             Scalar sum of Gaussian log-likelihoods over all trials.
         """
         stimuli = jnp.asarray(data.stimuli)

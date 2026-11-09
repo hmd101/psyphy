@@ -30,7 +30,6 @@ class TestParameterPosterior:
     def model(self):
         """Create a simple WPPM model."""
         return WPPM(
-            input_dim=2,
             prior=Prior(input_dim=2, basis_degree=3),
             likelihood=OddityTask(),
             noise=GaussianNoise(),
@@ -92,7 +91,6 @@ class TestPredictivePosterior:
     def model(self):
         """Create a simple WPPM model."""
         return WPPM(
-            input_dim=2,
             prior=Prior(input_dim=2, basis_degree=3),
             likelihood=OddityTask(),
             noise=GaussianNoise(),
@@ -102,7 +100,7 @@ class TestPredictivePosterior:
     def data(self):
         """Create dummy response data."""
         # Build a small batched dataset.
-        # Note: this fixture intentionally reuses fixed keys; it's a test.
+        # Note: this fixture reuses fixed keys; it's a test.
         refs = jr.normal(jr.PRNGKey(0), (10, 2))
         comparisons = refs + jr.normal(jr.PRNGKey(1), (10, 2)) * 0.3
         responses = jnp.ones((10,), dtype=jnp.int32)
@@ -122,7 +120,9 @@ class TestPredictivePosterior:
         refs_test = jnp.array([[0.0, 0.0], [1.0, 1.0], [2.0, 2.0]])
         comparisons = jnp.array([[0.5, 0.0], [1.5, 1.0], [2.5, 2.0]])
         X_test = jnp.stack([refs_test, comparisons], axis=1)
-        return WPPMPredictivePosterior(param_posterior, X_test, n_samples=10)
+        return WPPMPredictivePosterior(
+            param_posterior, X_test, n_samples=10, key=jr.PRNGKey(0)
+        )
 
     def test_is_predictive_posterior(self, predictive_posterior):
         """WPPMPredictivePosterior implements PredictivePosterior protocol."""
@@ -167,26 +167,11 @@ class TestPredictivePosterior:
         assert jnp.allclose(sample_mean, predictive_posterior.mean, atol=0.1)
         assert jnp.allclose(sample_var, predictive_posterior.variance, atol=0.1)
 
-    def test_cov_field_shape(self, predictive_posterior):
-        """cov_field returns covariance matrices."""
-        refs_test = jnp.array([[0.0, 0.0], [1.0, 1.0]])
-        Sigma = predictive_posterior.cov_field(refs_test)
-        assert Sigma.shape == (2, 2, 2)  # (n_test, input_dim, input_dim)
-
-    def test_cov_field_psd(self, predictive_posterior):
-        """Covariance matrices are positive semi-definite."""
-        X_test = jnp.array([[0.0, 0.0], [1.0, 1.0]])
-        Sigma = predictive_posterior.cov_field(X_test)
-
-        for i in range(len(X_test)):
-            eigvals = jnp.linalg.eigvalsh(Sigma[i])
-            assert jnp.all(eigvals >= -1e-6)  # Numerically PSD
-
     def test_threshold_pred_rejects_paired_stimuli_shape(self, param_posterior):
         """threshold_pred=True expects bare reference points, not (ref, comp) pairs."""
         X_test = jnp.zeros((2, 2, 2))  # (n_test, k_stimuli, input_dim) -- wrong shape
         pred_post = WPPMPredictivePosterior(
-            param_posterior, X_test, threshold_pred=True
+            param_posterior, X_test, threshold_pred=True, key=jr.PRNGKey(0)
         )
         with pytest.raises(ValueError, match="bare reference points"):
             _ = pred_post.mean
@@ -200,7 +185,6 @@ class TestPredictivePosterior:
         running MAPOptimizer.
         """
         model = WPPM(
-            input_dim=2,
             prior=Prior(input_dim=2, basis_degree=3),
             likelihood=OddityTask(config=OddityTaskConfig(num_samples=20)),
             noise=GaussianNoise(),
@@ -219,6 +203,7 @@ class TestPredictivePosterior:
             n_samples=2,
             threshold_pred=True,
             threshold_config=cfg,
+            key=jr.PRNGKey(0),
         )
 
     def test_threshold_mean_shape(self, threshold_predictive_posterior):
@@ -229,7 +214,7 @@ class TestPredictivePosterior:
     def test_threshold_mean_is_psd(self):
         """Recovered threshold covariances are positive semi-definite.
 
-        Deliberately *not* using the tiny ``threshold_predictive_posterior``
+        Not using the tiny ``threshold_predictive_posterior``
         fixture, and building its own model with a realistic ``num_samples``.
 
         The inversion fits Sigma^-1 by least squares through one boundary point
@@ -245,7 +230,6 @@ class TestPredictivePosterior:
         not the implementation, so this uses settings near the tutorial's.
         """
         model = WPPM(
-            input_dim=2,
             prior=Prior(input_dim=2, basis_degree=3),
             likelihood=OddityTask(config=OddityTaskConfig(num_samples=500)),
             noise=GaussianNoise(),
@@ -258,6 +242,7 @@ class TestPredictivePosterior:
             n_samples=1,
             threshold_pred=True,
             threshold_config=ThresholdConfig(n_theta=16, n_length=200, chunk=2000),
+            key=jr.PRNGKey(0),
         )
         mean = predictive.mean
         for i in range(mean.shape[0]):
@@ -285,6 +270,7 @@ class TestPredictivePosterior:
             X_test,
             threshold_pred=True,
             threshold_config=cfg,
+            key=jr.PRNGKey(0),
         )
         with pytest.raises(ValueError, match="too small"):
             _ = pred_post.mean
@@ -293,15 +279,14 @@ class TestPredictivePosterior:
 class TestThresholdPredictionExternalValidity:
     """Threshold inversion recovers Hong et al. (2025)'s published thresholds.
 
-    Requires the real OSF download; skips otherwise. This is rung 3 of the
-    validation ladder in psyphy-study/elife_data/docs.md -- the first check
-    that exercises the oddity likelihood itself (rung 1 only checks the
-    deterministic covariance-field construction; see
+    Requires the real OSF download; skips otherwise. This is the first check
+    that exercises the oddity likelihood itself, rather than only the
+    deterministic covariance-field construction (see
     tests/test_data_published_hong2025.py for that sibling test).
 
     Runtime: a handful of grid points at reduced-from-paper MC settings,
     budgeted to stay under a minute; not the full 49-point, paper-precision
-    sweep (that's docs.md's `threshold_inversion.py` prototype, ~11 CPU min).
+    sweep, which takes about 11 CPU minutes.
     """
 
     @staticmethod
@@ -337,6 +322,7 @@ class TestThresholdPredictionExternalValidity:
             n_samples=1,
             threshold_pred=True,
             threshold_config=ThresholdConfig(n_theta=16, n_length=300),
+            key=jr.PRNGKey(0),
         )
         recovered = pred_post.mean  # (4, 2, 2)
 
@@ -355,10 +341,9 @@ class TestIntegration:
     """Integration tests for the two-tier design."""
 
     def test_full_workflow(self):
-        """Test complete workflow: fit → parameter posterior → predictive posterior."""
+        """Test complete workflow: fit -> parameter posterior -> predictive posterior."""
         # 1. Create model
         model = WPPM(
-            input_dim=2,
             prior=Prior(input_dim=2, basis_degree=3),
             likelihood=OddityTask(),
             noise=GaussianNoise(),
@@ -383,7 +368,9 @@ class TestIntegration:
         refs_test = jnp.array([[0.0, 0.0], [1.0, 1.0]])
         comparisons = jnp.array([[0.3, 0.0], [1.3, 1.0]])
         X_test = jnp.stack([refs_test, comparisons], axis=1)
-        pred_post = WPPMPredictivePosterior(param_post, X_test, n_samples=20)
+        pred_post = WPPMPredictivePosterior(
+            param_post, X_test, n_samples=20, key=jr.PRNGKey(0)
+        )
 
         # 6. Get predictions
         mean = pred_post.mean
@@ -395,11 +382,3 @@ class TestIntegration:
         key, subkey = jr.split(key)
         pred_samples = pred_post.rsample((5,), key=subkey)
         assert pred_samples.shape == (5, 2)
-
-        # 8. Get covariance field (just refs)
-        Sigma = pred_post.cov_field(refs_test)
-        assert Sigma.shape == (2, 2, 2)
-
-        # 9. Get covariance field (all stimuli)
-        Sigma = pred_post.cov_field(X_test)
-        assert Sigma.shape == (2, 2, 2, 2)

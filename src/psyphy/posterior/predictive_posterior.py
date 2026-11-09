@@ -39,12 +39,14 @@ class ThresholdConfig:
     """Configuration for :class:`WPPMPredictivePosterior`'s ``threshold_pred`` mode.
 
     Controls the oddity-task inversion that recovers a threshold covariance
-    Σ_thres(x) — the ``target_pc``-correct discrimination contour — from a
+    Σ_thres(x), the contour where the probability correct reaches
+    ``target_prob_correct``, from a
     fitted noise field. There is no closed form for this inversion (see
     :class:`~psyphy.model.likelihood.OddityTask`), so it is done numerically:
     probe ``n_theta`` directions around each reference point, brute-force
     search ``n_length`` candidate distances per direction for the one closest
-    to ``target_pc``, then fit an ellipsoid to the resulting boundary points.
+    to ``target_prob_correct``, then fit an ellipsoid to the resulting boundary
+    points.
 
     Attributes
     ----------
@@ -59,11 +61,11 @@ class ThresholdConfig:
         noisy plateau where a dense-grid argmin cannot.
     bounds : tuple[float, float]
         ``(min, max)`` candidate distance, in the model's stimulus units.
-    target_pc : float
-        Target probability-correct defining the threshold (2/3 for the
-        oddity task's standard criterion).
+    target_prob_correct : float
+        The probability correct that defines the threshold contour. 2/3 is the
+        oddity task's standard criterion.
     chunk : int
-        Batch size for the Monte Carlo sweep, bounding peak memory —
+        Batch size for the Monte Carlo sweep, bounding peak memory;
         ``n_theta * n_length`` candidate trials are evaluated per
         (posterior sample, reference point) pair.
 
@@ -73,14 +75,14 @@ class ThresholdConfig:
     ``n_theta * n_length`` calls to the task's MC-simulated ``predict``, each
     itself an average over ``OddityTaskConfig.num_samples`` draws. Total cost
     for a call to :class:`WPPMPredictivePosterior` scales as
-    ``n_samples * n_test * n_theta * n_length * num_samples`` — a warning is
+    ``n_samples * n_test * n_theta * n_length * num_samples``; a warning is
     emitted when ``n_samples * n_test`` alone exceeds 200.
     """
 
     n_theta: int = 16
     n_length: int = 200
     bounds: tuple[float, float] = (5e-4, 0.3)
-    target_pc: float = 2.0 / 3.0
+    target_prob_correct: float = 2.0 / 3.0
     chunk: int = 2000
 
     def __post_init__(self) -> None:
@@ -88,8 +90,10 @@ class ThresholdConfig:
             raise ValueError(f"n_theta must be > 0, got {self.n_theta}")
         if int(self.n_length) <= 0:
             raise ValueError(f"n_length must be > 0, got {self.n_length}")
-        if not (0.0 < float(self.target_pc) < 1.0):
-            raise ValueError(f"target_pc must be in (0, 1), got {self.target_pc}")
+        if not (0.0 < float(self.target_prob_correct) < 1.0):
+            raise ValueError(
+                f"target_prob_correct must be in (0, 1), got {self.target_prob_correct}"
+            )
         if int(self.chunk) <= 0:
             raise ValueError(f"chunk must be > 0, got {self.chunk}")
         lo, hi = self.bounds
@@ -112,9 +116,8 @@ class PredictivePosterior(Protocol):
 
         Returns
         -------
-        jnp.ndarray
-            Shape (n_test,) for scalar outputs
-            Shape (n_test, output_dim) for vector outputs (future)
+        jnp.ndarray, shape (n_test,) or (n_test, output_dim)
+            The first for scalar outputs, the second for vector outputs (future).
 
         Notes
         -----
@@ -135,9 +138,8 @@ class PredictivePosterior(Protocol):
 
         Returns
         -------
-        jnp.ndarray
-            Shape (n_test,) for scalar outputs
-            Shape (n_test, output_dim) for vector outputs (future)
+        jnp.ndarray, shape (n_test,) or (n_test, output_dim)
+            The first for scalar outputs, the second for vector outputs (future).
 
         Notes
         -----
@@ -160,36 +162,12 @@ class PredictivePosterior(Protocol):
 
         Returns
         -------
-        jnp.ndarray
-            Shape (*sample_shape, n_test) for scalar outputs
-            Shape (*sample_shape, n_test, output_dim) for vector outputs
+        jnp.ndarray, shape (*sample_shape, n_test) or (*sample_shape, n_test, output_dim)
+            The first for scalar outputs, the second for vector outputs.
 
         Notes
         -----
         Enables gradient-based acquisition optimization via reparameterization trick.
-        """
-        ...
-
-    def cov_field(self, X: jnp.ndarray) -> jnp.ndarray:
-        """
-        Posterior over perceptual covariance field Σ(X).
-
-        Parameters
-        ----------
-        X : jnp.ndarray
-            Test stimuli, shape (n_test, input_dim)
-
-        Returns
-        -------
-        jnp.ndarray
-            Posterior mean covariance E[Σ(X) | data],
-            shape (n_test, input_dim, input_dim)
-
-        Notes
-        -----
-        WPPM-specific method for visualizing perceptual noise structure.
-        This is NOT the predictive covariance - it's the model's
-        internal representation of perceptual uncertainty.
         """
         ...
 
@@ -205,13 +183,13 @@ class WPPMPredictivePosterior:
     ----------
     param_posterior : ParameterPosterior
         Posterior over model parameters
-    X : jnp.ndarray
+    X : jnp.ndarray, shape (n_test, k_stimuli, input_dim) or (n_test, input_dim)
         Test stimuli. Shape depends on ``threshold_pred``:
 
-        - ``threshold_pred=False``: ``(n_test, k_stimuli, input_dim)`` —
+        - ``threshold_pred=False``: ``(n_test, k_stimuli, input_dim)``:
           pre-paired (reference, comparison) stimuli, scored directly via
           ``model.predict_prob``.
-        - ``threshold_pred=True``: ``(n_test, input_dim)`` — bare reference
+        - ``threshold_pred=True``: ``(n_test, input_dim)``: bare reference
           points. Comparison stimuli are *not* supplied; the oddity-task
           inversion generates its own by sweeping directions and distances
           around each reference (see :class:`ThresholdConfig`). Passing the
@@ -220,18 +198,23 @@ class WPPMPredictivePosterior:
         Number of posterior samples for MC integration
     threshold_pred: bool, default = False
         Whether to compute threshold covariances (Σ_thres, the
-        ``target_pc``-correct discrimination contour) instead of predicted
+        contour where the probability correct reaches
+        ``target_prob_correct``) instead of predicted
         probabilities. Changes both ``X``'s expected shape (above) and
         ``mean``/``variance``'s returned shape (see their docstrings).
     threshold_config : ThresholdConfig, optional
         Settings for the threshold inversion. Only used when
         ``threshold_pred=True``; defaults to ``ThresholdConfig()``.
+    key : jax.Array, keyword-only
+        PRNG key, split once here into a key for drawing parameters and a key
+        for the threshold sweep's Monte Carlo. ``mean`` and ``variance`` are
+        properties, so this is where their randomness enters.
 
     Attributes
     ----------
     param_posterior : ParameterPosterior
         Wrapped parameter posterior
-    X : jnp.ndarray
+    X : jnp.ndarray, shape (n_test, k_stimuli, input_dim) or (n_test, input_dim)
         Test stimuli
     n_samples : int
         MC sample count
@@ -252,6 +235,8 @@ class WPPMPredictivePosterior:
         n_samples: int = 100,
         threshold_pred: bool = False,
         threshold_config: ThresholdConfig | None = None,
+        *,
+        key: jax.Array,
     ):
         self.param_posterior = param_posterior
         self.X = X
@@ -259,9 +244,12 @@ class WPPMPredictivePosterior:
         self.threshold_pred = threshold_pred
         self.threshold_config = threshold_config
 
-        # Lazy evaluation cache. Annotated explicitly: without it the
-        # initialiser alone makes these `None`, and the `mean`/`variance`
-        # properties then look like they return None rather than an array.
+        # Split by purpose at construction: `mean` and `variance` are
+        # properties, so they have nowhere to take a key, and both read these.
+        self._draw_key, self._sweep_key = jr.split(key)
+
+        # Lazy evaluation cache. The annotation keeps `mean`/`variance`
+        # from reading as returning None.
         self._mean: jnp.ndarray | None = None
         self._variance: jnp.ndarray | None = None
         self._computed = False
@@ -274,7 +262,7 @@ class WPPMPredictivePosterior:
         For every (posterior parameter sample, reference point) pair, probes
         ``threshold_config.n_theta`` directions around the reference,
         brute-force searches ``n_length`` candidate distances per direction
-        for the one closest to ``target_pc`` (see :class:`ThresholdConfig`
+        for the one closest to ``target_prob_correct`` (see :class:`ThresholdConfig`
         for why brute force rather than bisection), then fits a covariance
         to the resulting boundary points via linear least squares: a point
         at radius r in direction u on the ellipsoid {c + Lu : |u|=1}
@@ -371,12 +359,14 @@ class WPPMPredictivePosterior:
                 _p_correct_chunk(params, stimuli[i : i + chunk], keys[i : i + chunk])
                 for i in range(0, n_pairs, chunk)
             ]
-            pc = jnp.concatenate(outs).reshape(cfg.n_theta, cfg.n_length)
+            prob_correct = jnp.concatenate(outs).reshape(cfg.n_theta, cfg.n_length)
 
             # Brute force rather than bisection: P(correct) is monotone in
             # distance only up to Monte Carlo noise; argmin over a dense
             # grid is robust to that in a way a root-finder is not.
-            radii = lengths[jnp.argmin(jnp.abs(pc - cfg.target_pc), axis=1)]
+            radii = lengths[
+                jnp.argmin(jnp.abs(prob_correct - cfg.target_prob_correct), axis=1)
+            ]
 
             y = 1.0 / radii**2
             coeffs = jnp.linalg.solve(design.T @ design, design.T @ y)
@@ -394,7 +384,7 @@ class WPPMPredictivePosterior:
         # the dimension `chunk` exists to bound. `_p_correct_chunk` is
         # compiled once (shapes are static across every iteration) and
         # reused, so the loop's overhead is dispatch only, not compilation.
-        sweep_keys = jr.split(jr.PRNGKey(1), n_param_samples * n_test)
+        sweep_keys = jr.split(self._sweep_key, n_param_samples * n_test)
         results = []
         for s in range(n_param_samples):
             params_s = jax.tree_util.tree_map(lambda leaf, s=s: leaf[s], param_samples)
@@ -411,8 +401,7 @@ class WPPMPredictivePosterior:
             return
 
         # Sample parameters from posterior
-        key = jr.PRNGKey(0)  # TODO: Make configurable via init
-        param_samples = self.param_posterior.sample(self.n_samples, key=key)
+        param_samples = self.param_posterior.sample(self.n_samples, key=self._draw_key)
 
         model = self.param_posterior.model
 
@@ -450,7 +439,7 @@ class WPPMPredictivePosterior:
     def mean(self) -> jnp.ndarray:
         """E[f(X*) | data].
 
-        Shape (n_test,) — predicted probabilities — unless
+        Shape (n_test,): predicted probabilities, unless
         ``threshold_pred=True``, in which case shape is
         (n_test, input_dim, input_dim): the posterior-mean threshold
         covariance Σ_thres at each reference point, averaged arithmetically
@@ -468,7 +457,7 @@ class WPPMPredictivePosterior:
         Shape (n_test,) unless ``threshold_pred=True``, in which case shape
         is (n_test, input_dim, input_dim): elementwise variance of the
         per-sample threshold covariances (not a variance *of* a matrix in
-        any distributional sense — just ``jnp.var`` over the sample axis,
+        any distributional sense; just ``jnp.var`` over the sample axis,
         entry by entry).
         """
         self._ensure_computed()
@@ -488,12 +477,10 @@ class WPPMPredictivePosterior:
 
         Returns
         -------
-        jnp.ndarray
-            Shape (*sample_shape, n_test) — or, when ``threshold_pred=True``,
-            (*sample_shape, n_test, input_dim, input_dim): one recovered
-            threshold covariance per draw, i.e. genuine samples of Σ_thres
-            rather than a posterior-mean summary. Cost scales linearly in
-            the number of draws requested — see :class:`ThresholdConfig`.
+        jnp.ndarray, shape (*sample_shape, n_test) or (*sample_shape, n_test, input_dim, input_dim)
+            The first unless ``threshold_pred=True``, in which case the second:
+            one recovered threshold covariance per draw. Cost scales linearly
+            in the number of draws requested; see :class:`ThresholdConfig`.
         """
         n = int(jnp.prod(jnp.array(sample_shape))) if sample_shape else 1
         param_samples = self.param_posterior.sample(n, key=key)
@@ -516,50 +503,3 @@ class WPPMPredictivePosterior:
         if sample_shape:
             return samples.reshape(*sample_shape, -1)
         return samples
-
-    def cov_field(self, X: jnp.ndarray) -> jnp.ndarray:
-        """
-        Posterior mean covariance field E[Σ(X) | data].
-
-        Parameters
-        ----------
-        X : jnp.ndarray
-            Test stimuli, shape (n_test, input_dim) OR (n_test, k_stim, input_dim)
-            Note that standard use for OddityTask is 2D with X as test REFS, not all stimuli.
-
-        Returns
-        -------
-        jnp.ndarray
-            Covariance matrices, shape (n_test, input_dim, input_dim) OR (n_test, k_stim, input_dim, input_dim)
-
-        Notes
-        -----
-        Averages local_covariance(x) over parameter posterior samples.
-        """
-        key = jr.PRNGKey(0)
-        param_samples = self.param_posterior.sample(self.n_samples, key=key)
-
-        model = self.param_posterior.model
-
-        def cov_at_x(params, x):
-            """Evaluate Σ(x) with given parameters."""
-            return model.local_covariance(params, x)
-
-        # Vectorized evaluation: (n_samples, n_test, k_stim, input_dim, input_dim)
-        if jnp.ndim(X) == 3:  # more than 1 stimulus
-            cov_samples = jax.vmap(
-                lambda params: jax.vmap(jax.vmap(lambda s: cov_at_x(params, s)))(X)
-            )(param_samples)
-        elif jnp.ndim(X) == 2:  # only 1 stimulus
-            cov_samples = jax.vmap(
-                lambda params: jax.vmap(lambda s: cov_at_x(params, s))(X)
-            )(param_samples)
-        else:
-            raise ValueError(
-                "Incorrect input dimensionality"
-                "Expected 2D (n_test, input_dim) or 3D (n_test, k_stim, input_dim)"
-                f"Received {jnp.ndim(X)}D."
-            )
-
-        # Return posterior mean
-        return jnp.mean(cov_samples, axis=0)

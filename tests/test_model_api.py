@@ -28,7 +28,6 @@ class TestModelFit:
     def model(self):
         """Create a WPPM model."""
         return WPPM(
-            input_dim=2,
             prior=Prior(input_dim=2, basis_degree=3),
             likelihood=OddityTask(),
             noise=GaussianNoise(),
@@ -72,7 +71,6 @@ class TestModelPosterior:
     def posterior(self):
         """Create a fitted posterior."""
         model = WPPM(
-            input_dim=2,
             prior=Prior(input_dim=2, basis_degree=3),
             likelihood=OddityTask(),
             noise=GaussianNoise(),
@@ -105,7 +103,7 @@ class TestModelPosterior:
         from psyphy.posterior.predictive_posterior import WPPMPredictivePosterior
 
         # It's not a method on posterior, but a wrapper class construction
-        pred = WPPMPredictivePosterior(posterior, X_test)
+        pred = WPPMPredictivePosterior(posterior, X_test, key=jr.PRNGKey(0))
 
         # Check duck typing
         assert hasattr(pred, "mean")
@@ -124,7 +122,7 @@ class TestModelPosterior:
 
         from psyphy.posterior.predictive_posterior import WPPMPredictivePosterior
 
-        pred = WPPMPredictivePosterior(posterior, X_test)
+        pred = WPPMPredictivePosterior(posterior, X_test, key=jr.PRNGKey(0))
 
         # Triggers lazy computation
         mean = pred.mean
@@ -141,7 +139,6 @@ class TestConditionOnObservations:
     def model(self):
         """Create a model."""
         return WPPM(
-            input_dim=2,
             prior=Prior(input_dim=2, basis_degree=3),
             likelihood=OddityTask(),
             noise=GaussianNoise(),
@@ -176,7 +173,6 @@ class TestIntegrationWorkflow:
         """Test complete workflow with new API."""
         # 1. Create model
         model = WPPM(
-            input_dim=2,
             prior=Prior(input_dim=2, basis_degree=3),
             likelihood=OddityTask(),
             noise=GaussianNoise(),
@@ -206,7 +202,7 @@ class TestIntegrationWorkflow:
 
         from psyphy.posterior.predictive_posterior import WPPMPredictivePosterior
 
-        pred = WPPMPredictivePosterior(posterior, X_test)
+        pred = WPPMPredictivePosterior(posterior, X_test, key=jr.PRNGKey(0))
 
         # 5. Make predictions
         mean = pred.mean
@@ -220,7 +216,6 @@ class TestIntegrationWorkflow:
         """Test online learning manually."""
         # 1. Create model
         model = WPPM(
-            input_dim=2,
             prior=Prior(input_dim=2, basis_degree=3),
             likelihood=OddityTask(),
             noise=GaussianNoise(),

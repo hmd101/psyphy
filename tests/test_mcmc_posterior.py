@@ -4,7 +4,7 @@ tests/test_mcmc_posterior.py
 
 Unit tests for MCMCPosterior.
 
-the tests are independent of BlackJAX — fake samples are constructed manually
+the tests are independent of BlackJAX: fake samples are constructed manually
 so this suite runs without any sampling backend installed.
 Integration with ArViz for sampler diagnostics is also tested.
 """
@@ -43,8 +43,6 @@ def _has_arviz() -> bool:
 def tiny_model():
     """Minimal WPPM: degree=1, 2D, 1 extra dim -> W shape (2,2,2,3)."""
     return WPPM(
-        input_dim=2,
-        extra_dims=1,
         prior=Prior(input_dim=2, basis_degree=1, extra_embedding_dims=1),
         likelihood=OddityTask(config=OddityTaskConfig(num_samples=5)),
         noise=GaussianNoise(),
@@ -113,11 +111,6 @@ class TestMCMCPosteriorSample:
         key = jr.PRNGKey(4)
         s = posterior.sample(50, key=key)
         assert s["W"].shape[0] == 50
-
-    def test_sample_key_none_default(self, posterior):
-        """sample() with key=None should not raise."""
-        s = posterior.sample(5)
-        assert s["W"].shape[0] == 5
 
     def test_sample_draws_from_pool(self, posterior, fake_samples):
         """Every returned sample should match some row in the pooled chain."""

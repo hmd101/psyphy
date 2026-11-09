@@ -5,7 +5,7 @@ Reproducing Hong et al. (2025) with psyphy
 This  script fits *published human
 data from Hong et al. (2025)* and compares against the authors' own published fit.
 
-It runs in five stages, deliberately separated. The first two are given the
+It runs in five separate stages. The first two are given the
 paper's own fitted weights and check what psyphy *computes* from them; only the
 third asks psyphy to *fit* anything. Everything is per-observer: one subject per
 run (``--subject``, default 1 = CH), never pooled.
@@ -177,6 +177,7 @@ THRESHOLD_SETTINGS = {
         "config": ThresholdConfig(n_theta=16, n_length=300),
     },
 }
+# --8<-- [end:threshold_settings]
 
 
 # ---------------------------------------------------------------------------
@@ -466,7 +467,8 @@ def stage2_thresholds(paths: dict[str, Path], thr: dict, subject: int) -> None:
         jnp.asarray(coords),  # reference points only; the search finds comparisons
         n_samples=1,  # a point estimate has only one draw
         threshold_pred=True,
-        threshold_config=config,  # search settings: how carefully to look
+        threshold_config=config,  # search settings: how carefully to look,
+        key=jax.random.PRNGKey(0),
     )
     thres_psyphy = np.asarray(predictive.mean)  # (49, 2, 2)
     # --8<-- [end:thresholds]
@@ -700,6 +702,7 @@ def stage4_end_to_end(
         n_samples=1,
         threshold_pred=True,
         threshold_config=thr["config"],
+        key=jax.random.PRNGKey(0),
     )
     thres_fit = np.asarray(predictive.mean)  # (49, 2, 2)
     # --8<-- [end:end_to_end]
@@ -824,6 +827,7 @@ def stage5_bootstrap_envelope(
             n_samples=1,
             threshold_pred=True,
             threshold_config=thr["config"],
+            key=jax.random.PRNGKey(0),
         ).mean
     )
 

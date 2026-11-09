@@ -40,7 +40,7 @@ RNG = np.random.default_rng(0)
 def example_field(n_side: int = 5) -> tuple[np.ndarray, np.ndarray]:
     """A grid of reference points and one 2x2 covariance at each.
 
-    Ellipses grow with distance from the origin and are oriented radially --
+    Ellipses grow with distance from the origin and are oriented radially:
     loosely the structure seen in color-discrimination data.
     """
     axis = np.linspace(-0.7, 0.7, n_side)
@@ -81,8 +81,7 @@ def main() -> int:
 
     # --8<-- [start:overlay]
     # Two fields overlaid. scale="auto" sizes them to the grid, and returns the
-    # factor so the figure can report it. Both fields share that one factor --
-    # otherwise their relative sizes would be meaningless.
+    # factor so the figure can report it. Both fields share that one factor.
     inflated = covs * 1.6**2  # 1.6x larger radii
     fig, ax = plt.subplots(figsize=(5, 5), dpi=150)
     ax, scale = plot_ellipses(
@@ -90,7 +89,7 @@ def main() -> int:
         [covs, inflated],
         ax=ax,
         scale="auto",
-        colors=["black", "crimson"],
+        colors=["black", "C3"],
         linestyles=["--", "solid"],
         labels=["reference", "comparison"],
         return_scale=True,

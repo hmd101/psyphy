@@ -184,8 +184,6 @@ truth_prior = Prior(
     # are before fitting
 )
 truth_model = WPPM(
-    input_dim=input_dim,
-    extra_dims=extra_dims,
     prior=truth_prior,
     likelihood=task,  # oddity task ("pick the odd-one out among 3 stimuli")
     noise=noise,  # (Gaussian noise)
@@ -258,7 +256,7 @@ stimuli = jnp.stack([refs, comparisons], axis=1)
 ys, prob_params = task.simulate(truth_params, stimuli, truth_model, key=k_sim)
 p_correct = prob_params[0]  # <- for Bernoulli tasks, p_correct is the only prob_param
 
-# Build the canonical batched dataset for compute.
+# Build the batched dataset for compute.
 #
 # Notes:
 # - This is equivalent to storing X with shape (N, K, d) and y with shape (N, R)
@@ -287,7 +285,6 @@ prior = Prior(
     # are before fitting
 )
 model = WPPM(
-    input_dim=input_dim,
     prior=prior,
     likelihood=task,
     noise=noise,  # Gaussian
@@ -554,4 +551,4 @@ if steps_hist and loss_hist:
         bbox_inches="tight",
     )
 else:
-    print("No history recorded — set track_history=True in MAPOptimizer to enable.")
+    print("No history recorded: set track_history=True in MAPOptimizer to enable.")

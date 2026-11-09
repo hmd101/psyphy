@@ -5,7 +5,7 @@ posterior.py
 Concrete ParameterPosterior implementations.
 
 This module provides:
-- MAPPosterior: delta distribution at θ_MAP (point estimate)
+- MAPPosterior: point estimate at θ_MAP
 """
 
 from __future__ import annotations
@@ -16,9 +16,9 @@ import jax.numpy as jnp
 
 class MAPPosterior:
     """
-    MAP (Maximum A Posteriori) posterior - delta distribution at θ_MAP.
+    MAP (Maximum A Posteriori) posterior: the point estimate θ_MAP.
 
-    Represents a point estimate with no uncertainty.
+    Carries no uncertainty.
 
     Parameters
     ----------
@@ -49,16 +49,17 @@ class MAPPosterior:
         """Return the associated model."""
         return self._model
 
-    def sample(self, n: int = 1, *, key=None):
+    def sample(self, n: int, *, key):
         """
-        Sample from delta distribution (returns repeated θ_MAP).
+        Return n copies of the point estimate θ_MAP.
 
         Parameters
         ----------
-        n : int, default=1
+        n : int
             Number of samples
-        key : jax.Array, optional
-            PRNG key (unused for delta distribution)
+        key : jax.Array
+            PRNG key. A point estimate has no randomness, so the key goes
+            unread.
 
         Returns
         -------
@@ -68,7 +69,8 @@ class MAPPosterior:
 
         Notes
         -----
-        Delta distribution has no randomness - returns repeated MAP estimate.
+        Every row is the same parameter set, so a mean over the draws is θ_MAP and
+        their spread is zero.
         """
         return jax.tree.map(
             lambda x: jnp.tile(x[None, ...], (n,) + (1,) * x.ndim), self._params

@@ -8,7 +8,7 @@ Laplace approximation to posterior.
 Approximates posterior with a Gaussian:
     N(mean = MAP, covariance = H^-1 at MAP)
 
-Provides posterior.sample() cheaply.
+Provides posterior.sample(n, key=...) cheaply.
 Useful for InfoGainPlacement when only MAP fit is available.
 
 

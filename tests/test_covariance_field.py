@@ -6,7 +6,7 @@ Tests for CovarianceField abstraction
 
 1. Protocol conformance
 2. Construction methods (from_prior, from_posterior, from_params)
-3. Evaluation methods (cov, sqrt_cov, cov_batch)
+3. Evaluation methods (field(x), sqrt_cov)
 4. MVP mode behavior
 5. Wishart mode behavior
 6. Integration with posteriors
@@ -32,17 +32,15 @@ from psyphy.model.noise import GaussianNoise
 def wishart_model():
     """Create Wishart model (with basis expansion)."""
     return WPPM(
-        input_dim=2,
         prior=Prior(
             input_dim=2,
             basis_degree=3,
             variance_scale=4e-3,
             decay_rate=0.3,
-            extra_embedding_dims=1,  # should match model's extra_dims
+            extra_embedding_dims=1,
         ),
         likelihood=OddityTask(),
         noise=GaussianNoise(),
-        extra_dims=1,
         diag_term=1e-3,
     )
 
@@ -72,10 +70,9 @@ def test_covariance_field_protocol_exists():
     """Test that CovarianceField protocol is defined."""
     from psyphy.model.covariance_field import CovarianceField
 
-    # Protocol should have required methods
-    assert hasattr(CovarianceField, "cov")
-    assert hasattr(CovarianceField, "sqrt_cov")
-    assert hasattr(CovarianceField, "cov_batch")
+    # the protocol declares these two; hasattr would also see object.__call__
+    assert "__call__" in CovarianceField.__dict__
+    assert "sqrt_cov" in CovarianceField.__dict__
 
 
 # ==============================================================================
@@ -153,7 +150,7 @@ def test_sqrt_cov_wishart(wishart_model):
     assert jnp.allclose(Sigma_from_U, Sigma_direct, rtol=1e-5)
 
 
-def test_cov_batch_wishart(wishart_model):
+def test_batch_eval_wishart(wishart_model):
     """Test vectorized evaluation in Wishart mode (rectangular U)."""
     from psyphy.model.covariance_field import WPPMCovarianceField
 

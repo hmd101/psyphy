@@ -93,13 +93,13 @@ class NUTSSampler(InferenceEngine):
         See module docstring for rationale.
     target_acceptance_rate : float, default=0.8
         Target Metropolis acceptance rate for window adaptation
-        (Mode A only). Typical values: 0.-0.9.
+        (adaptive warmup only). Typical values: 0.-0.9.
     step_size : float | None, default=None
         If None (default), use blackjax.window_adaptation to
-        automatically tune step_size and mass matrix (Mode A).
+        automatically tune step_size and mass matrix (adaptive warmup).
         If a float, skip adaptation and use this fixed step_size for all
-        chains — warmup becomes plain burn-in and all chains are vmapped
-        in parallel (Mode B). The user is responsible for choosing a
+        chains; warmup becomes plain burn-in and all chains are vmapped
+        in parallel (fixed step size). The caller is responsible for choosing a
         suitable value.
     max_num_doublings : int, default=8
         Maximum NUTS tree depth. One draw costs at most
@@ -110,11 +110,11 @@ class NUTSSampler(InferenceEngine):
         worse (lower ESS) but the chain is still a valid MCMC sampler.
         Raise the cap, or improve the parameterization.
     prior_preconditioning : bool, default=True
-        Mode A only. If True and the model exposes ``model.prior.param_scales()``
+        Adaptive warmup only. If True and the model exposes ``model.prior.param_scales()``
         (WPPM does), sample z = W / prior_std instead of W, so adaptation
         starts from a mass matrix matched to the prior scales rather than
         the identity. Results are returned in W coordinates either way. Set
-        False to reproduce the old identity-start behaviour.
+        False to reproduce the old identity-start behavior.
     seed : int, default=0
         Master PRNG seed for chain initialization and sampling keys.
     show_progress : bool, default=True
@@ -128,13 +128,13 @@ class NUTSSampler(InferenceEngine):
     -----
     **Two warmup modes:**
 
-    *Mode A* (step_size=None, default): blackjax.window_adaptation
+    *Adaptive warmup* (step_size=None, default): blackjax.window_adaptation
     adapts step_size and inverse_mass_matrix independently per chain.
     The adaptation state is all JAX arrays, so warmup is vmapped over
     chains and JIT-compiled once; sampling is likewise one vmapped,
     jitted lax.scan using each chain's own adapted parameters.
 
-    *Mode B* (step_size=<float>): No adaptation. All chains share the
+    *Fixed step size* (step_size=<float>): No adaptation. All chains share the
     same fixed step_size and a diagonal mass matrix of ones. Warmup is
     pure burn-in. All chains are fully vmapped -> single compiled call.
     Faster for many chains but requires manual step_size tuning.
@@ -143,8 +143,10 @@ class NUTSSampler(InferenceEngine):
     --------
     >>> from psyphy.inference import NUTSSampler
     >>> sampler = NUTSSampler(num_warmup=200, num_samples=500, num_chains=4)
-    >>> nuts_posterior = sampler.fit(model, data, init_params=map_posterior.params)
-    >>> print(nuts_posterior.n_chains, nuts_posterior.n_draws)
+    >>> nuts_posterior = sampler.fit(
+    ...     model, data, init_params=map_posterior.params
+    ... )  # doctest: +SKIP
+    >>> print(nuts_posterior.n_chains, nuts_posterior.n_draws)  # doctest: +SKIP
     4 500
     """
 
@@ -231,35 +233,36 @@ class NUTSSampler(InferenceEngine):
             init_params if init_params is not None else model.init_params(init_key)
         )
 
-        # Fixed MC key baked into logdensity — makes the stochastic
+        # Fixed MC key baked into logdensity: makes the stochastic
         # likelihood deterministic for NUTS gradient evaluations.
         fixed_mc_key = jax.random.PRNGKey(self.logdensity_key_seed)
 
         # -- BlackJAX API boundary --------------------------------
         # logdensity_fn is the ONLY thing BlackJAX needs from psyphy.
         # Contract:
-        #   input:  params  — dict, same structure as init_position
+        #   input:  params, a dict with the same structure as init_position
         #                      e.g. {"W": (2, 2, 2, 3)}
-        #   output: scalar  — log p(θ | data), a JAX float (shape ())
+        #   output: scalar, log p(θ | data), a JAX float (shape ())
         #   must be: JAX-differentiable (jax.grad must work on it)
-        #            (nearly) deterministic — hence the fixed_mc_key
+        #            (nearly) deterministic; hence the fixed_mc_key
         # -----------------------------------------
         def logdensity_fn(params: dict) -> jnp.ndarray:
             return model.log_posterior_from_data(params, data, key=fixed_mc_key)
 
-        # chain_keys: shape (num_chains, 2) — one PRNGKey per chain,
+        # chain_keys: shape (num_chains, 2), one PRNGKey per chain,
         # split further inside each mode into warmup_key and sample_key.
         chain_keys = jax.random.split(chain_key, self.num_chains)
 
         # blackjax is passed as an argument rather than imported again in each
         # private method. Because it is a soft dependency, the single import
         # (with its error-handling) lives here in fit(). In Python, modules are
-        # first-class objects — 'import blackjax' just binds the module to a
+        # first-class objects; 'import blackjax' just binds the module to a
         # local variable, which can be passed around like any other value.
         if self.step_size is None:
-            # Prior preconditioning (Mode A only -- in Mode B the user picked
-            # step_size for W coordinates, and silently rescaling would change
-            # what that number means). See "Notes on warmup cost" above.
+            # Prior preconditioning (adaptive warmup only -- with a fixed step
+            # size the caller picked it for W coordinates, and silently
+            # rescaling would change what that number means). See "Notes on
+            # warmup cost" above.
             scales = (
                 self._prior_scales(model, init_position)
                 if self.prior_preconditioning
@@ -292,7 +295,7 @@ class NUTSSampler(InferenceEngine):
 
         # positions: dict, each value shaped (n_chains, n_draws, *param_shape)
         #   e.g. {"W": (num_chains, num_samples, 2, 2, 2, 3)}
-        # sampler_stats: each value shaped (num_chains, num_samples) — one scalar
+        # sampler_stats: each value shaped (num_chains, num_samples), one scalar
         # per draw per chain. Keys follow ArviZ's sample_stats convention.
         return MCMCPosterior(positions, model, sampler_stats=sampler_stats)
 
@@ -306,9 +309,9 @@ class NUTSSampler(InferenceEngine):
 
         Returns None (-> no preconditioning, identity-start adaptation) when
         the model has no ``prior.param_scales()`` or when its output does not
-        line up leaf-for-leaf with ``init_position``. Silently falling back
-        is deliberate: preconditioning is an optimization, never a
-        requirement, so an unfamiliar model must still sample.
+        line up leaf-for-leaf with ``init_position``. Preconditioning is an
+        optimization, never a requirement, so falling back silently keeps
+        an unfamiliar model sampling.
         """
         prior = getattr(model, "prior", None)
         if not hasattr(prior, "param_scales"):
@@ -326,7 +329,7 @@ class NUTSSampler(InferenceEngine):
         return scales
 
     # ------------------------------------------------------------------
-    # Mode A: adaptive warmup (window_adaptation), chains vmapped
+    # Adaptive warmup (window_adaptation), chains vmapped
     #
     # window_adaptation adapts two things during warmup, per chain:
     #   1. step_size via dual averaging -- after each proposal it checks
@@ -379,7 +382,7 @@ class NUTSSampler(InferenceEngine):
         # as an extra parameter, so the cap applies during warmup too --
         # which is exactly where the deep trees happen.
         #
-        # NOTE: deliberately no `progress_bar=` here. BlackJAX's own progress
+        # NOTE: no `progress_bar=` here. BlackJAX's own progress
         # bar needs an extra package (fastprogress on 1.5, jax-tap on 1.6+)
         # that is not a default dependency, so passing progress_bar=True on a
         # plain `pip install psyphy[sampling]` raises ImportError from inside
@@ -456,7 +459,7 @@ class NUTSSampler(InferenceEngine):
             desc="NUTS (adaptive)",
         )
 
-        # Phase 1: warmup, all chains at once. The bar can only move when the
+        # Warmup, all chains at once. The bar can only move when the
         # whole compiled call returns -- there is no per-step host callback --
         # so the description says what is running while it sits still.
         if pbar is not None:
@@ -475,7 +478,7 @@ class NUTSSampler(InferenceEngine):
                     f"NUTS sampling ({self.num_chains} chains, vmapped)"
                 )
 
-        # Phase 2: sampling, all chains at once, each with its own adapted
+        # Sampling, all chains at once, each with its own adapted
         # step size and mass matrix.
         positions, acc_rates, diverging, energy, n_steps = jax.jit(
             jax.vmap(sample_one_chain)
@@ -497,27 +500,27 @@ class NUTSSampler(InferenceEngine):
         }
 
     # ------------------------------------------------------------------
-    # Mode B: fixed step_size, all chains vmapped
+    # Fixed step size, all chains vmapped
     #
-    # WHY vmappable (contrast with Mode A):
+    # WHY vmappable (contrast with adaptive warmup):
     # step_size and inverse_mass_matrix are fixed constants provided upfront.
-    # Every piece of state — NUTSState, step_size, M^-1 — is a JAX array
+    # Every piece of state (NUTSState, step_size, M^-1) is a JAX array
     # from the start. jax.vmap can stack these along a new chain axis and
     # compile all chains into a single XLA kernel (one compiled call).
-    # Trade-off: the user must supply a reasonable step_size manually, and
+    # Trade-off: the caller must supply a reasonable step_size manually, and
     # without mass matrix adaptation chains may mix slowly if parameters
     # have very different scales (identity M^-1 treats all params equally).
     # ------------------------------------------------------------------
 
     def _run_fixed_stepsize(self, blackjax, logdensity_fn, init_position, chain_keys):
-        """Run NUTS with fixed step_size — all chains vmapped in one call.
+        """Run NUTS with fixed step_size: all chains vmapped in one call.
 
         BlackJAX inputs
         ---------------
         logdensity_fn        : dict -> scalar   (see fit() for full contract)
         init_position        : dict             e.g. {"W": (2, 2, 2, 3)}
         step_size            : float            user-supplied; no adaptation
-        inverse_mass_matrix  : (n_params,)      diagonal identity — no per-parameter scaling
+        inverse_mass_matrix  : (n_params,)      diagonal identity, no per-parameter scaling
 
         BlackJAX outputs (via jax.vmap over chain_keys)
         ------------------------------------------------
@@ -526,7 +529,7 @@ class NUTSSampler(InferenceEngine):
         """
         # n_params: total scalar count across all parameter leaves.
         # For WPPM {"W": (2,2,2,3)}: n_params = 2*2*2*3 = 48.
-        # inverse_mass_matrix shape: (n_params,) — diagonal of M^-1 (identity = no scaling).
+        # inverse_mass_matrix shape: (n_params,), diagonal of M^-1 (identity = no scaling).
         flat_leaves = jax.tree.leaves(init_position)
         n_params = sum(x.size for x in flat_leaves)
         inverse_mass_matrix = jnp.ones(n_params)  # shape: (n_params,)
@@ -535,7 +538,7 @@ class NUTSSampler(InferenceEngine):
         #   .init(position)             -> NUTSState
         #   .step(PRNGKey, NUTSState)   -> (NUTSState, NUTSInfo)
         # All parameters are JAX arrays -> entire run_one_chain is vmappable.
-        # max_num_doublings: same tree-depth cap as Mode A -- at most
+        # max_num_doublings: same tree-depth cap as adaptive warmup -- at most
         # 2**max_num_doublings - 1 gradient evaluations per draw.
         nuts = blackjax.nuts(
             logdensity_fn,
@@ -545,7 +548,7 @@ class NUTSSampler(InferenceEngine):
         )
 
         def run_one_chain(chain_key):
-            # chain_key: PRNGKey shape (2,) — one per chain, vmapped over
+            # chain_key: PRNGKey shape (2,), one per chain, vmapped over
             warmup_key, sample_key = jax.random.split(chain_key)
 
             # nuts.init: position dict -> NUTSState
@@ -558,7 +561,8 @@ class NUTSSampler(InferenceEngine):
             def one_step(state, rng_key):
                 state, info = nuts.step(rng_key, state)
                 # state.position : dict  e.g. {"W": (2, 2, 2, 3)}
-                # stats          : ArviZ sample_stats names -- see Mode A's note
+                # stats          : ArviZ sample_stats names -- see the adaptive
+                #                  warmup note above
                 return state, (
                     state.position,
                     info.acceptance_rate,
@@ -568,7 +572,7 @@ class NUTSSampler(InferenceEngine):
                 )
 
             # Burn-in: num_warmup steps, no adaptation, positions discarded.
-            # (contrast Mode A: here there is no step_size tuning, just mixing)
+            # (contrast adaptive warmup: here there is no step_size tuning, just mixing)
             burn_keys = jax.random.split(warmup_key, self.num_warmup)
             state, _ = jax.lax.scan(one_step, state, burn_keys)
 

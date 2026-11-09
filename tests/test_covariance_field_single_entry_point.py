@@ -26,10 +26,8 @@ from psyphy.model.covariance_field import WPPMCovarianceField
 def wishart_field():
     """Create Wishart mode covariance field for testing."""
     model = WPPM(
-        input_dim=2,
         prior=Prior(input_dim=2, basis_degree=3, extra_embedding_dims=1),
         likelihood=OddityTask(),
-        extra_dims=1,
     )
     key = jr.PRNGKey(123)
     return WPPMCovarianceField.from_prior(model, key)
@@ -39,7 +37,6 @@ def wishart_field():
 def field_3d():
     """Create 3D covariance field for testing."""
     model = WPPM(
-        input_dim=3,
         prior=Prior(input_dim=3, basis_degree=2),
         likelihood=OddityTask(),
     )
@@ -322,7 +319,6 @@ class TestEdgeCases:
     def test_1d_input_space_single_point(self):
         """For input_dim=1, single point has shape (1,)."""
         model = WPPM(
-            input_dim=1,
             prior=Prior(input_dim=1, basis_degree=2),
             likelihood=OddityTask(),
         )
@@ -338,7 +334,6 @@ class TestEdgeCases:
     def test_1d_input_space_batch(self):
         """For input_dim=1, batch requires shape (n, 1)."""
         model = WPPM(
-            input_dim=1,
             prior=Prior(input_dim=1, basis_degree=2),
             likelihood=OddityTask(),
         )
@@ -349,56 +344,3 @@ class TestEdgeCases:
         Sigmas = field(X)
 
         assert Sigmas.shape == (3, 1, 1)
-
-
-# ==============================================================================
-# Test 10: Backward Compatibility (Deprecation Warnings)
-# ==============================================================================
-
-
-class TestBackwardCompatibility:
-    """Test that old API still works with deprecation warnings."""
-
-    def test_cov_deprecated(self, wishart_field):
-        """cov() still works but warns."""
-        x = jnp.array([0.5, 0.3])
-
-        with pytest.warns(DeprecationWarning, match="Use field\\(x\\)"):
-            Sigma = wishart_field.cov(x)
-
-        assert Sigma.shape == (2, 2)
-
-    def test_cov_batch_deprecated(self, wishart_field):
-        """cov_batch() still works but warns."""
-        X = jnp.array([[0.1, 0.2], [0.5, 0.5]])
-
-        with pytest.warns(DeprecationWarning, match="Use field\\(X\\)"):
-            Sigmas = wishart_field.cov_batch(X)
-
-        assert Sigmas.shape == (2, 2, 2)
-
-    def test_cov_rejects_batch(self, wishart_field):
-        """cov() raises error for batch input."""
-        X = jnp.array([[0.1, 0.2], [0.5, 0.5]])
-
-        with (
-            pytest.warns(DeprecationWarning),
-            pytest.raises(ValueError, match="only accepts single points"),
-        ):
-            wishart_field.cov(X)
-
-    def test_deprecated_equivalent_to_new(self, wishart_field):
-        """Old API gives same results as new API."""
-        x = jnp.array([0.5, 0.3])
-        X = jnp.array([[0.1, 0.2], [0.5, 0.5]])
-
-        with pytest.warns(DeprecationWarning):
-            Sigma_old = wishart_field.cov(x)
-        Sigma_new = wishart_field(x)
-        assert jnp.allclose(Sigma_old, Sigma_new)
-
-        with pytest.warns(DeprecationWarning):
-            Sigmas_old = wishart_field.cov_batch(X)
-        Sigmas_new = wishart_field(X)
-
-        assert jnp.allclose(Sigmas_old, Sigmas_new)

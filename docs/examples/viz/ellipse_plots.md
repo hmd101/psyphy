@@ -1,8 +1,9 @@
 # Plotting covariance ellipse fields
 
-A 2×2 covariance drawn as an ellipse is how psyphy shows most of what it
+A $2\times2$ covariance drawn as an ellipse is how psyphy shows most of what it
 computes: a model's internal noise field, a threshold contour, a posterior
-draw. `psyphy.viz.plot_ellipses` draws any of those, one field or several.
+draw. [`plot_ellipses`](../../reference/viz.md#psyphy.viz.ellipses.plot_ellipses) draws any of those, one field or
+several.
 
 ```bash
 pip install 'psyphy[viz]'     # matplotlib is an optional dependency
@@ -26,7 +27,7 @@ Everything below is synthetic and runs in about a second.
 
 Pass centers and one `(n_points, 2, 2)` stack. The default `scale=1.0` draws
 **true size**: the ellipse semi-axes are the square roots of the covariance
-eigenvalues, in the units of your stimulus space.
+eigenvalues, in stimulus units.
 
 ```python
 --8<-- "docs/examples/viz/ellipse_plots.py:single"
@@ -36,15 +37,15 @@ eigenvalues, in the units of your stimulus space.
     <img src="../plots/viz_single_field.png" alt="One covariance field at true size" width="420"/>
 </div>
 
-Nothing is saved or shown for you. Instead, the function draws into an `Axes` and
-returns it, so the figure stays yours to title, style, and save.
+`plot_ellipses` draws into an `Axes` and returns it. It does not save or show the
+figure.
 
 ---
 
 ## Several fields overlaid
 
-Pass a **list** of fields to compare them. This is the "published vs. fitted"
-figure that shows up throughout the WPPM examples.
+Pass a list of fields to compare them. The Wishart Process Psychophysical Model (WPPM)
+examples use this to overlay published and fitted fields.
 
 ```python
 --8<-- "docs/examples/viz/ellipse_plots.py:overlay"
@@ -59,25 +60,23 @@ one value for all fields or a list with one entry per field. A legend appears
 only if you pass `labels`.
 
 !!! note "`scale='auto'` sizes ellipses to the grid and shares one factor"
-    True size is honest but can be hard to read: on a dense grid the ellipses
-    shrink to specks, and on a coarse one they float in white space.
-    `scale="auto"` sets the *median* ellipse to a fixed fraction of the median
-    spacing between centers, so the same call works on a 7×7 grid and a
-    103×103 one.
+    True size can be hard to read: on a dense grid the ellipses are too small to
+    see, and on a coarse one they are far apart. `scale="auto"` sets the median
+    ellipse to a fixed fraction of the median spacing between centers, so the
+    same call works on a 7x7 grid and a 103x103 one.
 
-    Two things follow. **It is not always a magnification**: on a dense grid
-    the factor drops below 1, shrinking ellipses so they do not overlap. And
-    when several fields are drawn, the factor is computed from the **first**
-    one and applied to all of them; independently scaled fields could not be
-    compared by eye. Pass `return_scale=True` to get the number back and put it
-    in your title, since a rescaled figure cannot be read for absolute size.
+    On a dense grid the factor drops below 1, which shrinks the ellipses so they
+    do not overlap. When several fields are drawn, the factor is computed from
+    the first field and applied to all of them. Pass `return_scale=True` to get
+    the factor back and report it in the title, because a rescaled figure
+    cannot be read for absolute size.
 
 ---
 
 ## Posterior draws
 
-A `(n_samples, n_points, 2, 2)` array draws one translucent field per sample;
-the natural way to show parameter uncertainty.
+A `(n_samples, n_points, 2, 2)` array draws one translucent field per sample,
+which is how we show posterior draws.
 
 ```python
 --8<-- "docs/examples/viz/ellipse_plots.py:samples"
@@ -87,9 +86,11 @@ the natural way to show parameter uncertainty.
     <img src="../plots/viz_samples.png" alt="Twelve posterior draws of one field" width="420"/>
 </div>
 
-This is the shape `WPPMPredictivePosterior.rsample()` returns. With a
-`MAPPosterior` every draw is identical (a point estimate has no spread), so the
-band collapses to a single field.
+This is the shape
+[`WPPMPredictivePosterior`](../../reference/posterior.md#psyphy.posterior.WPPMPredictivePosterior)`.rsample()`
+returns with `threshold_pred=True`. With a
+[`MAPPosterior`](../../reference/posterior.md#psyphy.posterior.MAPPosterior) every draw
+is identical, so the draws collapse to a single field.
 
 ---
 
@@ -117,10 +118,9 @@ UserWarning: 3 non-positive-definite covariance(s) were not drawn;
 the plotted field is incomplete.
 ```
 
-Silence is the wrong default here, a field quietly missing a few ellipses is
-hard to spot by eye, and it usually means something upstream went wrong, such
-as an ill-conditioned threshold inversion. Pass `skip_non_pd=False` to raise
-instead.
+A field missing a few ellipses is hard to spot by eye, and it usually means
+something upstream went wrong, such as an ill-conditioned threshold inversion.
+Pass `skip_non_pd=False` to raise instead.
 
 ---
 
@@ -142,8 +142,7 @@ segments, valid = ellipse_segments(centers, covs, scale=1.0)
 
 ## Limits
 
-- **2-D only.** Higher-dimensional covariances raise `NotImplementedError`;
-  drawing them would mean ellipsoid rendering.
+- **2-D only.** Higher-dimensional covariances raise `NotImplementedError`.
 - **`scale="auto"` needs at least two centers**, since it measures spacing
   between them. With one point, pass an explicit scale.
 
@@ -152,5 +151,5 @@ segments, valid = ellipse_segments(centers, covs, scale=1.0)
 ## See also
 
 - API reference: `psyphy.viz` in [Visualization](../../reference/viz.md).
-- [Reproducing Hong et al. (2025)](../wppm/hong2025_reproduction.md) — these
+- [Reproducing Hong et al. (2025)](../wppm/hong2025_reproduction.md): these
   functions on real published data.

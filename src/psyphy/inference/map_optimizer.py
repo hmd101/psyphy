@@ -98,7 +98,7 @@ class MAPOptimizer(InferenceEngine):
                transfers across dataset sizes.
             2. **Gradient clipping.** ``max_grad_norm`` is a fixed threshold.
                Under ``"sum"`` the raw gradient norm scales with N, so the clip
-               saturates on essentially every step for realistic N — which
+               saturates on essentially every step for realistic N, which
                discards gradient *magnitude* and silently turns SGD into
                normalized fixed-step descent.
 
@@ -106,10 +106,10 @@ class MAPOptimizer(InferenceEngine):
                that does no clipping) pass ``max_grad_norm=None``.
 
             Note that the *model* is unaffected: ``WPPM.log_posterior_from_data``
-            still returns the true (summed) log posterior. Scaling is
-            step-size conditioning and lives here, in the optimizer, so that
-            density-based consumers (e.g. a Laplace approximation taking the
-            Hessian at the mode) keep seeing the unnormalized log posterior.
+            still returns the true (summed) log posterior. The scaling is
+            applied in the optimizer only. Density-based consumers (e.g. a
+            Laplace approximation taking the Hessian at the mode) keep seeing
+            the unnormalized log posterior.
 
             Because the recorded loss is per-trial under ``"mean"``, learning
             curves are not comparable to those produced with ``"sum"``: the
@@ -239,7 +239,7 @@ class MAPOptimizer(InferenceEngine):
             scale = 1.0 / n_trials
 
         # key is now an explicit argument so each JIT-compiled call receives a
-        # distinct random key — a fresh MC noise realization per gradient step.
+        # distinct random key: a fresh MC noise realization per gradient step.
         clip_at = self.max_grad_norm
 
         @jax.jit
@@ -299,7 +299,7 @@ class MAPOptimizer(InferenceEngine):
             steps_run = i + 1
 
             # Non-finite guard: if loss becomes NaN/Inf, optimization has diverged.
-            # Stop early so downstream plots don’t look “truncated” due to NaNs.
+            # Stop early so downstream plots do not look "truncated" due to NaNs.
             if not bool(jax.numpy.isfinite(loss)):
                 if self.track_history:
                     try:

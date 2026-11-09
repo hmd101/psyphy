@@ -2,7 +2,7 @@
 
 This file exists so the orientation block at the top of
 ``hong2025_reproduction.md`` is quoted from code that runs, rather than typed
-into the Markdown and left to rot. It is deliberately minimal: no argparse, no
+into the Markdown and left to rot. It is minimal: no argparse, no
 figures, no refit. For the full pipeline see ``hong2025_reproduction.py``.
 
 Run it with::
@@ -54,6 +54,7 @@ thresholds = WPPMPredictivePosterior(
     n_samples=1,
     threshold_pred=True,  # ask for thresholds
     threshold_config=config,
+    key=jax.random.PRNGKey(0),
 ).mean  # -> (49, 2, 2)
 
 # This used the authors' weights, so it reproduces their published inversion
@@ -62,7 +63,7 @@ thresholds = WPPMPredictivePosterior(
 #
 #   W = jnp.asarray(np.load("fits/hong2025_full_fit.npz")["W"])
 #
-# The model, the config and the call above are identical either way.
+# The model, the config and the call above are identical
 # --8<-- [end:recipe]
 
 
@@ -76,6 +77,7 @@ if __name__ == "__main__":
             n_samples=1,
             threshold_pred=True,
             threshold_config=config,
+            key=jax.random.PRNGKey(0),
         ).mean
     print(f"thresholds: {thresholds.shape}")
     print(f"published : {published.shape}")
