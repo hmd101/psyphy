@@ -1,20 +1,16 @@
 """Tests for psyphy.model.likelihood.features.
 
-Written before the implementation. Every assertion here follows from the
-mathematics of the feature map rather than from the code, so they constrain the
-implementation instead of describing it:
+The assertions follow from the math of the feature map:
 
-* whitening is *defined* by `M S_bar M^T = I`, so that identity is a test, not a
-  property to be discovered;
-* the pooled constraint `w*A + (1-w)*B = I` forces `B = (I - w*A)/(1-w)`, which
-  removes three free numbers and is the whole reason the feature vector is short;
-* `P(correct)` is invariant under any invertible affine change of stimulus
-  coordinates, so the features must be too. Rotation alone is a weaker check and
-  would pass an implementation that got the whitening wrong, hence the shear.
+* whitening is defined by `M S_bar M^T = I`
+* the pooled constraint `w*A + (1-w)*B = I` gives `B = (I - w*A)/(1-w)`, which
+  removes 3 free numbers
+* `P(correct)` does not change under an invertible affine change of stimulus
+  coordinates, so the features must not either. A rotation alone would pass a
+  wrong whitening, so we also test a shear
 
-The reference values at the bottom come from Philip Greengard's `nn_march2026`
-implementation (`whiten_inputs`). They are baked in as literals because that
-folder is not a package and cannot be a test dependency.
+The reference values at the bottom come from Philip Greengard's implementation
+(`whiten_inputs`), copied in as literals.
 """
 
 from __future__ import annotations
@@ -60,7 +56,7 @@ def _trial(rng, d=2):
 
 @pytest.mark.parametrize("w_ref", [ODDITY_W, TWOAFC_W])
 def test_whitening_makes_the_pooled_covariance_the_identity(w_ref):
-    """This is the definition of whitening, so it is the first thing to pin."""
+    """The definition of whitening."""
     rng = np.random.default_rng(0)
     for _ in range(20):
         Sr, Sc, mr, mc = _trial(rng)
@@ -69,9 +65,7 @@ def test_whitening_makes_the_pooled_covariance_the_identity(w_ref):
         # A and B are Sigma_ref and Sigma_comp in whitened coordinates, so the
         # pooled combination of them must be exactly the identity.
         pooled = w_ref * A + (1.0 - w_ref) * B
-        # atol is float32-scaled: eps is 1.2e-7, so 1e-10 would be unreachable
-        # regardless of correctness. psyphy runs float32 by default and the
-        # surrogate does not need more; see the note on the reference test below.
+        # atol for float32, eps 1.2e-7
         assert jnp.allclose(pooled, jnp.eye(2), atol=1e-6)
 
 
@@ -88,7 +82,7 @@ def test_eigenvalues_of_A_are_bounded_by_one_over_w(w_ref, bound):
 
 
 def test_whitened_distance_equals_mahalanobis_distance():
-    """The point of whitening: the S_bar^-1 in the decision rule disappears."""
+    """After whitening, the S_bar^-1 in the decision rule is gone."""
     rng = np.random.default_rng(2)
     Sr, Sc, mr, mc = _trial(rng)
     Sbar = ODDITY_W * Sr + (1 - ODDITY_W) * Sc
@@ -101,7 +95,7 @@ def test_whitened_distance_equals_mahalanobis_distance():
 
 
 # --------------------------------------------------------------------------
-# the invariances -- the reason the feature vector can be this short
+# the invariances that leave 4 features
 # --------------------------------------------------------------------------
 
 
@@ -125,7 +119,7 @@ def test_invariant_under_rotation():
 
 
 def test_invariant_under_a_general_affine_map():
-    """The strong version. A rotation-only test would pass a wrong whitening."""
+    """A rotation-only test would pass a wrong whitening."""
     rng = np.random.default_rng(5)
     Sr, Sc, mr, mc = _trial(rng)
     L = jnp.asarray([[2.0, 0.7], [-0.4, 0.5]])  # shear + anisotropic scale
@@ -136,7 +130,7 @@ def test_invariant_under_a_general_affine_map():
 
 
 # --------------------------------------------------------------------------
-# shape, degeneracy, and the task parameterisation
+# shape, coincident stimuli, and w_ref
 # --------------------------------------------------------------------------
 
 
@@ -177,10 +171,8 @@ def test_reduce_2d_composes_with_whiten():
 # agreement with the reference implementation
 # --------------------------------------------------------------------------
 
-# Produced by running nn_march2026's `whiten_inputs` on the inputs below and
-# printing at full precision (that module forces float64). Baked in as literals
-# because `nn_march2026` is a loose folder, not a package, so it cannot be a test
-# dependency. To regenerate:
+# Printed at full precision from the reference `whiten_inputs`, which runs in
+# float64. To regenerate:
 #
 #     from nn_inputs import whiten_inputs
 #     whiten_inputs(jnp.array([Sr]), jnp.array([Sc]), jnp.array([mr]), jnp.array([mc]))
@@ -228,13 +220,10 @@ _REF_CASES = [
 
 @pytest.mark.parametrize("Sr,Sc,mr,mc,expected", _REF_CASES)
 def test_matches_reference_implementation(Sr, Sc, mr, mc, expected):
-    """Agreement with nn_march2026, which is where the weights come from.
+    """Agreement with the reference implementation the weights were trained on.
 
-    The tolerance is 1e-5 rather than machine precision because the reference was
-    computed in float64 and psyphy runs float32. That gap is in the features
-    themselves; measured end to end it shrinks to about 2e-7 by the time it
-    reaches p(correct), which is far below the surrogate's own ~0.02 worst-case
-    approximation error.
+    atol 1e-5: the reference ran in float64 and psyphy runs float32. Measured end
+    to end, the gap in p(correct) is about 2e-7.
     """
     got = whitened_oddity_features(
         jnp.asarray(Sr), jnp.asarray(Sc), jnp.asarray(mr), jnp.asarray(mc)

@@ -1,14 +1,9 @@
 """Tests for psyphy.model.likelihood.neural: the surrogate container and its file format.
 
-Written before the implementation, against the schema specified in
-
-The point of nearly every test here is a *silent* failure. A surrogate that is
-handed the wrong weights does not crash and does not produce NaN: it returns a
-plausible probability in (0, 1) that is simply wrong. Measured, loading oddity
-weights but building features with the 2AFC pooling weight gives 0.3469 where the
-right answer is 0.3627. Nothing in the arrays distinguishes the two cases, because
-a 2-D oddity and a 2-D 2AFC network have identical shapes. Only declared metadata,
-checked at load, can tell them apart -- which is what these tests pin.
+A surrogate given the wrong weights returns a probability in (0, 1) with no error.
+Oddity weights fed features built with the 2AFC pooling weight give 0.3469 where
+the right answer is 0.3627, and a 2-D oddity network and a 2-D 2AFC network have
+identical shapes. These tests pin the metadata check at load that tells them apart.
 """
 
 from __future__ import annotations
@@ -112,10 +107,9 @@ def test_round_trip(toy_file):
 
 
 def test_standardization_is_applied(toy_file, tmp_path):
-    """The surrogate must standardize before the forward pass.
+    """The surrogate standardizes before the forward pass.
 
-    Weights and standardization statistics are stored together precisely because
-    using one without the other is silent; this pins that they are used together.
+    Weights without their standardization give wrong p with no error.
     """
     rng = np.random.default_rng(4)
     params = _toy_params(rng)
@@ -155,7 +149,7 @@ def test_weights_are_cast_to_the_ambient_dtype(toy_file):
 
 
 def test_refuses_a_file_with_no_metadata(tmp_path):
-    """Pre-schema files, e.g. the reference drop's originals, must not load."""
+    """A file without metadata, like the original reference weights, must not load."""
     path = tmp_path / "bare.npz"
     rng = np.random.default_rng(5)
     params = _toy_params(rng)
@@ -179,7 +173,7 @@ def test_refuses_the_wrong_task_and_names_both_sides(toy_file):
         )
     msg = str(e.value)
     assert "oddity" in msg and "2afc" in msg, (
-        f"the error must name what the file is AND what was wanted; got: {msg}"
+        f"the error must name both what the file is and what was wanted; got: {msg}"
     )
 
 
@@ -189,7 +183,7 @@ def test_refuses_the_wrong_dimension(toy_file):
 
 
 def test_refuses_a_stale_feature_map_version(toy_file):
-    """The nastiest case: same task, same shapes, feature definition changed."""
+    """Same task, same shapes, changed feature definition."""
     with pytest.raises(ValueError, match="feature_map_version"):
         NeuralSurrogate.from_npz(
             toy_file, require=dict(ODDITY_REQUIRE, feature_map_version=2)
@@ -206,9 +200,8 @@ def test_w_ref_is_compared_with_a_tolerance(toy_file):
 def test_refuses_when_n_features_disagrees_with_the_weights(tmp_path):
     """Declared width vs the width the network actually accepts.
 
-    This is checked against the weights rather than against any rule relating
-    n_features to input_dim: how many features a task needs is a property of its
-    feature map, and a different map may legitimately use a different count.
+    Checked against W_0, not against 2 * input_dim. A different feature map may
+    use a different count.
     """
     rng = np.random.default_rng(6)
     path = tmp_path / "inconsistent.npz"
@@ -266,12 +259,9 @@ def test_optional_fields_round_trip(tmp_path):
 
 
 def test_absent_optional_fields_are_absent_not_defaulted(toy_file):
-    """'Unknown' must stay distinguishable from a guessed value.
+    """An absent training domain stays absent, not a default box.
 
-    A surrogate extrapolates silently outside its training range, so a caller may
-    want to warn about that -- but only for files that carry a measured range.
-    Defaulting an absent box to something plausible would make the two cases
-    indistinguishable.
+    A caller can warn about extrapolation only for a file with a measured range.
     """
     s = NeuralSurrogate.from_npz(toy_file, require=ODDITY_REQUIRE)
     assert "domain_lo" not in s.meta

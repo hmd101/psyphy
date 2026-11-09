@@ -1,9 +1,7 @@
 """Tests for NeuralOddityTask: the surrogate wired in as a task likelihood.
 
-Most of these guard against failures that are *silent*. A task likelihood that is
-subtly wrong does not raise and does not produce NaN; it returns probabilities in
-(0, 1) that are merely incorrect, and a fit built on them looks entirely normal.
-Each test below names the specific way things go quiet.
+Most of these pin failures that raise no error and return probabilities in (0, 1)
+that are wrong. Each test says which one.
 """
 
 from __future__ import annotations
@@ -25,7 +23,6 @@ from psyphy.model.noise import StudentTNoise
 
 def _model(likelihood, *, input_dim=2, basis_degree=2, noise=None):
     return WPPM(
-        input_dim=input_dim,
         prior=Prior(input_dim=input_dim, basis_degree=basis_degree),
         likelihood=likelihood,
         noise=noise or GaussianNoise(),
@@ -44,7 +41,7 @@ def _trials(key, n=24, spread=0.25):
 
 
 def test_constructs_with_no_arguments():
-    """The shipped weights must be found without the user naming a path."""
+    """The shipped weights load without a path."""
     task = NeuralOddityTask()
     assert isinstance(task.surrogate, NeuralSurrogate)
     assert task.surrogate.meta["task"] == "oddity"
@@ -68,8 +65,7 @@ def test_is_a_bernoulli_task_likelihood():
 
     WPPM.predict_prob and WPPMPredictivePosterior both require a
     BernoulliTaskLikelihood. A task that subclasses TaskLikelihood directly still
-    fits without complaint, then raises on every prediction path -- so the
-    relationship is pinned here rather than left to inheritance review.
+    fits, then raises on every prediction path.
     """
     assert isinstance(NeuralOddityTask(), BernoulliTaskLikelihood)
 
@@ -78,10 +74,8 @@ def test_predict_returns_a_one_tuple():
     """A bare array here silently collapses every trial onto trial 0.
 
     BernoulliTaskLikelihood.loglik vmaps predict and then indexes element 0 of
-    the result. If predict returns a scalar rather than a tuple, that index
-    selects the *first trial's* probability and broadcasts it across the batch:
-    no error, a plausible log-likelihood, and a gradient that is wrong for every
-    trial but the first.
+    the result. If predict returns a scalar, that index selects the first trial's
+    probability and broadcasts it across the batch, with no error.
     """
     task = NeuralOddityTask()
     model = _model(task)
@@ -97,12 +91,10 @@ def test_predict_returns_a_one_tuple():
 
 
 def test_loglik_uses_each_trial_separately():
-    """The test a constant-probability fixture cannot perform.
+    """The total is the sum of per-trial terms, not a multiple of the first.
 
-    If every trial has the same p, reusing trial 0 is indistinguishable from
-    doing it properly. These trials are built so the probabilities differ, and
-    the assertion is that the total is the sum of the individual terms rather
-    than a multiple of the first.
+    With the same p on every trial, reusing trial 0 gives the right total, so
+    the 2 trials here have different p.
     """
     task = NeuralOddityTask()
     model = _model(task)
@@ -132,7 +124,7 @@ def test_loglik_uses_each_trial_separately():
 
 
 def test_predict_prob_works_end_to_end():
-    """Exercises the isinstance gate rather than merely asserting the class."""
+    """Goes through the isinstance gate in WPPM.predict_prob."""
     model = _model(NeuralOddityTask())
     params = model.init_params(jr.PRNGKey(0))
     p = model.predict_prob(params, (jnp.array([0.0, 0.0]), jnp.array([0.3, 0.1])))
@@ -147,9 +139,8 @@ def test_predict_prob_works_end_to_end():
 def test_rejects_a_non_two_dimensional_model():
     """The feature map's rotation step is a 2-D construction.
 
-    In 3-D the same argument gives six features, not four, and would need its own
-    trained weights. Running the 2-D map on a 3-D model would not fail loudly, so
-    it is refused explicitly.
+    In 3-D the same reduction gives 6 features and needs its own weights. The
+    2-D map on a 3-D model would not raise by itself.
     """
     model = _model(NeuralOddityTask(), input_dim=3)
     params = model.init_params(jr.PRNGKey(0))
@@ -167,18 +158,12 @@ def test_rejects_non_gaussian_noise():
 
 
 # --------------------------------------------------------------------------
-# behaviour under JAX transforms, and the determinism that is the point
+# behavior under JAX transforms, and determinism
 # --------------------------------------------------------------------------
 
 
 def test_is_declared_deterministic():
-    """is_stochastic is what lets samplers stop guessing.
-
-    An MC likelihood needs a PRNG key and gives a slightly different answer each
-    call; this one does not. Declaring it lets NUTS skip its fixed-key workaround
-    and lets a Laplace approximation refuse a likelihood whose Hessian would be
-    noise.
-    """
+    """The class attribute says loglik ignores its key."""
     assert NeuralOddityTask.is_stochastic is False
 
 
@@ -215,25 +200,22 @@ def test_jit_and_grad_are_finite():
 
 
 # --------------------------------------------------------------------------
-# the sub-chance regime: real, and not to be clamped
+# below chance, and not clipped
 # --------------------------------------------------------------------------
 
 
 def test_sub_chance_predictions_are_preserved():
-    """Below 1/3 is a correct answer here, not a bug to be clipped away.
+    """Below 1/3 is the right answer here, so the clip must not floor it there.
 
-    The observer modelled by the oddity rule picks the two stimuli that are
-    closest together and calls the third the odd one. That rule is not optimal.
-    When the comparison's distribution is much tighter than the reference's, the
-    two reference draws scatter while the comparison sits near the shared centre,
-    so one reference is usually closer to the comparison than to its own twin and
-    the rule names the wrong stimulus. Performance is then *reliably* wrong, which
-    is worse than guessing.
+    The oddity rule picks the two stimuli closest together and calls the third
+    the odd one. When the comparison's distribution is much tighter than the
+    reference's, the two reference samples scatter while the comparison sits
+    near the shared center. One reference is then usually closer to the
+    comparison than to the other reference, and the rule names the wrong
+    stimulus more often than a guess would.
 
-    Confirmed against a two-million-sample simulation: cases like this one have a
-    true P(correct) near 0.17. Clipping to the 1/3 guessing rate would replace a
-    correct prediction with a wrong one, and would flatten the gradient exactly
-    where the data is most informative about the comparison covariance.
+    A two-million-sample simulation gives P(correct) near 0.17 for cases like
+    this one.
     """
     from psyphy.model.likelihood.features import whitened_oddity_features
 
@@ -254,19 +236,14 @@ def test_sub_chance_predictions_are_preserved():
 
 
 def test_agrees_with_the_monte_carlo_task():
-    """The claim that makes the surrogate usable: it reproduces OddityTask.
+    """The surrogate reproduces OddityTask at 20,000 samples.
 
-    The comparison is against a *high-sample* simulation on purpose. At the
-    default sample count the simulation's own sampling error is larger than the
-    surrogate's approximation error, so testing against it would mostly measure
-    noise and would reward the wrong thing.
+    At the default sample count the simulation's own sampling error is larger
+    than the surrogate's error, so we compare against a high-sample run.
 
-    Tolerance comes from measurement rather than taste: over these trials the
-    median absolute difference is about 0.003 and the maximum about 0.009, and
-    the published worst-case error for this network is roughly 0.02. The bound
-    below sits above the observed maximum and below the published one, so it
-    fails if the feature map, the weights or the standardization drift, without
-    being so tight that Monte Carlo noise trips it.
+    Measured over these trials: median |diff| about 0.003, maximum about 0.009.
+    The bound of 0.02 is above that maximum and fails if the feature map, the
+    weights or the standardization change.
     """
     nn_task = NeuralOddityTask()
     mc_task = OddityTask(OddityTaskConfig(num_samples=20_000))
