@@ -1,42 +1,28 @@
 #!/usr/bin/env python3
 """Re-save a reference surrogate weight file with psyphy's metadata schema.
 
-One-off, but version-controlled rather than run-and-forgotten: the provenance of
-a shipped weight file should be reproducible, and the *script* is the artefact
-worth reviewing. The resulting ``.npz`` is committed as package data.
+We ran it once to produce the weight file psyphy ships,
+``src/psyphy/model/likelihood/weights/oddity_2d_64x2.npz``. The weights are
+Philip Greengard's, trained outside psyphy. His files hold only the network and
+its standardization (``W_i``, ``b_i``, ``n_layers``, ``input_mean``,
+``input_std``), and ``NeuralSurrogate.from_npz`` refuses a file without
+metadata.
 
-Context
--------
-The surrogate weights come from Philip Greengard's ``nn_march2026`` drop, whose
-files hold nine arrays and nothing else: ``W_i``, ``b_i``, ``n_layers``,
-``input_mean``, ``input_std``. That is a complete description of a *network* but
-not of a *surrogate*, because it does not say which task, dimension or feature
-map the network was fitted for. A 2-D oddity network and a 2-D two-interval
-network have identical shapes, so nothing stops the wrong one being loaded, and
-the result is a plausible probability rather than an error.
-
-``psyphy.model.likelihood.neural.from_npz`` therefore refuses files without
-metadata. This script is what makes the reference weights loadable again.
-
-What is asserted here, and what is not
---------------------------------------
+What we write
+-------------
 ``task``, ``input_dim``, ``feature_map``, ``feature_map_version`` and ``w_ref``
-are known from how the network was trained: on the Sbar-whitened,
-rotation-reduced 4-D features of the 3-AFC oddity task.
+follow from how the network was trained: on the whitened, rotation-reduced 4-D
+features of the 3-AFC oddity task.
 
-``domain_lo``/``domain_hi`` are deliberately **not** written. We do not have the
-training set, and a box inferred from ``input_mean ± k·input_std`` would describe
-the training distribution rather than its support, while looking exactly like a
-measured one to anyone reading the file later. Absent means unknown.
-
-``label_mc_samples`` and the validation errors are likewise omitted unless given
-on the command line, because they are properties of a training run we did not
-perform.
+``domain_lo``/``domain_hi`` are left out, since we do not have the training set.
+``label_mc_samples`` is written only when passed on the command line, and the
+validation errors are not written.
 
 Usage
 -----
     python scripts/convert_reference_surrogate.py \
-
+        --src path/to/reference.npz \
+        --dest src/psyphy/model/likelihood/weights/oddity_2d_64x2.npz
 """
 
 from __future__ import annotations
@@ -64,10 +50,7 @@ def convert(src: Path, dest: Path, *, label_mc_samples: int | None = None) -> Pa
         input_mean, input_std = d["input_mean"], d["input_std"]
 
     n_features = int(params[0][0].shape[0])
-    # The affine invariance of these tasks reduces the inputs to 2 * input_dim
-    # numbers, so the feature count determines the dimension. See the module
-    # docstring of psyphy.model.likelihood.features for the counting argument.
-    input_dim = n_features // 2
+    input_dim = n_features // 2  # 2 * input_dim features, see likelihood.features
 
     meta = {
         "task": "oddity",
@@ -80,7 +63,7 @@ def convert(src: Path, dest: Path, *, label_mc_samples: int | None = None) -> Pa
         .date()
         .isoformat(),
         "generator_rev": f"nn_march2026/{src.name}",
-        # NOTE: no domain_lo/domain_hi on purpose. See the module docstring.
+        # no domain_lo/domain_hi, see the module docstring
     }
     if label_mc_samples is not None:
         meta["label_mc_samples"] = int(label_mc_samples)
@@ -106,8 +89,7 @@ def main() -> None:
         "--label-mc-samples",
         type=int,
         default=None,
-        help="MC samples behind each training label, if known. Omitted when not given, "
-        "rather than guessed.",
+        help="MC samples behind each training label, if known. Not written when not given.",
     )
     args = ap.parse_args()
 
