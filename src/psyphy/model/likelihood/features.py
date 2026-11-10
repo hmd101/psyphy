@@ -1,40 +1,29 @@
 r"""psyphy.model.likelihood.features
 
-Feature maps for neural surrogate likelihoods: the compression step that makes a
-trained surrogate small enough to be worth training.
+Feature maps for neural surrogate likelihoods: the few numbers per trial that a
+surrogate network takes as input.
 
-Why this exists
----------------
-For a discrimination task whose decision rule is a Mahalanobis comparison, the
-probability of a correct response depends on the two covariances and the two
-stimulus locations only through a handful of numbers. In 2-D the raw count is
-eight (three free entries per symmetric covariance, plus the two-vector mean
-difference), and the task is invariant under *any* invertible affine change of
-stimulus coordinates, which removes four of them. A surrogate therefore has to
-learn a 4-D function rather than an 8-D one.
+For a task whose decision rule compares Mahalanobis distances, ``P(correct)``
+depends on the two covariances and the two stimulus locations only through a few
+numbers. A 2-D trial has 8: 3 per symmetric covariance and 2 for the difference
+between the locations. ``P(correct)`` does not change under an invertible affine
+change of stimulus coordinates, which removes 4 of them, so a 2-D surrogate takes
+4 features. In general the count is ``2 * input_dim``.
 
-The reduction happens in two steps, split here because they generalise
-differently:
+We reduce a trial in 2 steps:
 
 ``whiten``
     Change coordinates so the pooled covariance becomes the identity. Works in
-    any dimension and for any task; the task enters only through the pooling
+    any dimension and for any task. The task enters only through the pooling
     weight ``w_ref``. Removes ``d(d+1)/2`` numbers.
 ``reduce_2d``
-    Spend the remaining rotational freedom aligning the mean difference with an
-    axis, so only its length matters. Dimension-specific: a 3-D analogue needs a
-    different construction and yields six features rather than four.
+    Rotate so the mean difference lies along an axis, which leaves only its
+    length. 2-D only. A 3-D version would give 6 features.
 
-The count is ``2 * input_dim`` in general.
-
-Public on purpose
------------------
-These are free functions over arrays, not methods on a model, in the same spirit
-as :mod:`psyphy.viz.geometry`: they depend only on JAX, are testable without a
-model or a trained network, and are what someone deriving a feature map for their
-own task needs to build on. The weight-file metadata records which feature map a
-set of weights expects, so the identity of this module is already part of the
-serialized format.
+These are free functions over arrays, like :mod:`psyphy.viz.geometry`, and need
+no model or trained network. To build a feature map for a new task, start from
+:func:`whiten` with that task's ``w_ref``. A weight file names the feature map it
+expects in its ``feature_map`` metadata.
 """
 
 from __future__ import annotations
@@ -63,9 +52,10 @@ def whiten(
     ``S_bar = w_ref * Sigma_ref + (1 - w_ref) * Sigma_comp``, so every distance
     carries an ``S_bar^-1``. Changing to coordinates where ``S_bar`` is the
     identity turns those Mahalanobis distances into ordinary Euclidean ones.
+    Works in any dimension.
 
-    The change of basis is ``M = inv(chol(S_bar))``, applied here as triangular
-    solves rather than by forming ``M`` (cheaper, and better conditioned).
+    The change of basis is ``M = inv(chol(S_bar))``, which we apply as triangular
+    solves without forming ``M``.
 
     In the new coordinates the comparison covariance is no longer free: the
     constraint ``w_ref * A + (1 - w_ref) * B = I`` gives
@@ -81,8 +71,7 @@ def whiten(
         The stimulus locations themselves.
     w_ref : float
         Weight of the reference covariance in the pooled covariance. 2/3 for the
-        3-AFC oddity task, 1/2 for a two-interval task. Passing this rather than
-        hard-coding it is what lets a different task reuse this function.
+        3-AFC oddity task, 1/2 for a two-interval task.
 
     Returns
     -------
@@ -90,11 +79,6 @@ def whiten(
         ``Sigma_ref`` in whitened coordinates.
     d_whitened : jnp.ndarray, shape (d,)
         The mean difference in whitened coordinates.
-
-    Notes
-    -----
-    Works in any dimension. The dimension-specific part is the reduction that
-    follows, not this.
     """
     Sbar = w_ref * Sigma_ref + (1.0 - w_ref) * Sigma_comp
     chol = jnp.linalg.cholesky(Sbar)
@@ -111,12 +95,11 @@ def whiten(
 
 
 def reduce_2d(A: jnp.ndarray, d_whitened: jnp.ndarray) -> jnp.ndarray:
-    r"""Spend the residual rotation, giving the four 2-D features.
+    r"""Rotate a whitened 2-D trial so the mean difference lies along +y.
 
-    After whitening, the only remaining coordinate freedom is rotation, because
-    rotations are what preserve the identity covariance. Using it to align the
-    mean difference with the +y axis means only the *length* of that vector
-    matters, removing one more number.
+    After whitening, rotations are the only coordinate changes left that keep the
+    pooled covariance the identity. We use one to put the mean difference on the
+    +y axis, so only its length remains. That gives the 4 features of a 2-D trial.
 
     Parameters
     ----------
@@ -132,10 +115,9 @@ def reduce_2d(A: jnp.ndarray, d_whitened: jnp.ndarray) -> jnp.ndarray:
 
     Notes
     -----
-    When the two stimuli coincide the rotation is undefined. The identity is
-    used in that case, which is the right limit: ``||d|| = 0`` carries the
-    information that the stimuli are identical, and the orientation of ``A`` is
-    then irrelevant because every direction is equivalent.
+    When the two stimuli coincide the rotation is undefined, and we use the
+    identity. ``||d||`` is then 0, and the orientation of ``A`` does not change
+    ``P(correct)``.
     """
     norm = jnp.linalg.norm(d_whitened)
     degenerate = norm < 1e-30
@@ -164,13 +146,14 @@ def whitened_oddity_features(
 ) -> jnp.ndarray:
     r"""The four features a 2-D surrogate consumes: :func:`whiten` then :func:`reduce_2d`.
 
-    One trial, not a batch: psyphy's ``predict`` contract is per-trial and
-    ``BernoulliTaskLikelihood.loglik`` supplies the ``vmap``.
+    One trial, not a batch. ``BernoulliTaskLikelihood.loglik`` vmaps over trials.
 
     Parameters
     ----------
     Sigma_ref, Sigma_comp : jnp.ndarray, shape (2, 2)
+        Covariances at the reference and at the comparison.
     mu_ref, mu_comp : jnp.ndarray, shape (2,)
+        The reference and comparison stimuli.
     w_ref : float
         See :func:`whiten`. The default is the oddity task's 2/3.
 
@@ -181,8 +164,7 @@ def whitened_oddity_features(
 
     Warnings
     --------
-    2-D only. The rotational reduction in :func:`reduce_2d` is a 2-D
-    construction; callers must validate ``input_dim`` themselves.
+    2-D only, and not checked here. Check ``input_dim`` before calling.
     """
     A, d_whitened = whiten(Sigma_ref, Sigma_comp, mu_ref, mu_comp, w_ref=w_ref)
     return reduce_2d(A, d_whitened)
