@@ -32,9 +32,8 @@ Core design
    - Encodes the psychophysical decision rule.
    - WPPM: loglik and predict implemented via Monte Carlo
      observer simulations, using the noise model explicitly.
-   - A trained surrogate (NeuralOddityTask) evaluates the same
-     quantity with a network fitted to that simulation, which is
-     both faster and deterministic.
+   - NeuralOddityTask: the same quantity from a network fitted
+     to that simulation, the same value for every PRNG key.
 
 4. NoiseModel (model/noise.py):
    - Defines the distribution of internal representation noise.
