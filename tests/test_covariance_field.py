@@ -7,8 +7,8 @@ Tests for CovarianceField abstraction
 1. Protocol conformance
 2. Construction methods (from_prior, from_posterior, from_params)
 3. Evaluation methods (field(x), sqrt_cov)
-4. MVP mode behavior
-5. Wishart mode behavior
+4. Covariance varies with x and is positive definite
+5. Rectangular U (extra embedding dims)
 6. Integration with posteriors
 
 """
@@ -30,7 +30,7 @@ from psyphy.model.noise import GaussianNoise
 
 @pytest.fixture
 def wishart_model():
-    """Create Wishart model (with basis expansion)."""
+    """Create a model with basis_degree=3."""
     return WPPM(
         prior=Prior(
             input_dim=2,
@@ -81,7 +81,7 @@ def test_covariance_field_protocol_exists():
 
 
 def test_from_prior_wishart(wishart_model):
-    """Test from_prior construction in Wishart mode."""
+    """Test from_prior construction."""
     from psyphy.model.covariance_field import WPPMCovarianceField
 
     key = jr.PRNGKey(456)
@@ -95,11 +95,6 @@ def test_from_prior_wishart(wishart_model):
     #   degree+1 = 4, input_dim = 2, embedding_dim = 3
     # Shape: (4, 4, 2, 3)
     assert field.params["W"].shape == (4, 4, 2, 3)
-
-
-# ==============================================================================
-# Test  Evaluation methods - MVP mode
-# ==============================================================================
 
 
 # ==============================================================================
@@ -130,7 +125,7 @@ def test_cov_wishart_varies(wishart_model):
 
 
 def test_sqrt_cov_wishart(wishart_model):
-    """Test sqrt_cov in Wishart mode (rectangular U)."""
+    """Test sqrt_cov with rectangular U."""
     from psyphy.model.covariance_field import WPPMCovarianceField
 
     key = jr.PRNGKey(555)
@@ -151,7 +146,7 @@ def test_sqrt_cov_wishart(wishart_model):
 
 
 def test_batch_eval_wishart(wishart_model):
-    """Test vectorized evaluation in Wishart mode (rectangular U)."""
+    """Test vectorized evaluation with rectangular U."""
     from psyphy.model.covariance_field import WPPMCovarianceField
 
     key = jr.PRNGKey(666)
@@ -182,7 +177,7 @@ def test_batch_eval_wishart(wishart_model):
 
 
 def test_sqrt_cov_batch_wishart(wishart_model):
-    """Test vectorized sqrt_cov in Wishart mode (rectangular U)."""
+    """Test vectorized sqrt_cov with rectangular U."""
     from psyphy.model.covariance_field import WPPMCovarianceField
 
     key = jr.PRNGKey(777)
@@ -215,7 +210,7 @@ def test_sqrt_cov_batch_wishart(wishart_model):
 
 
 def test_posterior_get_covariance_field_wishart(wishart_model, sample_data):
-    """Test posterior.get_covariance_field() in Wishart mode (rectangular U).
+    """Test posterior.get_covariance_field() with rectangular U.
 
     API Design Note
     ---------------
@@ -253,7 +248,7 @@ def test_posterior_get_covariance_field_wishart(wishart_model, sample_data):
 
 
 def test_protocol_conformance_wishart(wishart_model):
-    """Test protocol conformance in Wishart mode."""
+    """Test protocol conformance."""
     from psyphy.model.covariance_field import CovarianceField, WPPMCovarianceField
 
     key = jr.PRNGKey(999)
@@ -283,3 +278,43 @@ def test_consistency_with_model_compute_sqrt(wishart_model):
     U_model = wishart_model._compute_sqrt(params, x)
 
     assert jnp.allclose(U_field, U_model)
+
+
+# ==============================================================================
+# Read-only attributes (backlog C24, decision 0012)
+# ==============================================================================
+
+
+@pytest.mark.parametrize("name", ["params", "model"])
+def test_field_attributes_refuse_assignment(wishart_model, name):
+    """Assigning to a fixed attribute raises, so a batch call can't go stale silently."""
+    from psyphy.model import WPPMCovarianceField
+
+    field = WPPMCovarianceField.from_prior(wishart_model, jr.PRNGKey(0))
+    with pytest.raises(AttributeError, match="Build a new one"):
+        setattr(field, name, getattr(field, name))
+
+
+def test_field_params_item_assignment_changes_nothing(wishart_model):
+    """Replacing an item of the returned dict can't reach the stored parameters."""
+    from psyphy.model import WPPMCovarianceField
+
+    field = WPPMCovarianceField.from_prior(wishart_model, jr.PRNGKey(0))
+    X = jnp.array([[0.1, 0.2], [0.5, 0.4]])  # (n_points=2, d=2)
+    before = field(X)  # (n_points, d, d)
+    field.params["W"] = jnp.zeros_like(field.params["W"])
+    assert jnp.array_equal(field(X), before)
+    # compiled and uncompiled paths differ by about 1e-8 here, so atol=1e-6 has 100x headroom
+    assert jnp.allclose(field(X[0]), before[0], rtol=0.0, atol=1e-6)
+    assert field.params["W"].any()
+
+
+def test_field_params_read_back(wishart_model):
+    """Reading params returns the dict the field was built with."""
+    from psyphy.model import WPPMCovarianceField
+
+    params = wishart_model.init_params(jr.PRNGKey(0))
+    field = WPPMCovarianceField(wishart_model, params)
+    assert field.model is wishart_model
+    assert set(field.params) == set(params)
+    assert jnp.array_equal(field.params["W"], params["W"])
