@@ -8,7 +8,8 @@ once per distribution, and a new task only implements ``predict``:
 
 Modules
 -------
-base     : TaskLikelihood, BernoulliTaskLikelihood, GaussianTaskLikelihood
+base     : TaskLikelihood, BernoulliTaskLikelihood, GaussianTaskLikelihood,
+           log_probs_from_logit
 oddity   : OddityTaskConfig, OddityTask (3-AFC, Monte Carlo)
 features : whiten, reduce_2d, whitened_oddity_features, the inputs a neural
            surrogate takes
@@ -44,6 +45,7 @@ from .base import (
     BernoulliTaskLikelihood,
     GaussianTaskLikelihood,
     TaskLikelihood,
+    log_probs_from_logit,
 )
 from .features import reduce_2d, whiten, whitened_oddity_features
 from .neural import (
@@ -59,6 +61,7 @@ __all__ = [
     "TaskLikelihood",
     "BernoulliTaskLikelihood",
     "GaussianTaskLikelihood",
+    "log_probs_from_logit",
     # Concrete tasks
     "OddityTaskConfig",
     "OddityTask",

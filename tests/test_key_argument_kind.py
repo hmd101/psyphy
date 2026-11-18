@@ -18,6 +18,7 @@ from psyphy.model import WPPM, OddityTask, Prior, WPPMCovarianceFieldSamples
 from psyphy.model.likelihood import (
     BernoulliTaskLikelihood,
     GaussianTaskLikelihood,
+    NeuralOddityTask,
     TaskLikelihood,
 )
 from psyphy.posterior import (
@@ -41,6 +42,7 @@ POSITIONAL = [
     GaussianTaskLikelihood.simulate,
     GaussianTaskLikelihood.loglik,
     OddityTask.predict,
+    NeuralOddityTask.predict,
     WPPM.log_likelihood_from_data,
     WPPM.log_posterior_from_data,
 ]

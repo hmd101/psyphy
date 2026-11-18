@@ -3,8 +3,8 @@ r"""psyphy.model.likelihood.neural
 Trained surrogates for task likelihoods, and the file format they are stored in.
 
 A surrogate replaces the Monte Carlo estimate of ``P(correct)`` with a forward pass
-through a small network fitted offline to that simulation. It returns the same
-value for every PRNG key.
+through a small network fitted offline to that simulation. The network returns the
+logit of ``P(correct)``, the same value for every PRNG key.
 
 The module holds the forward pass (:func:`mlp_forward`), the network and its file
 (:class:`NeuralSurrogate`, :func:`save_surrogate_npz`), and the oddity task that
@@ -42,7 +42,7 @@ import jax
 import jax.numpy as jnp
 import numpy as np
 
-from .base import BernoulliTaskLikelihood
+from .base import BernoulliTaskLikelihood, log_probs_from_logit
 from .features import ODDITY_W_REF, whitened_oddity_features
 
 __all__ = [
@@ -79,7 +79,7 @@ NNParams = list[tuple[jnp.ndarray, jnp.ndarray]]
 
 
 def mlp_forward(params: NNParams, x: jnp.ndarray) -> jnp.ndarray:
-    """Forward pass: GELU on the hidden layers, sigmoid on the output.
+    """Forward pass: GELU on the hidden layers, a linear output layer.
 
     Parameters
     ----------
@@ -91,14 +91,15 @@ def mlp_forward(params: NNParams, x: jnp.ndarray) -> jnp.ndarray:
     Returns
     -------
     jnp.ndarray, shape (...)
-        ``P(correct)`` in ``(0, 1)``. The trailing singleton axis from the output
-        layer is squeezed, so a single feature vector gives a scalar.
+        The logit of ``P(correct)``, so ``P(correct) = sigmoid(logit)``. The
+        trailing singleton axis from the output layer is squeezed, so a single
+        feature vector gives a scalar.
     """
     h = x
     for W, b in params[:-1]:
         h = jax.nn.gelu(h @ W + b)
     W_last, b_last = params[-1]
-    return jax.nn.sigmoid((h @ W_last + b_last)[..., 0])
+    return (h @ W_last + b_last)[..., 0]
 
 
 def _as_python(value: Any) -> Any:
@@ -146,7 +147,7 @@ class NeuralSurrogate:
         Returns
         -------
         jnp.ndarray, shape (...)
-            ``P(correct)`` in ``(0, 1)``.
+            The logit of ``P(correct)``.
         """
         return mlp_forward(self.params, (x - self.input_mean) / self.input_std)
 
@@ -349,9 +350,6 @@ ODDITY_2D_REQUIRE: dict[str, Any] = {
 #: Weight file shipped with psyphy, used when no surrogate is supplied.
 DEFAULT_ODDITY_WEIGHTS = "oddity_2d_64x2.npz"
 
-# clip on the returned p, so log(p) and log(1 - p) stay finite. Not 1/3, see predict()
-_P_EPS = 1e-6
-
 
 def _default_surrogate() -> NeuralSurrogate:
     """Load the weight file that ships with psyphy."""
@@ -380,9 +378,10 @@ class NeuralOddityTask(BernoulliTaskLikelihood):
     Parameters
     ----------
     surrogate : callable, optional
-        Maps the 4 features to ``P(correct)``. Defaults to the weights shipped
-        with psyphy. Any callable with that signature works, a
-        :class:`NeuralSurrogate` or a network from another framework.
+        Maps the 4 features to the logit of ``P(correct)``, that is
+        ``log(p / (1 - p))``. Defaults to the weights shipped with psyphy. Any
+        callable with that signature works, a :class:`NeuralSurrogate` or a
+        network from another framework.
 
     Notes
     -----
@@ -429,10 +428,9 @@ class NeuralOddityTask(BernoulliTaskLikelihood):
         params: Any,
         stimuli: jnp.ndarray,
         model: Any,
-        *,
         key: Any = None,
-    ) -> tuple[jnp.ndarray]:
-        """Return ``(P(correct),)`` for one trial.
+    ) -> tuple[jnp.ndarray, jnp.ndarray]:
+        """Return log P(correct) and log P(incorrect) for one trial.
 
         Parameters
         ----------
@@ -448,8 +446,10 @@ class NeuralOddityTask(BernoulliTaskLikelihood):
 
         Returns
         -------
-        tuple of one jnp.ndarray, shape ()
-            ``(p_correct,)``, the convention for a Bernoulli task.
+        log_p : jnp.ndarray, shape ()
+            log P(correct).
+        log_1mp : jnp.ndarray, shape ()
+            log P(incorrect).
 
         Raises
         ------
@@ -466,11 +466,11 @@ class NeuralOddityTask(BernoulliTaskLikelihood):
         features = whitened_oddity_features(
             sigma_ref, sigma_comp, ref, comp, w_ref=ODDITY_W_REF
         )
-        p = self.surrogate(features)
+        z = self.surrogate(features)  # logit of P(correct), shape ()
 
-        # Clip for finite logs only, no floor at 1/3. When Sigma_comp is much tighter
-        # than Sigma_ref this rule does worse than chance (p ~ 0.17), and that p is right
-        return (jnp.clip(p, _P_EPS, 1.0 - _P_EPS),)
+        # no floor at 1/3: when Sigma_comp is much tighter than Sigma_ref this rule
+        # does worse than chance (p ~ 0.17), and that p is right
+        return log_probs_from_logit(z)
 
     def _check_applicable(self, model: Any) -> None:
         """Raise for a model the shipped weights do not describe.

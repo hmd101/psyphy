@@ -6,6 +6,7 @@ that are wrong. Each test says which one.
 
 from __future__ import annotations
 
+import jax
 import jax.numpy as jnp
 import jax.random as jr
 import numpy as np
@@ -70,24 +71,20 @@ def test_is_a_bernoulli_task_likelihood():
     assert isinstance(NeuralOddityTask(), BernoulliTaskLikelihood)
 
 
-def test_predict_returns_a_one_tuple():
-    """A bare array here silently collapses every trial onto trial 0.
-
-    BernoulliTaskLikelihood.loglik vmaps predict and then indexes element 0 of
-    the result. If predict returns a scalar, that index selects the first trial's
-    probability and broadcasts it across the batch, with no error.
-    """
+def test_predict_returns_log_probabilities():
+    """predict returns (log_p, log_1mp), which BernoulliTaskLikelihood.loglik unpacks."""
     task = NeuralOddityTask()
     model = _model(task)
     params = model.init_params(jr.PRNGKey(0))
     out = task.predict(params, _trials(jr.PRNGKey(1), n=1)[0], model)
 
-    assert isinstance(out, tuple), (
-        "predict must return a tuple of sufficient statistics"
-    )
-    assert len(out) == 1, "a Bernoulli task returns exactly (p_correct,)"
-    assert jnp.ndim(out[0]) == 0
-    assert 0.0 < float(out[0]) < 1.0
+    assert isinstance(out, tuple), "predict must return a tuple"
+    assert len(out) == 2, "a Bernoulli task returns exactly (log_p, log_1mp)"
+    log_p, log_1mp = out
+    assert jnp.ndim(log_p) == 0 and jnp.ndim(log_1mp) == 0
+    assert float(log_p) < 0.0 and float(log_1mp) < 0.0
+    # complementary outcomes; float32 rounding is about 1e-7, so 1e-5 is 100x headroom
+    assert float(jnp.exp(log_p) + jnp.exp(log_1mp)) == pytest.approx(1.0, abs=1e-5)
 
 
 def test_loglik_uses_each_trial_separately():
@@ -108,7 +105,7 @@ def test_loglik_uses_each_trial_separately():
     )
     responses = jnp.array([[1], [1]])
 
-    per_trial = [float(task.predict(params, s, model)[0]) for s in stimuli]
+    per_trial = [float(jnp.exp(task.predict(params, s, model)[0])) for s in stimuli]
     assert abs(per_trial[0] - per_trial[1]) > 0.05, "fixture must have differing p"
 
     got = float(
@@ -182,8 +179,6 @@ def test_is_deterministic_in_fact():
 
 
 def test_jit_and_grad_are_finite():
-    import jax
-
     task = NeuralOddityTask()
     model = _model(task)
     params = model.init_params(jr.PRNGKey(0))
@@ -225,7 +220,7 @@ def test_sub_chance_predictions_are_preserved():
     mu = jnp.zeros(2)
 
     x = whitened_oddity_features(Sigma_ref, Sigma_comp, mu, mu)
-    p = float(surrogate(x))
+    p = float(jax.nn.sigmoid(surrogate(x)))  # the surrogate returns a logit
     assert p < 1.0 / 3.0, f"expected a sub-chance probability, got {p}"
     assert p > 0.10, f"{p} is implausibly low even for this regime"
 
@@ -260,10 +255,13 @@ def test_agrees_with_the_monte_carlo_task():
     stimuli = jnp.stack([refs, comps], axis=1)
     keys = jr.split(jr.PRNGKey(3), n)
 
-    p_nn = np.array([float(nn_task.predict(params, s, model_nn)[0]) for s in stimuli])
+    # predict returns (log_p, log_1mp), so [0] is log P(correct)
+    p_nn = np.array(
+        [float(jnp.exp(nn_task.predict(params, s, model_nn)[0])) for s in stimuli]
+    )
     p_mc = np.array(
         [
-            float(mc_task.predict(params, s, model_mc, key=k)[0])
+            float(jnp.exp(mc_task.predict(params, s, model_mc, key=k)[0]))
             for s, k in zip(stimuli, keys)
         ]
     )

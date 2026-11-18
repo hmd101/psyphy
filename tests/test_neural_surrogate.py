@@ -66,13 +66,13 @@ def toy_file(tmp_path):
 # --------------------------------------------------------------------------
 
 
-def test_mlp_forward_shape_and_range():
+def test_mlp_forward_returns_one_finite_logit_per_row():
     rng = np.random.default_rng(1)
     params = _toy_params(rng)
     x = jnp.asarray(rng.normal(size=(7, 4)))
-    p = mlp_forward(params, x)
-    assert p.shape == (7,), "one probability per row, with the trailing axis squeezed"
-    assert bool(jnp.all((p > 0) & (p < 1))), "sigmoid output must be a probability"
+    z = mlp_forward(params, x)
+    assert z.shape == (7,), "one logit per row, with the trailing axis squeezed"
+    assert bool(jnp.all(jnp.isfinite(z)))
 
 
 def test_mlp_forward_is_batch_polymorphic():
@@ -103,7 +103,7 @@ def test_round_trip(toy_file):
     assert s.meta["input_dim"] == 2
     assert s.meta["psyphy_surrogate_version"] == SCHEMA_VERSION
     out = s(jnp.zeros(4))
-    assert out.shape == () and 0.0 < float(out) < 1.0
+    assert out.shape == () and bool(jnp.isfinite(out)), "a finite logit"
 
 
 def test_standardization_is_applied(toy_file, tmp_path):
