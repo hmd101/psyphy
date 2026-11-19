@@ -26,8 +26,8 @@ noise realization. This bias decreases as MC_SAMPLES -> \inf (>=200 recommended)
 
 Alternatives (not implemented here):
 - fresh key per NUTS *trajectory* (pseudo-marginal / noisy HMC)
-- Neural surrogate likelihood
-(exact gradients, see NeuralSurrogateTask, not yet implemented)
+- Fast likelihood from a trained network
+(exact gradients, see FastOddityTask, not yet implemented)
 
 Notes on warmup cost
 --------------------

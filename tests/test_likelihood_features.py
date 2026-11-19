@@ -2,7 +2,7 @@
 
 The assertions follow from the math of the feature map:
 
-* whitening is defined by `M S_bar M^T = I`
+* normalizing by noise is defined by `M S_bar M^T = I`
 * the pooled constraint `w*A + (1-w)*B = I` gives `B = (I - w*A)/(1-w)`, which
   removes 3 free numbers
 * `P(correct)` does not change under an invertible affine change of stimulus
@@ -21,9 +21,9 @@ import numpy as np
 import pytest
 
 from psyphy.model.likelihood.features import (
-    reduce_2d,
-    whiten,
-    whitened_oddity_features,
+    align_displacement_2d,
+    normalize_by_noise,
+    oddity_features,
 )
 
 ODDITY_W = 2.0 / 3.0  # two reference presentations, one comparison
@@ -58,39 +58,39 @@ def _trial(rng, d=2):
 
 
 # --------------------------------------------------------------------------
-# whiten(): the defining property, and what it buys
+# normalize_by_noise(): the defining property, and what it buys
 # --------------------------------------------------------------------------
 
 
-@pytest.mark.parametrize("w_ref", [ODDITY_W, TWOAFC_W])
-def test_whitening_makes_the_pooled_covariance_the_identity(w_ref):
-    """The definition of whitening."""
+@pytest.mark.parametrize("pooling_weight", [ODDITY_W, TWOAFC_W])
+def test_normalize_by_noise_makes_the_pooled_covariance_the_identity(pooling_weight):
+    """The definition of normalizing by noise."""
     rng = np.random.default_rng(0)
     for _ in range(20):
         Sr, Sc, mr, mc = _trial(rng)
-        A, _ = whiten(Sr, Sc, mr, mc, w_ref=w_ref)
-        B = (jnp.eye(2) - w_ref * A) / (1.0 - w_ref)
-        # A and B are Sigma_ref and Sigma_comp in whitened coordinates, so the
+        A, _ = normalize_by_noise(Sr, Sc, mr, mc, pooling_weight=pooling_weight)
+        B = (jnp.eye(2) - pooling_weight * A) / (1.0 - pooling_weight)
+        # A and B are cov_ref and cov_comparison in noise units, so the
         # pooled combination of them must be exactly the identity.
-        pooled = w_ref * A + (1.0 - w_ref) * B
+        pooled = pooling_weight * A + (1.0 - pooling_weight) * B
         # atol for float32, eps 1.2e-7
         assert jnp.allclose(pooled, jnp.eye(2), atol=1e-6)
 
 
-@pytest.mark.parametrize("w_ref,bound", [(ODDITY_W, 1.5), (TWOAFC_W, 2.0)])
-def test_eigenvalues_of_A_are_bounded_by_one_over_w(w_ref, bound):
-    """B must stay positive definite, which caps eig(A) at 1/w_ref."""
+@pytest.mark.parametrize("pooling_weight,bound", [(ODDITY_W, 1.5), (TWOAFC_W, 2.0)])
+def test_eigenvalues_of_A_are_bounded_by_one_over_w(pooling_weight, bound):
+    """B must stay positive definite, which caps eig(A) at 1/pooling_weight."""
     rng = np.random.default_rng(1)
     for _ in range(50):
         Sr, Sc, mr, mc = _trial(rng)
-        A, _ = whiten(Sr, Sc, mr, mc, w_ref=w_ref)
+        A, _ = normalize_by_noise(Sr, Sc, mr, mc, pooling_weight=pooling_weight)
         ev = jnp.linalg.eigvalsh(A)
         assert float(ev.min()) > 0.0
         assert float(ev.max()) < bound
 
 
-def test_whitened_distance_equals_mahalanobis_distance():
-    """After whitening, the S_bar^-1 in the decision rule is gone."""
+def test_normalized_distance_equals_mahalanobis_distance():
+    """After normalizing by noise, the S_bar^-1 in the decision rule is gone."""
     rng = np.random.default_rng(2)
     Sr, Sc, mr, mc = _trial(rng)
     Sbar = ODDITY_W * Sr + (1 - ODDITY_W) * Sc
@@ -111,8 +111,8 @@ def test_invariant_under_translation():
     rng = np.random.default_rng(3)
     Sr, Sc, mr, mc = _trial(rng)
     shift = jnp.asarray(rng.normal(size=2))
-    base = whitened_oddity_features(Sr, Sc, mr, mc)
-    moved = whitened_oddity_features(Sr, Sc, mr + shift, mc + shift)
+    base = oddity_features(Sr, Sc, mr, mc)
+    moved = oddity_features(Sr, Sc, mr + shift, mc + shift)
     # float32 gap measured at 5e-7 over 200 seeds. A feature that leaks the shift
     # moves by about |shift| (here ~1), which is 1e5 times atol.
     assert jnp.allclose(base, moved, rtol=0, atol=1e-5)
@@ -123,24 +123,24 @@ def test_invariant_under_rotation():
     Sr, Sc, mr, mc = _trial(rng)
     th = 0.7
     R = jnp.asarray([[np.cos(th), -np.sin(th)], [np.sin(th), np.cos(th)]])
-    base = whitened_oddity_features(Sr, Sc, mr, mc)
-    turned = whitened_oddity_features(R @ Sr @ R.T, R @ Sc @ R.T, R @ mr, R @ mc)
+    base = oddity_features(Sr, Sc, mr, mc)
+    turned = oddity_features(R @ Sr @ R.T, R @ Sc @ R.T, R @ mr, R @ mc)
     assert jnp.allclose(base, turned, atol=1e-6)
 
 
 def test_invariant_under_a_general_affine_map():
-    """A rotation-only test would pass a wrong whitening."""
+    """A rotation-only test would pass a wrong normalization."""
     rng = np.random.default_rng(5)
     Sr, Sc, mr, mc = _trial(rng)
     L = jnp.asarray([[2.0, 0.7], [-0.4, 0.5]])  # shear + anisotropic scale
     assert abs(float(jnp.linalg.det(L))) > 1e-6
-    base = whitened_oddity_features(Sr, Sc, mr, mc)
-    mapped = whitened_oddity_features(L @ Sr @ L.T, L @ Sc @ L.T, L @ mr, L @ mc)
+    base = oddity_features(Sr, Sc, mr, mc)
+    mapped = oddity_features(L @ Sr @ L.T, L @ Sc @ L.T, L @ mr, L @ mc)
     assert jnp.allclose(base, mapped, atol=1e-5)
 
 
 # --------------------------------------------------------------------------
-# shape, coincident stimuli, and w_ref
+# shape, coincident stimuli, and pooling_weight
 # --------------------------------------------------------------------------
 
 
@@ -148,12 +148,12 @@ def test_feature_vector_is_2d_long():
     """2*input_dim, which for the 2-D oddity task is 4."""
     rng = np.random.default_rng(6)
     Sr, Sc, mr, mc = _trial(rng)
-    assert whitened_oddity_features(Sr, Sc, mr, mc).shape == (4,)
+    assert oddity_features(Sr, Sc, mr, mc).shape == (4,)
 
 
 def test_coincident_stimuli_are_finite():
-    """mu_ref == mu_comp makes the rotation undefined; it must not produce NaN."""
-    f = whitened_oddity_features(jnp.eye(2), jnp.eye(2), jnp.zeros(2), jnp.zeros(2))
+    """ref == comparison makes the rotation undefined; it must not produce NaN."""
+    f = oddity_features(jnp.eye(2), jnp.eye(2), jnp.zeros(2), jnp.zeros(2))
     assert bool(jnp.all(jnp.isfinite(f)))
     assert float(f[0]) == pytest.approx(0.0, abs=1e-12)
 
@@ -162,19 +162,21 @@ def test_coincident_stimuli_have_a_finite_gradient():
     """The gradient of ||d|| at d = 0 is 0/0 unless the norm is guarded."""
 
     def feature_sum(Sc, mc):
-        return jnp.sum(whitened_oddity_features(jnp.eye(2), Sc, jnp.zeros(2), mc))
+        return jnp.sum(oddity_features(jnp.eye(2), Sc, jnp.zeros(2), mc))
 
     g_cov, g_mu = jax.grad(feature_sum, argnums=(0, 1))(jnp.eye(2), jnp.zeros(2))
     assert bool(jnp.all(jnp.isfinite(g_cov)))
     assert bool(jnp.all(jnp.isfinite(g_mu)))
 
 
-def test_whiten_with_another_pooling_weight_changes_the_features():
-    """whiten keeps w_ref, so a 2AFC reduction differs from the oddity features."""
+def test_normalize_by_noise_with_another_pooling_weight_changes_the_features():
+    """normalize_by_noise keeps pooling_weight, so a 2AFC reduction differs from the oddity features."""
     rng = np.random.default_rng(7)
     Sr, Sc, mr, mc = _trial(rng)
-    odd = whitened_oddity_features(Sr, Sc, mr, mc)
-    afc = reduce_2d(*whiten(Sr, Sc, mr, mc, w_ref=TWOAFC_W))
+    odd = oddity_features(Sr, Sc, mr, mc)
+    afc = align_displacement_2d(
+        *normalize_by_noise(Sr, Sc, mr, mc, pooling_weight=TWOAFC_W)
+    )
     assert not jnp.allclose(odd, afc, atol=1e-6)
 
 
@@ -184,16 +186,16 @@ def test_oddity_features_refuse_3d_stimuli():
     Sc = jnp.diag(jnp.array([0.5, 1.0, 4.0]))
     mr, mc = jnp.zeros(3), jnp.array([0.1, 0.2, 0.3])
     with pytest.raises(ValueError, match="input_dim=2, got input_dim=3"):
-        whitened_oddity_features(Sr, Sc, mr, mc)
+        oddity_features(Sr, Sc, mr, mc)
 
 
-def test_reduce_2d_composes_with_whiten():
-    """whitened_oddity_features must be exactly whiten + reduce_2d."""
+def test_align_displacement_2d_composes_with_normalize_by_noise():
+    """oddity_features must be exactly normalize_by_noise + align_displacement_2d."""
     rng = np.random.default_rng(8)
     Sr, Sc, mr, mc = _trial(rng)
-    A, d = whiten(Sr, Sc, mr, mc, w_ref=ODDITY_W)
+    A, d = normalize_by_noise(Sr, Sc, mr, mc, pooling_weight=ODDITY_W)
     assert jnp.allclose(
-        reduce_2d(A, d), whitened_oddity_features(Sr, Sc, mr, mc), atol=1e-7
+        align_displacement_2d(A, d), oddity_features(Sr, Sc, mr, mc), atol=1e-7
     )
 
 
@@ -233,7 +235,7 @@ _REF_CASES = [
         ],
     ),
     (
-        # Covariances at psyphy's own scale, where the whitening is worse conditioned.
+        # Covariances at psyphy's own scale, where the normalization is worse conditioned.
         [[0.05, 0.01], [0.01, 0.02]],
         [[0.03, 0.0], [0.0, 0.04]],
         [0.2, 0.1],
@@ -255,7 +257,7 @@ def test_matches_reference_implementation(Sr, Sc, mr, mc, expected):
     atol 1e-5: the reference ran in float64 and psyphy runs float32. Measured end
     to end, the gap in p(correct) is about 2e-7.
     """
-    got = whitened_oddity_features(
+    got = oddity_features(
         jnp.asarray(Sr), jnp.asarray(Sc), jnp.asarray(mr), jnp.asarray(mc)
     )
     assert jnp.allclose(got, jnp.asarray(expected), atol=1e-5), (

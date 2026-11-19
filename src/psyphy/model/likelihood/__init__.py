@@ -11,9 +11,9 @@ Modules
 base     : TaskLikelihood, BernoulliTaskLikelihood, GaussianTaskLikelihood,
            log_probs_from_logit
 oddity   : OddityTaskConfig, OddityTask (3-AFC, Monte Carlo)
-features : whiten, reduce_2d, whitened_oddity_features, the inputs a neural
-           surrogate takes
-neural   : NeuralOddityTask, NeuralSurrogate and the weight-file format
+features : normalize_by_noise, align_displacement_2d, oddity_features, the inputs a neural
+           network takes
+neural   : FastOddityTask, TrainedNetwork and the weight-file format
 
 Every public name is re-exported here, so existing imports are unaffected::
 
@@ -21,12 +21,12 @@ Every public name is re-exported here, so existing imports are unaffected::
 
 Choosing an oddity likelihood
 -----------------------------
-:class:`OddityTask` and :class:`NeuralOddityTask` model the same observer and the
+:class:`OddityTask` and :class:`FastOddityTask` model the same observer and the
 same decision rule. ``OddityTask`` simulates noisy trials and counts how often the
-rule picks the odd stimulus. ``NeuralOddityTask`` evaluates a small network fitted
+rule picks the odd stimulus. ``FastOddityTask`` evaluates a small network fitted
 to that simulation in advance.
 
-| | ``OddityTask`` | ``NeuralOddityTask`` |
+| | ``OddityTask`` | ``FastOddityTask`` |
 |---|---|---|
 | how ``P(correct)`` is computed | Monte Carlo simulation | a fitted network |
 | stimulus dimensions | any | 2 |
@@ -35,10 +35,10 @@ to that simulation in advance.
 | cost per evaluation | grows with ``num_samples`` | one forward pass |
 | weight file | none | ships with psyphy |
 
-Use :class:`NeuralOddityTask` for a 2-D model with Gaussian noise, especially
+Use :class:`FastOddityTask` for a 2-D model with Gaussian noise, especially
 when the likelihood is differentiated many times, as in NUTS or an optimizer.
 Use :class:`OddityTask` for any other dimension or noise model, and to check a
-surrogate fit against the simulation it was trained on.
+network fit against the simulation it was trained on.
 """
 
 from .base import (
@@ -47,12 +47,12 @@ from .base import (
     TaskLikelihood,
     log_probs_from_logit,
 )
-from .features import reduce_2d, whiten, whitened_oddity_features
+from .features import align_displacement_2d, normalize_by_noise, oddity_features
 from .neural import (
-    NeuralOddityTask,
-    NeuralSurrogate,
-    mlp_forward,
-    save_surrogate_npz,
+    FastOddityTask,
+    TrainedNetwork,
+    forward_pass,
+    save_network,
 )
 from .oddity import OddityTask, OddityTaskConfig
 
@@ -65,13 +65,13 @@ __all__ = [
     # Concrete tasks
     "OddityTaskConfig",
     "OddityTask",
-    # Surrogate feature maps
-    "whiten",
-    "reduce_2d",
-    "whitened_oddity_features",
-    # Trained surrogates and their file format
-    "NeuralOddityTask",
-    "NeuralSurrogate",
-    "mlp_forward",
-    "save_surrogate_npz",
+    # Feature maps
+    "normalize_by_noise",
+    "align_displacement_2d",
+    "oddity_features",
+    # Trained networks and their file format
+    "FastOddityTask",
+    "TrainedNetwork",
+    "forward_pass",
+    "save_network",
 ]

@@ -1,4 +1,4 @@
-"""Tests for NeuralOddityTask: the surrogate wired in as a task likelihood.
+"""Tests for FastOddityTask: the network wired in as a task likelihood.
 
 Most of these pin failures that raise no error and return probabilities in (0, 1)
 that are wrong. Each test says which one.
@@ -16,8 +16,8 @@ from psyphy.data import TrialData
 from psyphy.model import WPPM, GaussianNoise, OddityTask, OddityTaskConfig, Prior
 from psyphy.model.likelihood import (
     BernoulliTaskLikelihood,
-    NeuralOddityTask,
-    NeuralSurrogate,
+    FastOddityTask,
+    TrainedNetwork,
 )
 from psyphy.model.noise import StudentTNoise
 
@@ -50,24 +50,24 @@ def _trials(key, n=24, spread=0.25):
 
 def test_constructs_with_no_arguments():
     """The shipped weights load without a path."""
-    task = NeuralOddityTask()
-    assert isinstance(task.surrogate, NeuralSurrogate)
-    assert task.surrogate.meta["task"] == "oddity"
-    assert task.surrogate.meta["input_dim"] == 2
+    task = FastOddityTask()
+    assert isinstance(task.network, TrainedNetwork)
+    assert task.network.metadata["task"] == "oddity"
+    assert task.network.metadata["input_dim"] == 2
 
 
-def test_surrogate_cannot_be_reassigned():
+def test_network_cannot_be_reassigned():
     """A jitted closure over the task would keep the first network after a reassignment."""
-    task = NeuralOddityTask()
+    task = FastOddityTask()
     with pytest.raises(AttributeError):
-        task.surrogate = lambda x: x
+        task.network = lambda x: x
 
 
-def test_accepts_a_caller_supplied_surrogate():
+def test_accepts_a_caller_supplied_network():
     """Retraining on a wider domain should not require a psyphy change."""
-    shipped = NeuralOddityTask().surrogate
-    task = NeuralOddityTask(surrogate=shipped)
-    assert task.surrogate is shipped
+    shipped = FastOddityTask().network
+    task = FastOddityTask(network=shipped)
+    assert task.network is shipped
 
 
 def test_accepts_a_plain_callable():
@@ -76,44 +76,44 @@ def test_accepts_a_plain_callable():
     def logit_fn(x):
         return jnp.zeros(x.shape[:-1])
 
-    assert NeuralOddityTask(surrogate=logit_fn).surrogate is logit_fn
+    assert FastOddityTask(network=logit_fn).network is logit_fn
 
 
 def _reload_with(tmp_path, **meta_changes):
     """The shipped weights re-saved with some metadata values replaced."""
-    from psyphy.model.likelihood.neural import save_surrogate_npz
+    from psyphy.model.likelihood.neural import save_network
 
-    shipped = NeuralOddityTask().surrogate
+    shipped = FastOddityTask().network
     path = tmp_path / "other_task.npz"
-    save_surrogate_npz(
+    save_network(
         path,
         params=shipped.params,
         input_mean=shipped.input_mean,
         input_std=shipped.input_std,
-        meta=dict(shipped.meta, **meta_changes),
+        metadata=dict(shipped.metadata, **meta_changes),
     )
-    return NeuralSurrogate.from_npz(path)  # require=None: loads whatever the file says
+    return TrainedNetwork.from_npz(path)  # require=None: loads whatever the file says
 
 
-def test_refuses_a_surrogate_trained_for_another_task(tmp_path):
+def test_refuses_a_network_trained_for_another_task(tmp_path):
     """Oddity weights re-saved as 2AFC load and predict 0.3654 with no error.
 
-    The constructor has to be where this raises, because a surrogate reaches
+    The constructor has to be where this raises, because a network reaches
     the task from `from_npz(path)` with no `require`.
     """
-    other = _reload_with(tmp_path, task="2afc", w_ref=0.5)
+    other = _reload_with(tmp_path, task="2afc", pooling_weight=0.5)
     with pytest.raises(ValueError) as e:
-        NeuralOddityTask(surrogate=other)
+        FastOddityTask(network=other)
     msg = str(e.value)
     assert "task" in msg and "2afc" in msg and "oddity" in msg, (
         f"the error must name the key and both values; got: {msg}"
     )
 
 
-def test_refuses_a_surrogate_trained_for_another_dimension(tmp_path):
+def test_refuses_a_network_trained_for_another_dimension(tmp_path):
     other = _reload_with(tmp_path, input_dim=3)
     with pytest.raises(ValueError, match="input_dim"):
-        NeuralOddityTask(surrogate=other)
+        FastOddityTask(network=other)
 
 
 # --------------------------------------------------------------------------
@@ -128,12 +128,12 @@ def test_is_a_bernoulli_task_likelihood():
     BernoulliTaskLikelihood. A task that subclasses TaskLikelihood directly still
     fits, then raises on every prediction path.
     """
-    assert isinstance(NeuralOddityTask(), BernoulliTaskLikelihood)
+    assert isinstance(FastOddityTask(), BernoulliTaskLikelihood)
 
 
 def test_predict_returns_log_probabilities():
     """predict returns (log_p, log_1mp), which BernoulliTaskLikelihood.loglik unpacks."""
-    task = NeuralOddityTask()
+    task = FastOddityTask()
     model = _model(task)
     params = model.init_params(jr.PRNGKey(0))
     out = task.predict(params, _trials(jr.PRNGKey(1), n=1)[0], model)
@@ -153,7 +153,7 @@ def test_loglik_uses_each_trial_separately():
     With the same p on every trial, reusing trial 0 gives the right total, so
     the 2 trials here have different p.
     """
-    task = NeuralOddityTask()
+    task = FastOddityTask()
     model = _model(task)
     params = model.init_params(jr.PRNGKey(0))
 
@@ -182,14 +182,14 @@ def test_loglik_uses_each_trial_separately():
 
 def test_predict_prob_works_end_to_end():
     """Goes through the isinstance gate in WPPM.predict_prob."""
-    model = _model(NeuralOddityTask())
+    model = _model(FastOddityTask())
     params = model.init_params(jr.PRNGKey(0))
     p = model.predict_prob(params, (jnp.array([0.0, 0.0]), jnp.array([0.3, 0.1])))
     assert 0.0 < float(p) < 1.0
 
 
 # --------------------------------------------------------------------------
-# guards: the places where the surrogate is simply not applicable
+# guards: the places where the network is simply not applicable
 # --------------------------------------------------------------------------
 
 
@@ -199,7 +199,7 @@ def test_rejects_a_non_two_dimensional_model():
     In 3-D the same reduction gives 6 features and needs its own weights. The
     2-D map on a 3-D model would not raise by itself.
     """
-    model = _model(NeuralOddityTask(), input_dim=3)
+    model = _model(FastOddityTask(), input_dim=3)
     params = model.init_params(jr.PRNGKey(0))
     stim = jnp.stack([jnp.zeros(3), jnp.full(3, 0.2)])
     with pytest.raises(NotImplementedError, match="input_dim"):
@@ -208,7 +208,7 @@ def test_rejects_a_non_two_dimensional_model():
 
 def test_rejects_non_gaussian_noise():
     """The network was fitted to Gaussian internal noise; nothing else is valid."""
-    model = _model(NeuralOddityTask(), noise=StudentTNoise())
+    model = _model(FastOddityTask(), noise=StudentTNoise())
     params = model.init_params(jr.PRNGKey(0))
     with pytest.raises(NotImplementedError, match="[Gg]aussian"):
         model.likelihood.predict(params, _trials(jr.PRNGKey(1), n=1)[0], model)
@@ -220,7 +220,7 @@ def test_accepts_a_gaussian_noise_subclass():
     class MyGaussian(GaussianNoise):
         pass
 
-    model = _model(NeuralOddityTask(), noise=MyGaussian())
+    model = _model(FastOddityTask(), noise=MyGaussian())
     params = model.init_params(jr.PRNGKey(0))
     log_p, _ = model.likelihood.predict(params, _trials(jr.PRNGKey(1), n=1)[0], model)
     assert bool(jnp.isfinite(log_p))
@@ -229,7 +229,7 @@ def test_accepts_a_gaussian_noise_subclass():
 def test_rejects_an_unrelated_class_named_gaussian_noise():
     """The name is not what makes noise Gaussian."""
     impostor = type("GaussianNoise", (), {})()
-    model = _model(NeuralOddityTask(), noise=impostor)
+    model = _model(FastOddityTask(), noise=impostor)
     with pytest.raises(NotImplementedError, match="[Gg]aussian"):
         model.likelihood._check_applicable(model)
 
@@ -241,11 +241,11 @@ def test_rejects_an_unrelated_class_named_gaussian_noise():
 
 def test_is_declared_deterministic():
     """The class attribute says loglik ignores its key."""
-    assert NeuralOddityTask.is_stochastic is False
+    assert FastOddityTask.is_stochastic is False
 
 
 def test_is_deterministic_in_fact():
-    task = NeuralOddityTask()
+    task = FastOddityTask()
     model = _model(task)
     params = model.init_params(jr.PRNGKey(0))
     data = TrialData(
@@ -259,7 +259,7 @@ def test_is_deterministic_in_fact():
 
 
 def test_jit_and_grad_are_finite():
-    task = NeuralOddityTask()
+    task = FastOddityTask()
     model = _model(task)
     params = model.init_params(jr.PRNGKey(0))
     data = TrialData(
@@ -277,7 +277,7 @@ def test_jit_and_grad_are_finite():
 def test_grad_is_finite_when_a_comparison_equals_its_reference():
     """One zero-offset trial, as in a design with catch trials, must not turn the
     whole gradient NaN."""
-    task = NeuralOddityTask()
+    task = FastOddityTask()
     model = _model(task)
     params = model.init_params(jr.PRNGKey(0))
     stimuli = _trials(jr.PRNGKey(1))
@@ -310,15 +310,15 @@ def test_sub_chance_predictions_are_preserved():
     A two-million-sample simulation gives P(correct) near 0.17 for cases like
     this one.
     """
-    from psyphy.model.likelihood.features import whitened_oddity_features
+    from psyphy.model.likelihood.features import oddity_features
 
-    surrogate = NeuralOddityTask().surrogate
-    Sigma_ref = jnp.array([[5.74, 0.0], [0.0, 12.18]])
-    Sigma_comp = jnp.array([[0.33, 0.0], [0.0, 1.00]])
+    network = FastOddityTask().network
+    cov_ref = jnp.array([[5.74, 0.0], [0.0, 12.18]])
+    cov_comparison = jnp.array([[0.33, 0.0], [0.0, 1.00]])
     mu = jnp.zeros(2)
 
-    x = whitened_oddity_features(Sigma_ref, Sigma_comp, mu, mu)
-    p = float(jax.nn.sigmoid(surrogate(x)))  # the surrogate returns a logit
+    x = oddity_features(cov_ref, cov_comparison, mu, mu)
+    p = float(jax.nn.sigmoid(network(x)))  # the network returns a logit
     assert p < 1.0 / 3.0, f"expected a sub-chance probability, got {p}"
     assert p > 0.10, f"{p} is implausibly low even for this regime"
 
@@ -329,16 +329,16 @@ def test_sub_chance_predictions_are_preserved():
 
 
 def test_agrees_with_the_monte_carlo_task():
-    """The surrogate reproduces OddityTask at 20,000 samples.
+    """The network reproduces OddityTask at 20,000 samples.
 
     At the default sample count the simulation's own sampling error is larger
-    than the surrogate's error, so we compare against a high-sample run.
+    than the network's error, so we compare against a high-sample run.
 
     Measured over these trials: median |diff| about 0.003, maximum about 0.009.
     The bound of 0.02 is above that maximum and fails if the feature map, the
     weights or the standardization change.
     """
-    nn_task = NeuralOddityTask()
+    nn_task = FastOddityTask()
     mc_task = OddityTask(OddityTaskConfig(num_samples=20_000))
     model_nn = _model(nn_task)
     model_mc = _model(mc_task)

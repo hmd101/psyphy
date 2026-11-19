@@ -1,18 +1,18 @@
 #!/usr/bin/env python3
-"""Re-save a reference surrogate weight file with psyphy's metadata schema.
+"""Re-save a reference network weight file with psyphy's metadata schema.
 
 We ran it once to produce the weight file psyphy ships,
 ``src/psyphy/model/likelihood/weights/oddity_2d_64x2.npz``. The weights are
 Philip Greengard's, trained outside psyphy. His files hold only the network and
 its standardization (``W_i``, ``b_i``, ``n_layers``, ``input_mean``,
-``input_std``), and ``NeuralSurrogate.from_npz`` refuses a file without
+``input_std``), and ``TrainedNetwork.from_npz`` refuses a file without
 metadata.
 
 What we write
 -------------
-``task``, ``input_dim``, ``feature_map``, ``feature_map_version`` and ``w_ref``
-follow from how the network was trained: on the whitened, rotation-reduced 4-D
-features of the 3-AFC oddity task.
+``task``, ``input_dim``, ``feature_map``, ``feature_map_version`` and ``pooling_weight``
+follow from how the network was trained: on the 4 features of the 3-AFC oddity
+task (noise-normalized and aligned).
 
 ``domain_lo``/``domain_hi`` are left out, since we do not have the training set.
 ``label_mc_samples`` is written only when passed on the command line, and the
@@ -20,7 +20,7 @@ validation errors are not written.
 
 Usage
 -----
-    python scripts/convert_reference_surrogate.py \
+    python scripts/convert_reference_network.py \
         --src path/to/reference.npz \
         --dest src/psyphy/model/likelihood/weights/oddity_2d_64x2.npz
 """
@@ -33,13 +33,13 @@ from pathlib import Path
 
 import numpy as np
 
-from psyphy.model.likelihood.features import ODDITY_W_REF
-from psyphy.model.likelihood.neural import SCHEMA_VERSION, save_surrogate_npz
+from psyphy.model.likelihood.features import ODDITY_POOLING_WEIGHT
+from psyphy.model.likelihood.neural import SCHEMA_VERSION, save_network
 
 #: Identifier for the feature map these weights expect. Must match what
-#: NeuralOddityTask declares, and is bumped whenever the feature definition
+#: FastOddityTask declares, and is bumped whenever the feature definition
 #: changes in any way, including a change that leaves the shape the same.
-FEATURE_MAP = "whitened_rotation_reduced"
+FEATURE_MAP = "noise_normalized_aligned"
 FEATURE_MAP_VERSION = 1
 
 
@@ -52,13 +52,13 @@ def convert(src: Path, dest: Path, *, label_mc_samples: int | None = None) -> Pa
     n_features = int(params[0][0].shape[0])
     input_dim = n_features // 2  # 2 * input_dim features, see likelihood.features
 
-    meta = {
+    metadata = {
         "task": "oddity",
         "input_dim": input_dim,
         "n_features": n_features,
         "feature_map": FEATURE_MAP,
         "feature_map_version": FEATURE_MAP_VERSION,
-        "w_ref": float(ODDITY_W_REF),
+        "pooling_weight": float(ODDITY_POOLING_WEIGHT),
         "trained_utc": _dt.datetime.fromtimestamp(src.stat().st_mtime, _dt.timezone.utc)
         .date()
         .isoformat(),
@@ -66,15 +66,15 @@ def convert(src: Path, dest: Path, *, label_mc_samples: int | None = None) -> Pa
         # no domain_lo/domain_hi, see the module docstring
     }
     if label_mc_samples is not None:
-        meta["label_mc_samples"] = int(label_mc_samples)
+        metadata["label_mc_samples"] = int(label_mc_samples)
 
     dest.parent.mkdir(parents=True, exist_ok=True)
-    save_surrogate_npz(
+    save_network(
         dest,
         params=params,
         input_mean=input_mean,
         input_std=input_std,
-        meta=meta,
+        metadata=metadata,
     )
     return dest
 
@@ -100,24 +100,24 @@ def main() -> None:
 
     # Read it back through the real loader, so the script cannot claim success
     # for a file psyphy would refuse.
-    from psyphy.model.likelihood.neural import NeuralSurrogate
+    from psyphy.model.likelihood.neural import TrainedNetwork
 
     with np.load(out, allow_pickle=False) as d:
         input_dim = int(d["input_dim"])
 
-    s = NeuralSurrogate.from_npz(
+    s = TrainedNetwork.from_npz(
         out,
         require={
             "task": "oddity",
             "input_dim": input_dim,
             "feature_map": FEATURE_MAP,
             "feature_map_version": FEATURE_MAP_VERSION,
-            "w_ref": float(ODDITY_W_REF),
+            "pooling_weight": float(ODDITY_POOLING_WEIGHT),
         },
     )
     print(
-        f"  verified: {s.meta['task']} {s.meta['input_dim']}-D, "
-        f"{s.meta['n_features']} features, domain={'recorded' if s.domain else 'unknown'}"
+        f"  verified: {s.metadata['task']} {s.metadata['input_dim']}-D, "
+        f"{s.metadata['n_features']} features, domain={'recorded' if s.domain else 'unknown'}"
     )
 
 

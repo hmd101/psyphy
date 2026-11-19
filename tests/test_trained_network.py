@@ -1,6 +1,6 @@
-"""Tests for psyphy.model.likelihood.neural: the surrogate container and its file format.
+"""Tests for psyphy.model.likelihood.neural: the network container and its file format.
 
-A surrogate given the wrong weights returns a probability in (0, 1) with no error.
+A network given the wrong weights returns a probability in (0, 1) with no error.
 Oddity weights fed features built with the 2AFC pooling weight give 0.3469 where
 the right answer is 0.3627, and a 2-D oddity network and a 2-D 2AFC network have
 identical shapes. These tests pin the metadata check at load that tells them apart.
@@ -16,17 +16,17 @@ jnp = pytest.importorskip("jax.numpy")
 
 from psyphy.model.likelihood.neural import (  # noqa: E402
     SCHEMA_VERSION,
-    NeuralSurrogate,
-    mlp_forward,
-    save_surrogate_npz,
+    TrainedNetwork,
+    forward_pass,
+    save_network,
 )
 
 ODDITY_REQUIRE = {
     "task": "oddity",
     "input_dim": 2,
-    "feature_map": "whitened_rotation_reduced",
+    "feature_map": "noise_normalized_aligned",
     "feature_map_version": 1,
-    "w_ref": 2.0 / 3.0,
+    "pooling_weight": 2.0 / 3.0,
 }
 
 
@@ -38,7 +38,7 @@ def _full_matmul_precision():
 
 
 # --------------------------------------------------------------------------
-# fixtures: a small, well-formed surrogate written to a temp file
+# fixtures: a small, well-formed network written to a temp file
 # --------------------------------------------------------------------------
 
 
@@ -59,12 +59,12 @@ def toy_file(tmp_path):
     rng = np.random.default_rng(0)
     params = _toy_params(rng)
     path = tmp_path / "oddity_2d_toy.npz"
-    save_surrogate_npz(
+    save_network(
         path,
         params=params,
         input_mean=jnp.zeros(4),
         input_std=jnp.ones(4),
-        meta=dict(ODDITY_REQUIRE, n_features=4),
+        metadata=dict(ODDITY_REQUIRE, n_features=4),
     )
     return path
 
@@ -74,29 +74,29 @@ def toy_file(tmp_path):
 # --------------------------------------------------------------------------
 
 
-def test_mlp_forward_returns_one_finite_logit_per_row():
+def test_forward_pass_returns_one_finite_logit_per_row():
     rng = np.random.default_rng(1)
     params = _toy_params(rng)
     x = jnp.asarray(rng.normal(size=(7, 4)))
-    z = mlp_forward(params, x)
+    z = forward_pass(params, x)
     assert z.shape == (7,), "one logit per row, with the trailing axis squeezed"
     assert bool(jnp.all(jnp.isfinite(z)))
 
 
-def test_mlp_forward_is_batch_polymorphic():
+def test_forward_pass_is_batch_polymorphic():
     """A single feature vector and a batch must both work; loglik vmaps this."""
     rng = np.random.default_rng(2)
     params = _toy_params(rng)
     x = jnp.asarray(rng.normal(size=4))
-    assert mlp_forward(params, x).shape == ()
-    assert mlp_forward(params, x[None, :]).shape == (1,)
+    assert forward_pass(params, x).shape == ()
+    assert forward_pass(params, x[None, :]).shape == (1,)
 
 
-def test_mlp_forward_reads_depth_from_the_params_list():
+def test_forward_pass_reads_depth_from_the_params_list():
     """Depth is whatever the file holds; 3 layers is not assumed."""
     rng = np.random.default_rng(3)
     for widths in [(4, 5, 1), (4, 5, 6, 1), (4, 5, 6, 7, 1)]:
-        p = mlp_forward(_toy_params(rng, widths), jnp.zeros(4))
+        p = forward_pass(_toy_params(rng, widths), jnp.zeros(4))
         assert jnp.isfinite(p)
 
 
@@ -106,46 +106,46 @@ def test_mlp_forward_reads_depth_from_the_params_list():
 
 
 def test_round_trip(toy_file):
-    s = NeuralSurrogate.from_npz(toy_file, require=ODDITY_REQUIRE)
-    assert s.meta["task"] == "oddity"
-    assert s.meta["input_dim"] == 2
-    assert s.meta["psyphy_surrogate_version"] == SCHEMA_VERSION
+    s = TrainedNetwork.from_npz(toy_file, require=ODDITY_REQUIRE)
+    assert s.metadata["task"] == "oddity"
+    assert s.metadata["input_dim"] == 2
+    assert s.metadata["psyphy_network_version"] == SCHEMA_VERSION
     out = s(jnp.zeros(4))
     assert out.shape == () and bool(jnp.isfinite(out)), "a finite logit"
 
 
 def test_standardization_is_applied(toy_file, tmp_path):
-    """The surrogate standardizes before the forward pass.
+    """The network standardizes before the forward pass.
 
     Weights without their standardization give wrong p with no error.
     """
     rng = np.random.default_rng(4)
     params = _toy_params(rng)
     shifted = tmp_path / "shifted.npz"
-    save_surrogate_npz(
+    save_network(
         shifted,
         params=params,
         input_mean=jnp.full(4, 3.0),
         input_std=jnp.full(4, 2.0),
-        meta=dict(ODDITY_REQUIRE, n_features=4),
+        metadata=dict(ODDITY_REQUIRE, n_features=4),
     )
     plain = tmp_path / "plain.npz"
-    save_surrogate_npz(
+    save_network(
         plain,
         params=params,
         input_mean=jnp.zeros(4),
         input_std=jnp.ones(4),
-        meta=dict(ODDITY_REQUIRE, n_features=4),
+        metadata=dict(ODDITY_REQUIRE, n_features=4),
     )
     x = jnp.asarray([1.0, 2.0, 3.0, 4.0])
-    a = NeuralSurrogate.from_npz(shifted, require=ODDITY_REQUIRE)(x)
-    b = NeuralSurrogate.from_npz(plain, require=ODDITY_REQUIRE)(x)
+    a = TrainedNetwork.from_npz(shifted, require=ODDITY_REQUIRE)(x)
+    b = TrainedNetwork.from_npz(plain, require=ODDITY_REQUIRE)(x)
     assert abs(float(a) - float(b)) > 1e-6, "input_mean/std were ignored"
 
 
 def test_weights_are_cast_to_the_ambient_dtype(toy_file):
     """Shipped weights are float64; psyphy runs float32 and must not be forced up."""
-    s = NeuralSurrogate.from_npz(toy_file, require=ODDITY_REQUIRE)
+    s = TrainedNetwork.from_npz(toy_file, require=ODDITY_REQUIRE)
     want = jnp.zeros(()).dtype
     assert all(W.dtype == want and b.dtype == want for W, b in s.params)
     assert s.input_mean.dtype == want
@@ -170,14 +170,14 @@ def test_refuses_a_file_with_no_metadata(tmp_path):
         input_std=np.ones(4),
     )
     with pytest.raises(ValueError, match="task"):
-        NeuralSurrogate.from_npz(path, require=ODDITY_REQUIRE)
+        TrainedNetwork.from_npz(path, require=ODDITY_REQUIRE)
 
 
 def test_refuses_the_wrong_task_and_names_both_sides(toy_file):
     """The headline case: identical shapes, different task."""
     with pytest.raises(ValueError) as e:
-        NeuralSurrogate.from_npz(
-            toy_file, require=dict(ODDITY_REQUIRE, task="2afc", w_ref=0.5)
+        TrainedNetwork.from_npz(
+            toy_file, require=dict(ODDITY_REQUIRE, task="2afc", pooling_weight=0.5)
         )
     msg = str(e.value)
     assert "oddity" in msg and "2afc" in msg, (
@@ -187,21 +187,22 @@ def test_refuses_the_wrong_task_and_names_both_sides(toy_file):
 
 def test_refuses_the_wrong_dimension(toy_file):
     with pytest.raises(ValueError, match="input_dim"):
-        NeuralSurrogate.from_npz(toy_file, require=dict(ODDITY_REQUIRE, input_dim=3))
+        TrainedNetwork.from_npz(toy_file, require=dict(ODDITY_REQUIRE, input_dim=3))
 
 
 def test_refuses_a_stale_feature_map_version(toy_file):
     """Same task, same shapes, changed feature definition."""
     with pytest.raises(ValueError, match="feature_map_version"):
-        NeuralSurrogate.from_npz(
+        TrainedNetwork.from_npz(
             toy_file, require=dict(ODDITY_REQUIRE, feature_map_version=2)
         )
 
 
-def test_w_ref_is_compared_with_a_tolerance(toy_file):
+def test_pooling_weight_is_compared_with_a_tolerance(toy_file):
     """2/3 is not exact in binary; a naive == would reject a correct file."""
-    NeuralSurrogate.from_npz(
-        toy_file, require=dict(ODDITY_REQUIRE, w_ref=float(np.float32(2.0 / 3.0)))
+    TrainedNetwork.from_npz(
+        toy_file,
+        require=dict(ODDITY_REQUIRE, pooling_weight=float(np.float32(2.0 / 3.0))),
     )
 
 
@@ -213,42 +214,42 @@ def test_refuses_when_n_features_disagrees_with_the_weights(tmp_path):
     """
     rng = np.random.default_rng(6)
     path = tmp_path / "inconsistent.npz"
-    save_surrogate_npz(
+    save_network(
         path,
         params=_toy_params(rng),  # W_0 is (4, 8), so the real width is 4
         input_mean=jnp.zeros(4),
         input_std=jnp.ones(4),
-        meta=dict(ODDITY_REQUIRE, n_features=6),  # claims 6
+        metadata=dict(ODDITY_REQUIRE, n_features=6),  # claims 6
     )
     with pytest.raises(ValueError, match="n_features"):
-        NeuralSurrogate.from_npz(path, require=ODDITY_REQUIRE)
+        TrainedNetwork.from_npz(path, require=ODDITY_REQUIRE)
 
 
 def test_refuses_a_future_schema_version(tmp_path):
     rng = np.random.default_rng(7)
     path = tmp_path / "future.npz"
-    save_surrogate_npz(
+    save_network(
         path,
         params=_toy_params(rng),
         input_mean=jnp.zeros(4),
         input_std=jnp.ones(4),
-        meta=dict(ODDITY_REQUIRE, n_features=4),
+        metadata=dict(ODDITY_REQUIRE, n_features=4),
     )
     with np.load(path) as f:
         arrays = dict(f)
-    arrays["psyphy_surrogate_version"] = np.array(SCHEMA_VERSION + 1)
+    arrays["psyphy_network_version"] = np.array(SCHEMA_VERSION + 1)
     np.savez(path, **arrays)
     with pytest.raises(ValueError, match="version"):
-        NeuralSurrogate.from_npz(path, require=ODDITY_REQUIRE)
+        TrainedNetwork.from_npz(path, require=ODDITY_REQUIRE)
 
 
 def test_params_are_a_tuple_that_cannot_be_reassigned(toy_file):
     """A list in params would let s.params[0] = ... change a network in use."""
-    s = NeuralSurrogate.from_npz(toy_file, require=ODDITY_REQUIRE)
+    s = TrainedNetwork.from_npz(toy_file, require=ODDITY_REQUIRE)
     assert isinstance(s.params, tuple)
     with pytest.raises(TypeError):
         s.params[0] = s.params[1]
-    listed = NeuralSurrogate(
+    listed = TrainedNetwork(
         params=[(w, b) for w, b in s.params],
         input_mean=s.input_mean,
         input_std=s.input_std,
@@ -264,12 +265,12 @@ def test_params_are_a_tuple_that_cannot_be_reassigned(toy_file):
 def test_optional_fields_round_trip(tmp_path):
     rng = np.random.default_rng(8)
     path = tmp_path / "with_optional.npz"
-    save_surrogate_npz(
+    save_network(
         path,
         params=_toy_params(rng),
         input_mean=jnp.zeros(4),
         input_std=jnp.ones(4),
-        meta=dict(
+        metadata=dict(
             ODDITY_REQUIRE,
             n_features=4,
             domain_lo=np.array([0.0, 0.2, -0.5, 0.2]),
@@ -278,9 +279,9 @@ def test_optional_fields_round_trip(tmp_path):
             val_max_err=0.019,
         ),
     )
-    s = NeuralSurrogate.from_npz(path, require=ODDITY_REQUIRE)
-    assert s.meta["label_mc_samples"] == 200_000
-    assert np.allclose(s.meta["domain_hi"], [20.0, 1.5, 0.5, 1.5])
+    s = TrainedNetwork.from_npz(path, require=ODDITY_REQUIRE)
+    assert s.metadata["label_mc_samples"] == 200_000
+    assert np.allclose(s.metadata["domain_hi"], [20.0, 1.5, 0.5, 1.5])
 
 
 def test_absent_optional_fields_are_absent_not_defaulted(toy_file):
@@ -288,8 +289,8 @@ def test_absent_optional_fields_are_absent_not_defaulted(toy_file):
 
     A caller can warn about extrapolation only for a file with a measured range.
     """
-    s = NeuralSurrogate.from_npz(toy_file, require=ODDITY_REQUIRE)
-    assert "domain_lo" not in s.meta
+    s = TrainedNetwork.from_npz(toy_file, require=ODDITY_REQUIRE)
+    assert "domain_lo" not in s.metadata
     assert s.domain is None, (
         "an unknown training domain must not become a fabricated box"
     )

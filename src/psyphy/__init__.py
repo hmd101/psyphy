@@ -32,7 +32,7 @@ Core design
    - Encodes the psychophysical decision rule.
    - WPPM: loglik and predict implemented via Monte Carlo
      observer simulations, using the noise model explicitly.
-   - NeuralOddityTask: the same quantity from a network fitted
+   - FastOddityTask: the same quantity from a network fitted
      to that simulation, the same value for every PRNG key.
 
 4. NoiseModel (model/noise.py):
@@ -91,10 +91,10 @@ from .inference.laplace import LaplaceApproximation
 # Inference
 from .inference.map_optimizer import MAPOptimizer
 from .model.likelihood import (
-    NeuralOddityTask,
-    NeuralSurrogate,
+    FastOddityTask,
     OddityTask,
     OddityTaskConfig,
+    TrainedNetwork,
 )
 from .model.noise import GaussianNoise, StudentTNoise
 from .model.prior import Prior
@@ -114,8 +114,8 @@ __all__ = [
     "Prior",
     "OddityTask",
     "OddityTaskConfig",
-    "NeuralOddityTask",
-    "NeuralSurrogate",
+    "FastOddityTask",
+    "TrainedNetwork",
     "GaussianNoise",  # default noise model
     "StudentTNoise",
     # Inference
