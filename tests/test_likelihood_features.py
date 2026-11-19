@@ -30,6 +30,13 @@ ODDITY_W = 2.0 / 3.0  # two reference presentations, one comparison
 TWOAFC_W = 0.5  # one each
 
 
+@pytest.fixture(autouse=True)
+def _full_matmul_precision():
+    """Full float32 matmuls: TF32 on Ampere+ GPUs would blur exact comparisons."""
+    with jax.default_matmul_precision("float32"):
+        yield
+
+
 # --------------------------------------------------------------------------
 # helpers
 # --------------------------------------------------------------------------
@@ -106,7 +113,9 @@ def test_invariant_under_translation():
     shift = jnp.asarray(rng.normal(size=2))
     base = whitened_oddity_features(Sr, Sc, mr, mc)
     moved = whitened_oddity_features(Sr, Sc, mr + shift, mc + shift)
-    assert jnp.allclose(base, moved, atol=1e-6)
+    # float32 gap measured at 5e-7 over 200 seeds. A feature that leaks the shift
+    # moves by about |shift| (here ~1), which is 1e5 times atol.
+    assert jnp.allclose(base, moved, rtol=0, atol=1e-5)
 
 
 def test_invariant_under_rotation():
@@ -160,13 +169,22 @@ def test_coincident_stimuli_have_a_finite_gradient():
     assert bool(jnp.all(jnp.isfinite(g_mu)))
 
 
-def test_w_ref_changes_the_features():
-    """Guards against w_ref being accepted and then ignored."""
+def test_whiten_with_another_pooling_weight_changes_the_features():
+    """whiten keeps w_ref, so a 2AFC reduction differs from the oddity features."""
     rng = np.random.default_rng(7)
     Sr, Sc, mr, mc = _trial(rng)
-    odd = whitened_oddity_features(Sr, Sc, mr, mc, w_ref=ODDITY_W)
-    afc = whitened_oddity_features(Sr, Sc, mr, mc, w_ref=TWOAFC_W)
+    odd = whitened_oddity_features(Sr, Sc, mr, mc)
+    afc = reduce_2d(*whiten(Sr, Sc, mr, mc, w_ref=TWOAFC_W))
     assert not jnp.allclose(odd, afc, atol=1e-6)
+
+
+def test_oddity_features_refuse_3d_stimuli():
+    """A 3-D trial would otherwise return 4 numbers, mixing a 3-D norm with a 2-D rotation."""
+    Sr = jnp.diag(jnp.array([1.0, 2.0, 3.0]))
+    Sc = jnp.diag(jnp.array([0.5, 1.0, 4.0]))
+    mr, mc = jnp.zeros(3), jnp.array([0.1, 0.2, 0.3])
+    with pytest.raises(ValueError, match="input_dim=2, got input_dim=3"):
+        whitened_oddity_features(Sr, Sc, mr, mc)
 
 
 def test_reduce_2d_composes_with_whiten():

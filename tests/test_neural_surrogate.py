@@ -8,6 +8,7 @@ identical shapes. These tests pin the metadata check at load that tells them apa
 
 from __future__ import annotations
 
+import jax
 import numpy as np
 import pytest
 
@@ -27,6 +28,13 @@ ODDITY_REQUIRE = {
     "feature_map_version": 1,
     "w_ref": 2.0 / 3.0,
 }
+
+
+@pytest.fixture(autouse=True)
+def _full_matmul_precision():
+    """Full float32 matmuls: TF32 on Ampere+ GPUs would blur exact comparisons."""
+    with jax.default_matmul_precision("float32"):
+        yield
 
 
 # --------------------------------------------------------------------------
@@ -225,10 +233,27 @@ def test_refuses_a_future_schema_version(tmp_path):
         input_mean=jnp.zeros(4),
         input_std=jnp.ones(4),
         meta=dict(ODDITY_REQUIRE, n_features=4),
-        schema_version=SCHEMA_VERSION + 1,
     )
+    with np.load(path) as f:
+        arrays = dict(f)
+    arrays["psyphy_surrogate_version"] = np.array(SCHEMA_VERSION + 1)
+    np.savez(path, **arrays)
     with pytest.raises(ValueError, match="version"):
         NeuralSurrogate.from_npz(path, require=ODDITY_REQUIRE)
+
+
+def test_params_are_a_tuple_that_cannot_be_reassigned(toy_file):
+    """A list in params would let s.params[0] = ... change a network in use."""
+    s = NeuralSurrogate.from_npz(toy_file, require=ODDITY_REQUIRE)
+    assert isinstance(s.params, tuple)
+    with pytest.raises(TypeError):
+        s.params[0] = s.params[1]
+    listed = NeuralSurrogate(
+        params=[(w, b) for w, b in s.params],
+        input_mean=s.input_mean,
+        input_std=s.input_std,
+    )
+    assert isinstance(listed.params, tuple)
 
 
 # --------------------------------------------------------------------------

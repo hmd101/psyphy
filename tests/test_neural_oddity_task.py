@@ -22,6 +22,13 @@ from psyphy.model.likelihood import (
 from psyphy.model.noise import StudentTNoise
 
 
+@pytest.fixture(autouse=True)
+def _full_matmul_precision():
+    """Full float32 matmuls: TF32 on Ampere+ GPUs would blur exact comparisons."""
+    with jax.default_matmul_precision("float32"):
+        yield
+
+
 def _model(likelihood, *, input_dim=2, basis_degree=2, noise=None):
     return WPPM(
         prior=Prior(input_dim=input_dim, basis_degree=basis_degree),
@@ -47,6 +54,13 @@ def test_constructs_with_no_arguments():
     assert isinstance(task.surrogate, NeuralSurrogate)
     assert task.surrogate.meta["task"] == "oddity"
     assert task.surrogate.meta["input_dim"] == 2
+
+
+def test_surrogate_cannot_be_reassigned():
+    """A jitted closure over the task would keep the first network after a reassignment."""
+    task = NeuralOddityTask()
+    with pytest.raises(AttributeError):
+        task.surrogate = lambda x: x
 
 
 def test_accepts_a_caller_supplied_surrogate():
@@ -152,6 +166,26 @@ def test_rejects_non_gaussian_noise():
     params = model.init_params(jr.PRNGKey(0))
     with pytest.raises(NotImplementedError, match="[Gg]aussian"):
         model.likelihood.predict(params, _trials(jr.PRNGKey(1), n=1)[0], model)
+
+
+def test_accepts_a_gaussian_noise_subclass():
+    """The check is isinstance, so a subclass of GaussianNoise is Gaussian noise."""
+
+    class MyGaussian(GaussianNoise):
+        pass
+
+    model = _model(NeuralOddityTask(), noise=MyGaussian())
+    params = model.init_params(jr.PRNGKey(0))
+    log_p, _ = model.likelihood.predict(params, _trials(jr.PRNGKey(1), n=1)[0], model)
+    assert bool(jnp.isfinite(log_p))
+
+
+def test_rejects_an_unrelated_class_named_gaussian_noise():
+    """The name is not what makes noise Gaussian."""
+    impostor = type("GaussianNoise", (), {})()
+    model = _model(NeuralOddityTask(), noise=impostor)
+    with pytest.raises(NotImplementedError, match="[Gg]aussian"):
+        model.likelihood._check_applicable(model)
 
 
 # --------------------------------------------------------------------------
