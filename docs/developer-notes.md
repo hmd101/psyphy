@@ -26,7 +26,7 @@ two calls with different keys give slightly different answers. `NUTSSampler` fre
 
 **What it costs.** The sampler explores the posterior implied by that one noise realization,
 not the exact posterior. Raising `mc_samples` shrinks the difference and costs proportionally
-more compute. A deterministic surrogate likelihood would remove the compromise entirely, and
+more compute. A deterministic fast likelihood would remove the compromise entirely, and
 that is the main argument for building one.
 
 ---

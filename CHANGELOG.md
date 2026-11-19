@@ -221,7 +221,7 @@ breaking changes are called out below but do not force a minor-version bump.
 
 ### Added
 
-- **`NeuralOddityTask`**, the 3-AFC oddity likelihood evaluated by a trained network
+- **`FastOddityTask`**, the 3-AFC oddity likelihood evaluated by a trained network
   instead of a Monte Carlo simulation. It models the same observer and decision rule as
   `OddityTask`, and `loglik` returns the same value for every PRNG key. 2-D stimuli and
   `GaussianNoise` only, and `predict` raises `NotImplementedError` for any other model.
@@ -229,35 +229,35 @@ breaking changes are called out below but do not force a minor-version bump.
 
   ```python
   from psyphy.model import WPPM, Prior, GaussianNoise
-  from psyphy.model.likelihood import NeuralOddityTask
+  from psyphy.model.likelihood import FastOddityTask
 
   model = WPPM(
       prior=Prior(input_dim=2, basis_degree=3),
-      likelihood=NeuralOddityTask(),
+      likelihood=FastOddityTask(),
       noise=GaussianNoise(),
   )
   ```
 
-  `NeuralOddityTask.is_stochastic` is `False`.
+  `FastOddityTask.is_stochastic` is `False`.
 
-- **`NeuralSurrogate`**, a trained network with its input standardization and metadata.
-  `NeuralSurrogate.from_npz(path, require=...)` loads one and raises `ValueError` when the
+- **`TrainedNetwork`**, a trained network with its input standardization and metadata.
+  `TrainedNetwork.from_npz(path, require=...)` loads one and raises `ValueError` when the
   file's `task`, `input_dim` or feature map differ from `require`, or when the file has no
-  metadata. `save_surrogate_npz` writes the format, and `mlp_forward` is the forward pass
-  on its own. The network returns the logit of P(correct), and so must any `surrogate`
-  passed to `NeuralOddityTask`. `NeuralOddityTask` checks the `meta` of a surrogate against
-  `NeuralOddityTask.REQUIRED` when it is constructed, and raises the same `ValueError`. A
-  plain callable has no `meta` and is not checked.
+  metadata. `save_network` writes the format, and `forward_pass` is the forward pass
+  on its own. The network returns the logit of P(correct), and so must any `network`
+  passed to `FastOddityTask`. `FastOddityTask` checks the `metadata` of a network against
+  `FastOddityTask.REQUIRED` when it is constructed, and raises the same `ValueError`. A
+  plain callable has no `metadata` and is not checked.
 
   ```python
-  surrogate = NeuralSurrogate.from_npz("my_weights.npz", require=NeuralOddityTask.REQUIRED)
-  task = NeuralOddityTask(surrogate=surrogate)
+  network = TrainedNetwork.from_npz("my_weights.npz", require=FastOddityTask.REQUIRED)
+  task = FastOddityTask(network=network)
   ```
 
-- **`whiten`, `reduce_2d` and `whitened_oddity_features`** in
-  `psyphy.model.likelihood.features`: the 4 numbers per trial that `NeuralOddityTask`
-  passes to its network. `whiten` works in any dimension and takes the task's pooling
-  weight as `w_ref` (2/3 for oddity, 1/2 for a two-interval task).
+- **`normalize_by_noise`, `align_displacement_2d` and `oddity_features`** in
+  `psyphy.model.likelihood.features`: the 4 numbers per trial that `FastOddityTask`
+  passes to its network. `normalize_by_noise` works in any dimension and takes the task's
+  pooling weight as `pooling_weight` (2/3 for oddity, 1/2 for a two-interval task).
 
 - **`ParameterSource` in `psyphy.posterior`**, a one-method protocol for anything we can
   draw parameters from: `sample(n, *, key)` returning a PyTree with a leading axis of `n`.
