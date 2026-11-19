@@ -33,6 +33,7 @@ The layer count and widths are read from ``n_layers`` and the ``W_i`` shapes.
 
 from __future__ import annotations
 
+from collections.abc import Sequence
 from dataclasses import dataclass, field
 from importlib import resources
 from pathlib import Path
@@ -42,6 +43,7 @@ import jax
 import jax.numpy as jnp
 import numpy as np
 
+from ..noise import GaussianNoise
 from .base import BernoulliTaskLikelihood, log_probs_from_logit
 from .features import ODDITY_W_REF, whitened_oddity_features
 
@@ -75,7 +77,7 @@ REQUIRED_KEYS = (
 #: differ in the last bits.
 _FLOAT_ATOL = 1e-6
 
-NNParams = list[tuple[jnp.ndarray, jnp.ndarray]]
+NNParams = Sequence[tuple[jnp.ndarray, jnp.ndarray]]
 
 
 def mlp_forward(params: NNParams, x: jnp.ndarray) -> jnp.ndarray:
@@ -121,8 +123,9 @@ class NeuralSurrogate:
 
     Attributes
     ----------
-    params : list of (W, b), W shape (n_in, n_out), b shape (n_out,)
-        The network, input layer first.
+    params : tuple of (W, b), W shape (n_in, n_out), b shape (n_out,)
+        The network, input layer first. A list passed to the constructor is
+        stored as a tuple.
     input_mean, input_std : jnp.ndarray, shape (n_features,)
         Per-feature standardization, applied in :meth:`__call__`.
     meta : dict
@@ -134,6 +137,9 @@ class NeuralSurrogate:
     input_mean: jnp.ndarray
     input_std: jnp.ndarray
     meta: dict = field(default_factory=dict)
+
+    def __post_init__(self) -> None:
+        object.__setattr__(self, "params", tuple(tuple(layer) for layer in self.params))
 
     def __call__(self, x: jnp.ndarray) -> jnp.ndarray:
         """Standardize the features, then run the network.
@@ -244,13 +250,13 @@ class NeuralSurrogate:
                     )
 
             n_layers = int(data["n_layers"])
-            params = [
+            params = tuple(
                 (
                     jnp.asarray(data[f"W_{i}"], dtype=dtype),
                     jnp.asarray(data[f"b_{i}"], dtype=dtype),
                 )
                 for i in range(n_layers)
-            ]
+            )
 
             # --- 4. metadata and weights agree about the input width ----------
             actual = int(params[0][0].shape[0])
@@ -275,7 +281,6 @@ def save_surrogate_npz(
     input_mean: jnp.ndarray,
     input_std: jnp.ndarray,
     meta: dict[str, Any],
-    schema_version: int = SCHEMA_VERSION,
 ) -> Path:
     """Write a surrogate and its metadata to one ``.npz``.
 
@@ -287,7 +292,7 @@ def save_surrogate_npz(
     ----------
     path : str or Path
         Where to write the file.
-    params : list of (W, b), W shape (n_in, n_out), b shape (n_out,)
+    params : sequence of (W, b), W shape (n_in, n_out), b shape (n_out,)
         The network, input layer first.
     input_mean, input_std : jnp.ndarray, shape (n_features,)
         Per-feature standardization.
@@ -295,9 +300,6 @@ def save_surrogate_npz(
         At minimum ``task``, ``input_dim``, ``n_features``, ``feature_map``,
         ``feature_map_version`` and ``w_ref``. Optional keys from the module
         docstring are written as given. ``psyphy_surrogate_version`` is added.
-    schema_version : int
-        Leave at the default. Tests set it higher to check that ``from_npz``
-        refuses a newer file.
 
     Returns
     -------
@@ -319,7 +321,7 @@ def save_surrogate_npz(
         payload[f"W_{i}"] = np.asarray(W)
         payload[f"b_{i}"] = np.asarray(b)
 
-    payload["psyphy_surrogate_version"] = np.array(schema_version)
+    payload["psyphy_surrogate_version"] = np.array(SCHEMA_VERSION)
     for key, value in meta.items():
         if key == "psyphy_surrogate_version":
             continue
@@ -421,7 +423,12 @@ class NeuralOddityTask(BernoulliTaskLikelihood):
         # an if-statement, not `a if c else b`: mypy types that as object
         if surrogate is None:
             surrogate = _default_surrogate()
-        self.surrogate: Callable[[jnp.ndarray], jnp.ndarray] = surrogate
+        self._surrogate: Callable[[jnp.ndarray], jnp.ndarray] = surrogate
+
+    @property
+    def surrogate(self) -> Callable[[jnp.ndarray], jnp.ndarray]:
+        """The network this task evaluates. Read-only: pass another to the constructor."""
+        return self._surrogate
 
     def predict(
         self,
@@ -463,9 +470,7 @@ class NeuralOddityTask(BernoulliTaskLikelihood):
         sigma_ref = model.local_covariance(params, ref)
         sigma_comp = model.local_covariance(params, comp)
 
-        features = whitened_oddity_features(
-            sigma_ref, sigma_comp, ref, comp, w_ref=ODDITY_W_REF
-        )
+        features = whitened_oddity_features(sigma_ref, sigma_comp, ref, comp)
         z = self.surrogate(features)  # logit of P(correct), shape ()
 
         # no floor at 1/3: when Sigma_comp is much tighter than Sigma_ref this rule
@@ -482,9 +487,9 @@ class NeuralOddityTask(BernoulliTaskLikelihood):
                 f"NeuralOddityTask supports input_dim=2, got {model.input_dim}. "
                 f"Use OddityTask instead."
             )
-        noise_name = type(model.noise).__name__
-        if noise_name != "GaussianNoise":
+        if not isinstance(model.noise, GaussianNoise):
             raise NotImplementedError(
-                f"NeuralOddityTask supports GaussianNoise only, got {noise_name}. "
+                f"NeuralOddityTask supports GaussianNoise only, "
+                f"got {type(model.noise).__name__}. "
                 f"Use OddityTask instead."
             )

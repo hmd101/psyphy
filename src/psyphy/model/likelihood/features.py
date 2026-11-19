@@ -143,8 +143,6 @@ def whitened_oddity_features(
     Sigma_comp: jnp.ndarray,
     mu_ref: jnp.ndarray,
     mu_comp: jnp.ndarray,
-    *,
-    w_ref: float = ODDITY_W_REF,
 ) -> jnp.ndarray:
     r"""The four features a 2-D surrogate consumes: :func:`whiten` then :func:`reduce_2d`.
 
@@ -156,17 +154,26 @@ def whitened_oddity_features(
         Covariances at the reference and at the comparison.
     mu_ref, mu_comp : jnp.ndarray, shape (2,)
         The reference and comparison stimuli.
-    w_ref : float
-        See :func:`whiten`. The default is the oddity task's 2/3.
 
     Returns
     -------
     jnp.ndarray, shape (4,)
         ``[||d_whitened||, a11, a12, a22]``.
 
-    Warnings
-    --------
-    2-D only, and not checked here. Check ``input_dim`` before calling.
+    Raises
+    ------
+    ValueError
+        If the stimuli are not 2-D.
+
+    Notes
+    -----
+    The pooling weight is the oddity task's 2/3, the one the shipped network was
+    trained with. For another weight, call :func:`whiten` directly.
     """
-    A, d_whitened = whiten(Sigma_ref, Sigma_comp, mu_ref, mu_comp, w_ref=w_ref)
+    d = jnp.shape(mu_ref)[-1]
+    if d != 2:
+        raise ValueError(
+            f"whitened_oddity_features supports input_dim=2, got input_dim={d}."
+        )
+    A, d_whitened = whiten(Sigma_ref, Sigma_comp, mu_ref, mu_comp, w_ref=ODDITY_W_REF)
     return reduce_2d(A, d_whitened)
