@@ -111,6 +111,23 @@ def _as_python(value: Any) -> Any:
     return arr
 
 
+def _check_requirements(
+    meta: dict[str, Any], require: dict[str, Any], source: str
+) -> None:
+    """Raise ``ValueError`` for the first key of ``meta`` that differs from ``require``."""
+    for key, want in require.items():
+        got = meta.get(key, "<absent>")
+        if isinstance(want, float) and isinstance(got, (int, float)):
+            ok = abs(float(got) - want) < _FLOAT_ATOL
+        else:
+            ok = got == want
+        if not ok:
+            raise ValueError(
+                f"{source} is not usable here: {key}={got!r}, but this task "
+                f"requires {key}={want!r}."
+            )
+
+
 @dataclass(frozen=True)
 class NeuralSurrogate:
     """A trained surrogate: frozen weights, input standardization, and metadata.
@@ -231,17 +248,7 @@ class NeuralSurrogate:
                 )
 
             # --- 3. it is the surrogate the caller asked for -------------------
-            for key, want in (require or {}).items():
-                got = meta.get(key, "<absent>")
-                if isinstance(want, float) and isinstance(got, (int, float)):
-                    ok = abs(float(got) - want) < _FLOAT_ATOL
-                else:
-                    ok = got == want
-                if not ok:
-                    raise ValueError(
-                        f"{path.name} is not usable here: {key}={got!r}, but this task "
-                        f"requires {key}={want!r}."
-                    )
+            _check_requirements(meta, require or {}, path.name)
 
             n_layers = int(data["n_layers"])
             params = [
@@ -383,15 +390,21 @@ class NeuralOddityTask(BernoulliTaskLikelihood):
         callable with that signature works, a :class:`NeuralSurrogate` or a
         network from another framework.
 
+    Raises
+    ------
+    ValueError
+        If ``surrogate.meta`` disagrees with :attr:`REQUIRED`, for instance a file
+        trained for another task. The message names the key and both values.
+
     Notes
     -----
     2-D stimuli and ``GaussianNoise`` only. :meth:`predict` raises
     ``NotImplementedError`` for any other model. A 3-D model needs 6 features
     and its own trained weights.
 
-    A ``surrogate`` passed in is not checked against the task. Load a weight file
-    with ``NeuralSurrogate.from_npz(path, require=NeuralOddityTask.REQUIRED)`` to
-    check it.
+    A ``surrogate`` with a ``meta`` dict, such as a :class:`NeuralSurrogate`, is
+    checked against :attr:`REQUIRED` at construction. A plain callable has no
+    metadata and is not checked.
 
     Examples
     --------
@@ -421,6 +434,9 @@ class NeuralOddityTask(BernoulliTaskLikelihood):
         # an if-statement, not `a if c else b`: mypy types that as object
         if surrogate is None:
             surrogate = _default_surrogate()
+        meta = getattr(surrogate, "meta", None)
+        if isinstance(meta, dict):
+            _check_requirements(meta, self.REQUIRED, "the surrogate")
         self.surrogate: Callable[[jnp.ndarray], jnp.ndarray] = surrogate
 
     def predict(
