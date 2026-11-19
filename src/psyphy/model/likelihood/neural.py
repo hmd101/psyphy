@@ -439,7 +439,12 @@ class NeuralOddityTask(BernoulliTaskLikelihood):
         meta = getattr(surrogate, "meta", None)
         if isinstance(meta, dict):
             _check_requirements(meta, self.REQUIRED, "the surrogate")
-        self.surrogate: Callable[[jnp.ndarray], jnp.ndarray] = surrogate
+        self._surrogate: Callable[[jnp.ndarray], jnp.ndarray] = surrogate
+
+    @property
+    def surrogate(self) -> Callable[[jnp.ndarray], jnp.ndarray]:
+        """The network this task evaluates. Read-only: pass another to the constructor."""
+        return self._surrogate
 
     def predict(
         self,
