@@ -119,9 +119,11 @@ def reduce_2d(A: jnp.ndarray, d_whitened: jnp.ndarray) -> jnp.ndarray:
     identity. ``||d||`` is then 0, and the orientation of ``A`` does not change
     ``P(correct)``.
     """
-    norm = jnp.linalg.norm(d_whitened)
-    degenerate = norm < 1e-30
-    safe = jnp.maximum(norm, 1e-30)
+    sq = jnp.sum(d_whitened**2)
+    degenerate = sq < 1e-30
+    # The inner where keeps sqrt away from 0, so its gradient stays finite.
+    norm = jnp.where(degenerate, 0.0, jnp.sqrt(jnp.where(degenerate, 1.0, sq)))
+    safe = jnp.where(degenerate, 1.0, norm)
 
     # Rotation taking d_whitened onto +y; the identity when d_whitened is zero.
     cos_t = jnp.where(degenerate, 1.0, d_whitened[1] / safe)
