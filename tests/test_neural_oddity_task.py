@@ -70,6 +70,52 @@ def test_accepts_a_caller_supplied_surrogate():
     assert task.surrogate is shipped
 
 
+def test_accepts_a_plain_callable():
+    """A callable with no metadata, such as a network from another framework, is not checked."""
+
+    def logit_fn(x):
+        return jnp.zeros(x.shape[:-1])
+
+    assert NeuralOddityTask(surrogate=logit_fn).surrogate is logit_fn
+
+
+def _reload_with(tmp_path, **meta_changes):
+    """The shipped weights re-saved with some metadata values replaced."""
+    from psyphy.model.likelihood.neural import save_surrogate_npz
+
+    shipped = NeuralOddityTask().surrogate
+    path = tmp_path / "other_task.npz"
+    save_surrogate_npz(
+        path,
+        params=shipped.params,
+        input_mean=shipped.input_mean,
+        input_std=shipped.input_std,
+        meta=dict(shipped.meta, **meta_changes),
+    )
+    return NeuralSurrogate.from_npz(path)  # require=None: loads whatever the file says
+
+
+def test_refuses_a_surrogate_trained_for_another_task(tmp_path):
+    """Oddity weights re-saved as 2AFC load and predict 0.3654 with no error.
+
+    The constructor has to be where this raises, because a surrogate reaches
+    the task from `from_npz(path)` with no `require`.
+    """
+    other = _reload_with(tmp_path, task="2afc", w_ref=0.5)
+    with pytest.raises(ValueError) as e:
+        NeuralOddityTask(surrogate=other)
+    msg = str(e.value)
+    assert "task" in msg and "2afc" in msg and "oddity" in msg, (
+        f"the error must name the key and both values; got: {msg}"
+    )
+
+
+def test_refuses_a_surrogate_trained_for_another_dimension(tmp_path):
+    other = _reload_with(tmp_path, input_dim=3)
+    with pytest.raises(ValueError, match="input_dim"):
+        NeuralOddityTask(surrogate=other)
+
+
 # --------------------------------------------------------------------------
 # the contract with BernoulliTaskLikelihood
 # --------------------------------------------------------------------------

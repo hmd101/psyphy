@@ -245,7 +245,9 @@ breaking changes are called out below but do not force a minor-version bump.
   file's `task`, `input_dim` or feature map differ from `require`, or when the file has no
   metadata. `save_surrogate_npz` writes the format, and `mlp_forward` is the forward pass
   on its own. The network returns the logit of P(correct), and so must any `surrogate`
-  passed to `NeuralOddityTask`.
+  passed to `NeuralOddityTask`. `NeuralOddityTask` checks the `meta` of a surrogate against
+  `NeuralOddityTask.REQUIRED` when it is constructed, and raises the same `ValueError`. A
+  plain callable has no `meta` and is not checked.
 
   ```python
   surrogate = NeuralSurrogate.from_npz("my_weights.npz", require=NeuralOddityTask.REQUIRED)
