@@ -240,6 +240,24 @@ def test_jit_and_grad_are_finite():
     assert float(jnp.max(jnp.abs(grads["W"]))) > 0.0, "a zero gradient would be useless"
 
 
+def test_grad_is_finite_when_a_comparison_equals_its_reference():
+    """One zero-offset trial, as in a design with catch trials, must not turn the
+    whole gradient NaN."""
+    task = NeuralOddityTask()
+    model = _model(task)
+    params = model.init_params(jr.PRNGKey(0))
+    stimuli = _trials(jr.PRNGKey(1))
+    # stimuli is (N, K=2, d): trial 0 gets comparison = reference
+    stimuli = stimuli.at[0, 1].set(stimuli[0, 0])
+    data = TrialData(
+        stimuli=stimuli,
+        responses=jr.bernoulli(jr.PRNGKey(2), 0.6, (24,)).astype(jnp.int32),
+    )
+    value, grads = jax.value_and_grad(lambda p: task.loglik(p, data, model))(params)
+    assert jnp.isfinite(value)
+    assert bool(jnp.all(jnp.isfinite(grads["W"])))
+
+
 # --------------------------------------------------------------------------
 # below chance, and not clipped
 # --------------------------------------------------------------------------
