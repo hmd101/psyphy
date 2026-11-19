@@ -15,6 +15,7 @@ The reference values at the bottom come from Philip Greengard's implementation
 
 from __future__ import annotations
 
+import jax
 import jax.numpy as jnp
 import numpy as np
 import pytest
@@ -146,6 +147,17 @@ def test_coincident_stimuli_are_finite():
     f = whitened_oddity_features(jnp.eye(2), jnp.eye(2), jnp.zeros(2), jnp.zeros(2))
     assert bool(jnp.all(jnp.isfinite(f)))
     assert float(f[0]) == pytest.approx(0.0, abs=1e-12)
+
+
+def test_coincident_stimuli_have_a_finite_gradient():
+    """The gradient of ||d|| at d = 0 is 0/0 unless the norm is guarded."""
+
+    def feature_sum(Sc, mc):
+        return jnp.sum(whitened_oddity_features(jnp.eye(2), Sc, jnp.zeros(2), mc))
+
+    g_cov, g_mu = jax.grad(feature_sum, argnums=(0, 1))(jnp.eye(2), jnp.zeros(2))
+    assert bool(jnp.all(jnp.isfinite(g_cov)))
+    assert bool(jnp.all(jnp.isfinite(g_mu)))
 
 
 def test_w_ref_changes_the_features():
