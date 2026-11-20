@@ -34,8 +34,9 @@ Usage
 takes about 20 minutes on a laptop CPU. The seeds are constants, so a rerun on the same JAX
 version gives the same file. A short run that checks the script still works:
 
-    python scripts/train_oddity_fast_likelihood.py --quick --force-write \
-        --out "$TMPDIR/oddity_quick.npz"
+    python scripts/train_oddity_fast_likelihood.py --quick --out "$TMPDIR/oddity_quick.npz"
+
+A --quick file is written whatever the checks say, so never ship one.
 """
 
 from __future__ import annotations
@@ -293,14 +294,6 @@ def main():
     ap.add_argument(
         "--quick", action="store_true", help="1000 points, 1e3 samples, 100 steps"
     )
-    ap.add_argument(
-        "--force-write", action="store_true", help="write the file even on a miss"
-    )
-    ap.add_argument(
-        "--generator-rev",
-        default=None,
-        help="commit to record, default: this checkout's HEAD",
-    )
     args = ap.parse_args()
 
     if args.quick:
@@ -387,7 +380,7 @@ def main():
         ok &= passed
         print(f"  {name:<36} {value:.2e}  <= {bound:.1e}  {'ok' if passed else 'MISS'}")
 
-    if not ok and not args.force_write:
+    if not ok and not args.quick:
         print(
             "\nacceptance missed, no file written. Train again with other restart seeds."
         )
@@ -407,7 +400,7 @@ def main():
         "val_rmse": rms_above,
         "val_max_err": max_above,
         "trained_utc": _dt.datetime.now(_dt.timezone.utc).date().isoformat(),
-        "generator_rev": f"scripts/train_oddity_fast_likelihood.py @ {args.generator_rev or git_rev()}",
+        "generator_rev": f"scripts/train_oddity_fast_likelihood.py @ {git_rev()}",
     }
     args.out.parent.mkdir(parents=True, exist_ok=True)
     save_network(
