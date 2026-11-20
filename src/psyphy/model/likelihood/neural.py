@@ -26,8 +26,10 @@ Required metadata
 Optional metadata
     ``domain_lo``/``domain_hi``, ``label_mc_samples``, ``label_bandwidth``,
     ``val_max_err``, ``val_rmse``, ``trained_utc``, ``generator_rev``.
-    An absent key means unknown. The weights shipped with psyphy record no
-    training domain.
+    An absent key means unknown.
+
+The weights shipped with psyphy are ours, made by ``scripts/train_oddity_fast_likelihood.py``,
+and ship under psyphy's MIT license.
 
 The layer count and widths are read from ``n_layers`` and the ``W_i`` shapes.
 """
@@ -358,7 +360,7 @@ ODDITY_2D_REQUIRE: dict[str, Any] = {
 }
 
 #: Weight file shipped with psyphy, used when no network is supplied.
-DEFAULT_ODDITY_WEIGHTS = "oddity_2d_64x2.npz"
+DEFAULT_ODDITY_WEIGHTS = "oddity_2d_16x2.npz"
 
 
 def _default_network() -> TrainedNetwork:
