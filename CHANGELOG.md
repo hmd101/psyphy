@@ -221,11 +221,13 @@ breaking changes are called out below but do not force a minor-version bump.
 
 ### Added
 
-- **`FastOddityTask`**, the 3-AFC oddity likelihood evaluated by a trained network
-  instead of a Monte Carlo simulation. It models the same observer and decision rule as
+- **`FastOddityTask`**, the 3-AFC oddity likelihood evaluated by a small trained neural
+network instead of a Monte Carlo simulation. It models the same observer and decision rule as
   `OddityTask`, and `loglik` returns the same value for every PRNG key. 2-D stimuli and
   `GaussianNoise` only, and `predict` raises `NotImplementedError` for any other model.
-  The weights ship with psyphy.
+  The weights ship with psyphy. They're a small network, 2 hidden layers of 16, which we
+  trained via this script `scripts/train_oddity_fast_likelihood.py`.
+  `FastOddityTask().network.domain` gives the range of features it was trained on.
 
   ```python
   from psyphy.model import WPPM, Prior, GaussianNoise
@@ -255,11 +257,11 @@ breaking changes are called out below but do not force a minor-version bump.
   ```
 
 - **`normalize_by_noise`, `align_displacement_2d` and `oddity_features`** in
-  `psyphy.model.likelihood.features`: the 4 numbers per trial that `FastOddityTask`
+  `psyphy.model.likelihood.features`: those are the 4 numbers per trial that `FastOddityTask`
   passes to its network. `normalize_by_noise` works in any dimension and takes the task's
-  pooling weight as `pooling_weight` (2/3 for oddity, 1/2 for a two-interval task).
+  pooling weight as `pooling_weight` (e.g., 2/3 for oddity, 1/2 for a two-interval task).
 
-- **`ParameterSource` in `psyphy.posterior`**, a one-method protocol for anything we can
+- **`ParameterSource` in `psyphy.posterior`**: a one-method protocol for anything we can
   draw parameters from: `sample(n, *, key)` returning a PyTree with a leading axis of `n`.
   `Prior`, `MAPPosterior` and `MCMCPosterior` all satisfy it, and `ParameterPosterior` now
   extends it with `params` and `model`.
@@ -281,7 +283,7 @@ breaking changes are called out below but do not force a minor-version bump.
   ```
 
   `sample_params(key)` keeps its single-draw signature, because `model.init_params` is on
-  the inference path and wants one unbatched draw rather than a batch of 1 to index.
+  the inference path and requires 1 unbatched draw rather than a batch of 1 to index.
 
 ### Breaking
 
