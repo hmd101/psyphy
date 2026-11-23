@@ -2,7 +2,7 @@
 tests/test_contour_band.py
 ----------------------------
 
-Tests for contour_radii and WPPMCovarianceFieldSamples.credible_band: the
+Tests for contour_radii and WPPMCovarianceField.credible_band: the
 radius-per-direction parameterization of a threshold contour, and pointwise
 credible bands over it.
 
@@ -28,7 +28,6 @@ import pytest
 from psyphy.model import WPPM, GaussianNoise, OddityTask, Prior
 from psyphy.model.covariance_field import (
     WPPMCovarianceField,
-    WPPMCovarianceFieldSamples,
     _eti,
     _hdi,
     contour_radii,
@@ -74,7 +73,7 @@ def points():
 
 def _fields(posterior, n_samples=None, key=None):
     """The draws object, which is where credible_band() lives."""
-    return WPPMCovarianceFieldSamples(posterior, n_samples=n_samples, key=key)
+    return WPPMCovarianceField(posterior, n_samples=n_samples, key=key)
 
 
 def _reference_band(posterior, model, points, n_samples, ci_prob, key):
@@ -94,7 +93,9 @@ def _reference_band(posterior, model, points, n_samples, ci_prob, key):
     band_samples = posterior.sample(n_samples, key=key)
     band_covs = jnp.stack(  # (n_samples, n_points, 2, 2)
         [
-            WPPMCovarianceField(model, {"W": band_samples["W"][i]})(points)
+            WPPMCovarianceField.from_params(model, {"W": band_samples["W"][i]})(points)[
+                0
+            ]
             for i in range(band_samples["W"].shape[0])
         ]
     )
@@ -337,12 +338,10 @@ def test_non_2d_models_are_rejected():
         _fields(post, 4, jr.PRNGKey(0)).credible_band(jnp.array([[0.0]]))
 
 
-def test_map_posterior_needs_explicit_n_samples(tiny_model):
-    """MAPPosterior exposes no n_chains/n_draws, so the default cannot be inferred.
-
-    The draws are taken at construction, so this is where the count is needed.
-    """
+def test_map_posterior_band_raises_without_n_samples(tiny_model):
+    """A MAPPosterior stores 1 sample, and 1 sample has no band."""
     post = MAPPosterior(tiny_model, tiny_model.init_params(jr.PRNGKey(0)))
+    pts = jnp.array([[0.0, 0.0], [0.2, 0.2]])
 
-    with pytest.raises(ValueError, match="n_samples"):
-        _fields(post)
+    with pytest.raises(ValueError, match="no credible band"):
+        _fields(post).credible_band(pts)
