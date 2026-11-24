@@ -66,7 +66,7 @@ PLOTS_DIR = Path(__file__).parent / "plots"
 # --8<-- [start:modes]
 MODES = {
     "quick": {"steps": 300, "mc_fit": 20, "mc_eval": 200},  # smoke test, not converged
-    "full": {"steps": 1500, "mc_fit": 2000, "mc_eval": 2000},  # Hong et al.'s settings
+    "full": {"steps": 3000, "mc_fit": 2000, "mc_eval": 2000},  # Hong et al.'s settings
 }
 # --8<-- [end:modes]
 
@@ -242,8 +242,8 @@ def main(mode: str) -> None:
     # --8<-- [end:plot]
     ax.legend(loc="upper center", bbox_to_anchor=(0.5, -0.14), ncol=1, frameon=False)
     ax.set_aspect("equal")
-    ax.set_xlabel("$x_1$")
-    ax.set_ylabel("$x_2$")
+    ax.set_xlabel("$Model Dimension 1$")
+    ax.set_ylabel("$Model Dimension 2$")
     fig.tight_layout()
     fig.savefig(PLOTS_DIR / "own_data_thresholds.png", dpi=150)
 
