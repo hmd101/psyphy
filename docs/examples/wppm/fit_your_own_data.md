@@ -13,7 +13,7 @@ code would work on 3-D stimuli, for example.
 The companion script to this tutorial is
 [`fit_your_own_data.py`](https://github.com/flatironinstitute/psyphy/blob/main/docs/examples/wppm/fit_your_own_data.py).
 
-The figures here come from `--mode full`, which require a GPU:
+The figures here come from `--mode full`, which requires a GPU:
 
 ??? note "How to run the script and compute settings"
 
@@ -31,7 +31,7 @@ The figures here come from `--mode full`, which require a GPU:
 psyphy stores trials in a [`TrialData`](../../reference/data.md#psyphy.data.TrialData) container:
 
 - `stimuli`, shape `(N, 2, d)`: $N$ trials, 2 _distinct_ stimuli per trial, $d$ stimulus dimensions.
-  Slot 0 is the reference, slot 1 the comparison. Note that while, in total, the Hong et al paper shows 3 stimui, the oddity task shows the reference twice (a copy) and psyphy stores it once, hence psyphy only stores the number of _distinct_ stimuli per trial
+  Slot 0 is the reference, slot 1 the comparison. Note that while, in total, the Hong et al. paper shows 3 stimuli, the oddity task shows the reference twice (a copy) and psyphy stores it once, hence psyphy only stores the number of _distinct_ stimuli per trial
 - `responses`, shape `(N, 1)`: 1 for a correct response, 0 for an incorrect one
 
 Every coordinate must lie in $[-1, 1]$, the domain of the Chebyshev basis. Rescale first, e.g.
@@ -67,7 +67,7 @@ the `TrialData` in one call out of the box.
 --8<-- "docs/examples/wppm/fit_your_own_data.py:model"
 ```
 
-For the prior, we use the same that Hong et al used. For 3-D stimuli, nothing in this code would change: `d` is
+For the prior, we use the same that Hong et al. used. For 3-D stimuli, nothing in this code would change: `d` is
 3, and the weights `W` get shape `(5, 5, 5, 3, 4)` instead of `(5, 5, 2, 3)`. That is
 Chebyshev degree 0 to 4 in each of the $d$ stimulus dimensions, then $d$, then $d + 1$
 embedding dimensions.
@@ -133,7 +133,7 @@ options in the [ellipse plotting tutorial](../viz/ellipse_plots.md)):
   <p><em>Threshold contours at 66.7% correct (<code>thresholds</code> above) (not the noise
   field!), on a 7 x 7 grid of reference points. Solid blue: fit from seed 0.
   Dashed orange: fit from seed 1. The 2 fits agree pretty much everywhere but in the lower left quadrant. The contours of seed 1 (orange) are larger and longer and differently angled. So here,
-  the 2 fits found different fields. <a href="#checks-with-no-ground-truth">The loss curves </a> give insights as to why.</em></p>
+  the 2 fits found different fields. <a href="#checks-with-no-ground-truth">The loss curves</a> give insights as to why.</em></p>
 </div>
 
 ## Checks with no ground truth
@@ -155,7 +155,17 @@ A curve that still trends down needs more steps, and spikes mean the fit hasn't 
 
 `MAPOptimizer` returns the parameters of the final step. A curve that ends on a spike
 therefore returns a fit from inside the spike, as seed 1 does here. Run more steps, or fit
-again from another seed. A flat curve alone doesn't show convergence either, since a fit can
+again from another seed. If the spikes keep coming, 2 settings make them smaller, and each
+has a cost:
+
+- a lower `learning_rate` in `MAPOptimizer`: shorter steps, so fewer of them jump away
+  from the plateau. The loss then also drops more slowly, so you need more `steps`
+- more Monte Carlo samples per trial, `num_samples` in `OddityTaskConfig`: each step
+  estimates the likelihood from fresh samples, so its gradient is noisy, and more samples
+  make it less noisy. The fit takes longer and needs more memory (on a laptop CPU, 100
+  samples instead of 20 took ca. 40 times as long)
+
+A flat curve alone doesn't show convergence either, since a fit can
 sit on a plateau above the optimum. So we also run (b).
 
 **(b) 2 fits from different prior samples give the same field.** We compare the thresholds
@@ -182,11 +192,30 @@ correct responses in it:
   <p><em>Fit from seed 0, on the 6,000 held-out trials. One dot per bin of 600 trials,
   with 2 standard errors. Gray: perfect prediction. The dots follow the diagonal from a
   predicted P(correct) of 0.3 to 1, and the error bars of most bins cross it, so the fit
-  predicts trials it wasn't fitted on pretty well! Only 2 bins, near 0.6 and 0.6, sit just above the gray perfect prediction baseline, meaning the model predicted too few correct responses.</em></p>
+  predicts trials it wasn't fitted on pretty well! Only 2 bins, near 0.6 and 0.85, sit just above the gray perfect prediction baseline, meaning the model predicted too few correct responses.</em></p>
 </div>
 
 The dots should lie on the diagonal, within their error bars. Dots above it mean the fit
 predicts too few correct responses and dots below too many.
+
+A bin mixes trials from many stimuli, so it can average away a region the fit gets wrong.
+Hong et al.'s held-out trials repeat stimuli: 300 (reference, comparison) pairs, 20 trials
+each. So we also compare each pair on its own, with no bins:
+
+```python title="Predicted against observed, per stimulus pair"
+--8<-- "docs/examples/wppm/fit_your_own_data.py:held_out_pairs"
+```
+
+<div align="center">
+  <img src="../plots/own_data_held_out_pairs.png" width="360"/>
+  <p><em>Fit from seed 0, on the same held-out trials. One dot per stimulus pair, at its
+  mean predicted P(correct) and its proportion correct over 20 trials. Gray: perfect
+  prediction. Dashed: 2 standard errors of a proportion over 20 trials.</em></p>
+</div>
+
+With 20 trials a proportion moves in steps of 0.05, so the dots sit in rows. Most dots
+should lie between the dashed lines. With your own data this works only where stimuli
+repeat, e.g. method of constant stimuli. For adaptively placed trials, use the bins.
 
 !!! note "If you simulated your data"
     With a known field, compare the fit with it directly. Here we use Hong et al.'s

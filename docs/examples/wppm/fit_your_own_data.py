@@ -7,7 +7,7 @@ Companion script for ``docs/examples/wppm/fit_your_own_data.md``.
 We read oddity-task trials from a CSV file into a TrialData, fit a WPPM by MAP
 optimization, and check the fit with no ground truth: the learning curve, a
 second fit from another prior sample, and predicted against observed
-proportion correct on held-out trials. The script reads the number of stimulus
+proportion correct on held-out trials, in bins and per stimulus pair. The script reads the number of stimulus
 dimensions from the data, so the same code fits 2-D and 3-D stimuli.
 
 The data are one observer's published trials from Hong et al. (observer CH,
@@ -202,6 +202,27 @@ def main(mode: str) -> None:
     se_bin = np.sqrt(obs_bin * (1 - obs_bin) / n_bin)
     off = np.abs(obs_bin - pred_bin) / se_bin
     print(f"held out: |observed - predicted| / SE per bin, max {off.max():.1f}")
+    print(f"  bins outside 2 SE, at predicted P(correct) {pred_bin[off > 2].round(2)}")
+
+    # --8<-- [start:held_out_pairs]
+    # one row per distinct (reference, comparison) pair; pair_of: (n_test,), its row
+    pairs, pair_of = np.unique(
+        np.asarray(test.stimuli).reshape(len(observed), -1),  # (n_test, 2 * d)
+        axis=0,
+        return_inverse=True,
+    )
+    pair_of = pair_of.ravel()
+    n_per_pair = np.bincount(pair_of)  # (n_pairs,) trials per pair, 20 here
+    pred_pair = np.bincount(pair_of, weights=p_pred) / n_per_pair  # (n_pairs,)
+    obs_pair = np.bincount(pair_of, weights=observed) / n_per_pair  # (n_pairs,)
+    # --8<-- [end:held_out_pairs]
+    n_rep = int(n_per_pair.min())
+    se_pair = np.sqrt(pred_pair * (1 - pred_pair) / n_per_pair)
+    outside = np.abs(obs_pair - pred_pair) > 2 * se_pair
+    print(
+        f"held out: {len(pairs)} pairs, {n_rep} to {n_per_pair.max()} trials each, "
+        f"{outside.mean():.0%} outside 2 SE"
+    )
 
     # ---- Box: compare with a known field ----
     # --8<-- [start:truth]
@@ -264,6 +285,28 @@ def main(mode: str) -> None:
     ax.set_aspect("equal")
     fig.tight_layout()
     fig.savefig(PLOTS_DIR / "own_data_held_out.png", dpi=150)
+
+    fig, ax = plt.subplots(figsize=(3.6, 3.6))
+    p = np.linspace(1 / 3, 1, 200)  # (200,) predicted P(correct), chance to 1
+    band = 2 * np.sqrt(p * (1 - p) / n_rep)  # (200,) 2 SE of a proportion of n_rep
+    ax.plot(p, p, color="gray", lw=0.8, label="perfect prediction")
+    upper, lower = np.minimum(p + band, 1), np.maximum(p - band, 0)  # (200,) each
+    ax.plot(p, upper, color="gray", lw=0.8, ls="--", label=f"2 SE, {n_rep} trials")
+    ax.plot(p, lower, color="gray", lw=0.8, ls="--")
+    ax.scatter(
+        pred_pair,
+        obs_pair,
+        s=8,
+        color="C0",
+        alpha=0.5,
+        label=f"1 stimulus pair\n({n_rep} held-out trials)",
+    )
+    ax.legend(loc="lower right", fontsize=8, frameon=False)
+    ax.set_xlabel("predicted P(correct)")
+    ax.set_ylabel("observed proportion correct")
+    ax.set_aspect("equal")
+    fig.tight_layout()
+    fig.savefig(PLOTS_DIR / "own_data_held_out_pairs.png", dpi=150)
     print(f"figures in {PLOTS_DIR}")
 
 
