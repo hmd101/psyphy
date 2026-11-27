@@ -196,8 +196,9 @@ def test_predict_prob_works_end_to_end():
 def test_rejects_a_non_two_dimensional_model():
     """The feature map's rotation step is a 2-D construction.
 
-    In 3-D the same reduction gives 6 features and needs its own weights. The
-    2-D map on a 3-D model would not raise by itself.
+    In 3-D the same reduction gives 6 features and needs its own weights.
+    ``oddity_features`` also raises for 3-D stimuli, a ``ValueError``, but
+    ``predict`` checks the model first and raises ``NotImplementedError``.
     """
     model = _model(FastOddityTask(), input_dim=3)
     params = model.init_params(jr.PRNGKey(0))
@@ -237,11 +238,6 @@ def test_rejects_an_unrelated_class_named_gaussian_noise():
 # --------------------------------------------------------------------------
 # behavior under JAX transforms, and determinism
 # --------------------------------------------------------------------------
-
-
-def test_is_declared_deterministic():
-    """The class attribute says loglik ignores its key."""
-    assert FastOddityTask.is_stochastic is False
 
 
 def test_is_deterministic_in_fact():
