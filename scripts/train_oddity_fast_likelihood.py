@@ -56,13 +56,12 @@ import optax
 
 from psyphy.model.likelihood import (
     TrainedNetwork,
-    forward_pass,
     normalize_by_noise,
     oddity_features,
     save_network,
 )
 from psyphy.model.likelihood.features import ODDITY_POOLING_WEIGHT
-from psyphy.model.likelihood.neural import ODDITY_2D_REQUIRE
+from psyphy.model.likelihood.neural import ODDITY_2D_REQUIRE, forward_pass
 
 HERE = Path(__file__).resolve().parent
 DEFAULT_OUT = HERE.parent / "src/psyphy/model/likelihood/weights/oddity_2d_16x2.npz"
