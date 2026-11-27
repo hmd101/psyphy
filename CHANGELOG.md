@@ -57,6 +57,18 @@ network instead of a Monte Carlo simulation. It models the same observer and dec
   passes to its network. `normalize_by_noise` works in any dimension and takes the task's
   pooling weight as `pooling_weight` (e.g., 2/3 for oddity, 1/2 for a two-interval task).
 
+### Fixed
+
+- **`WPPM` without `noise` now uses `GaussianNoise()`.** Before, the model built and
+  `fit` raised `AttributeError: 'NoneType' object has no attribute 'sample_standard'`.
+
+  ```python
+  # before
+  model = WPPM(prior=prior, likelihood=OddityTask())  # fit(...) raised AttributeError
+  # after
+  model = WPPM(prior=prior, likelihood=OddityTask())  # model.noise is GaussianNoise()
+  ```
+
 ## [0.0.6] - 2026-11-23
 
 ### Breaking
