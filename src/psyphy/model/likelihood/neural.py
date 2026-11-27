@@ -427,9 +427,6 @@ class FastOddityTask(BernoulliTaskLikelihood):
         The Monte Carlo version of the same task, which the network was fitted to.
     """
 
-    #: ``loglik`` ignores its PRNG key and returns the same value for every key.
-    is_stochastic: ClassVar[bool] = False
-
     #: What this task demands of a weight file. See :data:`ODDITY_2D_REQUIRE`.
     REQUIRED: ClassVar[dict[str, Any]] = ODDITY_2D_REQUIRE
 
