@@ -87,7 +87,7 @@ better fit.
 | mode | steps | Monte Carlo samples per trial: fit, predictions | time for both fits |
 |---|---|---|---|
 | `quick` | 300 | 20, 200 | 10 s, laptop CPU |
-| `full` | 1,500 | 2,000, 2,000 | ca. 3 min, 1 GPU |
+| `full` | 1,500 | 2,000, 2,000 | ca. 1.5 min, 1 GPU |
 
 ## Results
 
@@ -192,7 +192,7 @@ correct responses in it:
   <p><em>Fit from seed 0, on the 6,000 held-out trials. One dot per bin of 600 trials,
   with 2 standard errors. Gray: perfect prediction. The dots follow the diagonal from a
   predicted P(correct) of 0.3 to 1, and the error bars of most bins cross it, so the fit
-  predicts trials it wasn't fitted on pretty well! Only 2 bins, near 0.6 and 0.85, sit just above the gray perfect prediction baseline, meaning the model predicted too few correct responses.</em></p>
+  predicts trials it wasn't fitted on pretty well! Only 1 bin, near 0.84, sits just above the gray perfect prediction baseline, meaning the model predicted too few correct responses.</em></p>
 </div>
 
 The dots should lie on the diagonal, within their error bars. Dots above it mean the fit
@@ -200,7 +200,7 @@ predicts too few correct responses and dots below too many.
 
 A bin mixes trials from many stimuli, so it can average away a region the fit gets wrong.
 Hong et al.'s held-out trials repeat stimuli: 300 (reference, comparison) pairs, 20 trials
-each. So we also compare each pair on its own, with no bins:
+each. So we also compare each pair without bins:
 
 ```python title="Predicted against observed, per stimulus pair"
 --8<-- "docs/examples/wppm/fit_your_own_data.py:held_out_pairs"
@@ -210,7 +210,9 @@ each. So we also compare each pair on its own, with no bins:
   <img src="../plots/own_data_held_out_pairs.png" width="360"/>
   <p><em>Fit from seed 0, on the same held-out trials. One dot per stimulus pair, at its
   mean predicted P(correct) and its proportion correct over 20 trials. Gray: perfect
-  prediction. Dashed: 2 standard errors of a proportion over 20 trials.</em></p>
+  prediction. Dashed: 2 standard errors of a proportion over 20 trials. Most pairs lie
+  between the dashed lines, and about 10% outside. Near a predicted P(correct) of 1 the lines
+  close in, so there a single incorrect trial out of 20 can put a pair outside.</em></p>
 </div>
 
 With 20 trials a proportion moves in steps of 0.05, so the dots sit in rows. Most dots
