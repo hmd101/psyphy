@@ -36,8 +36,6 @@ network instead of a Monte Carlo simulation. It models the same observer and dec
   )
   ```
 
-  `FastOddityTask.is_stochastic` is `False`.
-
 - **`TrainedNetwork`**, a trained network with its input standardization and metadata.
   `TrainedNetwork.from_npz(path, require=...)` loads one and raises `ValueError` when the
   file's `task`, `input_dim` or feature map differ from `require`, or when the file has no
